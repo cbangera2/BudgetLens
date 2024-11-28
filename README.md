@@ -12,15 +12,25 @@
 
 ## Features
 
-- **Interactive Dashboard**: Drag-and-drop interface for customizing your financial overview
+- **Credit Karma Integration**: 
+  - Compatible with the CSV export from the [Credit Karma Transaction Extractor Chrome Extension](https://github.com/cbangera2/CreditKarmaExtractor) for easy data import
+  - Visualize and analyze your Credit Karma transaction history
 - **Data Visualization**: 
   - Monthly spending trends chart
   - Category breakdown pie chart
   - Key financial metrics cards
+  - Draggable UI elements
 - **Transaction Management**:
   - CSV file import support
   - Searchable transaction table
   - Filter by category, vendor, and transaction type
+
+## Getting Started with Credit Karma Data
+
+1. First, use the [Credit Karma Transaction Extractor](https://github.com/cbangera2/CreditKarmaExtractor) Chrome extension to export your transaction data
+2. The extension will generate CSV files containing your transaction history
+3. Import these CSV files directly into BudgetLens
+4. Your Credit Karma transactions will be automatically visualized in the dashboard
 
 ## Screenshots
 
