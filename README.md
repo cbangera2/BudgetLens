@@ -7,6 +7,7 @@
 ![GitHub language count](https://img.shields.io/github/languages/count/cbangera2/BudgetLens)
 ![GitHub top language](https://img.shields.io/github/languages/top/cbangera2/BudgetLens)
 ![GitHub last commit](https://img.shields.io/github/last-commit/cbangera2/BudgetLens?color=red)
+[![Super-Linter](https://github.com/cbangera2/BudgetLens/actions/workflows/super-linter.yml/badge.svg)](https://github.com/marketplace/actions/super-linter)
 
 **BudgetLens** is a modern, interactive financial dashboard built with Next.js and shadcn/ui that helps users visualize and analyze their financial data through intuitive charts and filters.
 
