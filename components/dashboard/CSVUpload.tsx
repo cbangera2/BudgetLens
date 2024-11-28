@@ -49,7 +49,7 @@ export function CSVUpload({ onUpload }: CSVUploadProps) {
             <p>Drag and drop a CSV file here, or click to select one</p>
           )}
           <p className="text-sm text-muted-foreground mt-2">
-            Format: Date, Store/Vendor, Amount, Category
+            Format (Transactions): Date, Store/Vendor, Amount, Category, Type
           </p>
         </div>
       </CardContent>
