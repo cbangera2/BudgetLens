@@ -108,3 +108,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - Developed by [Chirag Bangera](https://github.com/cbangera2)
 - Built with [shadcn/ui](https://ui.shadcn.com/)
+
+## Related Projects
+
+- [Credit Karma Transaction Extractor](https://github.com/cbangera2/CreditKarmaExtractor) - Chrome extension to export Credit Karma transaction data
