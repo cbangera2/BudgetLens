@@ -20,9 +20,9 @@ export default function Home() {
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotal[]>([]);
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpending[]>([]);
   const [layout, setLayout] = useState(INITIAL_LAYOUT);
-  const [categoryFilter, setCategoryFilter] = useState(RESET_FILTER_VALUE);
-  const [vendorFilter, setVendorFilter] = useState(RESET_FILTER_VALUE);
-  const [transactionTypeFilter, setTransactionTypeFilter] = useState(RESET_FILTER_VALUE);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [vendorFilter, setVendorFilter] = useState<string[]>([]);
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<string[]>([]);
 
   useEffect(() => {
     const parsedTransactions = parseCSV(SAMPLE_DATA);
@@ -35,14 +35,14 @@ export default function Home() {
   useEffect(() => {
     let filtered = transactions;
     
-    if (categoryFilter !== RESET_FILTER_VALUE) {
-      filtered = filtered.filter(t => t.category === categoryFilter);
+    if (categoryFilter.length > 0) {
+      filtered = filtered.filter(t => categoryFilter.includes(t.category));
     }
-    if (vendorFilter !== RESET_FILTER_VALUE) {
-      filtered = filtered.filter(t => t.vendor === vendorFilter);
+    if (vendorFilter.length > 0) {
+      filtered = filtered.filter(t => vendorFilter.includes(t.vendor));
     }
-    if (transactionTypeFilter !== RESET_FILTER_VALUE) {
-      filtered = filtered.filter(t => t.transactionType === transactionTypeFilter);
+    if (transactionTypeFilter.length > 0) {
+      filtered = filtered.filter(t => transactionTypeFilter.includes(t.transactionType));
     }
 
     setFilteredTransactions(filtered);
@@ -64,10 +64,14 @@ export default function Home() {
   const handleCSVUpload = (content: string) => {
     const parsedTransactions = parseCSV(content);
     setTransactions(parsedTransactions);
-    setCategoryFilter(RESET_FILTER_VALUE);
-    setVendorFilter(RESET_FILTER_VALUE);
-    setTransactionTypeFilter(RESET_FILTER_VALUE);
+    setCategoryFilter([]);
+    setVendorFilter([]);
+    setTransactionTypeFilter([]);
   };
+
+  const handleCategoryFilter = (includes: string[], excludes: string[]) => setCategoryFilter(includes);
+  const handleVendorFilter = (includes: string[], excludes: string[]) => setVendorFilter(includes);
+  const handleTransactionTypeFilter = (includes: string[], excludes: string[]) => setTransactionTypeFilter(includes);
 
   const renderSection = (id: string, index: number) => {
     switch (id) {
@@ -113,9 +117,9 @@ export default function Home() {
 
       <FilterBar
         transactions={transactions}
-        onCategoryFilter={setCategoryFilter}
-        onVendorFilter={setVendorFilter}
-        onTransactionTypeFilter={setTransactionTypeFilter}
+        onCategoryFilter={handleCategoryFilter}
+        onVendorFilter={handleVendorFilter}
+        onTransactionTypeFilter={handleTransactionTypeFilter}
       />
 
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

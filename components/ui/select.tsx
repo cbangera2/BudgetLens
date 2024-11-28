@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -111,27 +111,50 @@ const SelectLabel = React.forwardRef<
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
+type SelectionState = 0 | 1 | 2;
+
+interface MultiSelectValue {
+  includes: string[];
+  excludes: string[];
+}
+
 const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => (
-  <SelectPrimitive.Item
-    ref={ref}
-    className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
-      className
-    )}
-    {...props}
-  >
-    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span>
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
+    selectionState?: SelectionState;
+    onMultiStateChange?: (value: string, state: SelectionState) => void;
+  }
+>(({ className, children, value = '', selectionState = 0, onMultiStateChange, ...props }, ref) => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (onMultiStateChange && value) {
+      const nextState = ((selectionState + 1) % 3) as SelectionState;
+      onMultiStateChange(value, nextState);
+    }
+  };
 
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-  </SelectPrimitive.Item>
-));
+  return (
+    <SelectPrimitive.Item
+      ref={ref}
+      className={cn(
+        'relative flex w-full select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none cursor-pointer',
+        selectionState === 1 && 'bg-green-50 text-green-900',
+        selectionState === 2 && 'bg-red-50 text-red-900',
+        'hover:bg-accent hover:text-accent-foreground',
+        className
+      )}
+      {...props}
+      onMouseDown={handleClick}
+    >
+      <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+        {selectionState === 1 && <Check className="h-4 w-4 text-green-600" />}
+        {selectionState === 2 && <X className="h-4 w-4 text-red-600" />}
+      </span>
+
+      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
+  );
+});
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 const SelectSeparator = React.forwardRef<
