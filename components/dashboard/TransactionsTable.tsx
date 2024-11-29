@@ -63,6 +63,19 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
   const [openCategory, setOpenCategory] = useState(false);
   const [openType, setOpenType] = useState(false);
   const [openVendor, setOpenVendor] = useState(false);
+  const [sortColumn, setSortColumn] = useState<keyof Transaction | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (column: keyof Transaction) => {
+    if (sortColumn === column) {
+      // If clicking the same column, toggle direction
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      // If clicking a new column, set it as the sort column with ascending order
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
 
   const uniqueCategories = Array.from(new Set(transactions.map(t => t.category))).sort();
   const uniqueTypes = Array.from(new Set(transactions.map(t => t.transactionType))).sort();
@@ -183,6 +196,27 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
       (t.amount?.toString() || "").includes(searchTerm) ||
       (t.date?.toLowerCase() || "").includes(searchTerm)
     );
+  });
+
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
+    if (!sortColumn) return 0;
+
+    const aValue = a[sortColumn];
+    const bValue = b[sortColumn];
+
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortDirection === 'asc' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortDirection === 'asc' 
+        ? aValue - bValue
+        : bValue - aValue;
+    }
+
+    return 0;
   });
 
   return (
@@ -440,16 +474,41 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Type</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('date')}
+              >
+                Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('vendor')}
+              >
+                Vendor {sortColumn === 'vendor' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('amount')}
+              >
+                Amount {sortColumn === 'amount' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('category')}
+              >
+                Category {sortColumn === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('transactionType')}
+              >
+                Type {sortColumn === 'transactionType' && (sortDirection === 'asc' ? '↑' : '↓')}
+              </TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredTransactions.map((transaction, i) => (
+            {sortedTransactions.map((transaction, i) => (
               <TableRow key={i}>
                 <TableCell>{transaction.date}</TableCell>
                 <TableCell>{transaction.vendor}</TableCell>
