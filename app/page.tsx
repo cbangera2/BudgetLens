@@ -105,7 +105,10 @@ export default function Home() {
       case "monthly":
         return (
           <DraggableCard key={`${id}-${index}`} id={id}>
-            <SpendingChart monthlySpending={monthlySpending} />
+            <SpendingChart 
+              monthlySpending={monthlySpending} 
+              transactions={filteredTransactions}
+            />
           </DraggableCard>
         );
       case "categories":
