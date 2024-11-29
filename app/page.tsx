@@ -90,6 +90,36 @@ export default function Home() {
     setMonthlySpending(calculateMonthlySpending(updatedTransactions));
   };
 
+  const handleUpdateTransaction = (oldTransaction: Transaction, newTransaction: Transaction) => {
+    const updatedTransactions = transactions.map(t => 
+      (t.date === oldTransaction.date &&
+       t.amount === oldTransaction.amount &&
+       t.vendor === oldTransaction.vendor &&
+       t.category === oldTransaction.category &&
+       t.transactionType === oldTransaction.transactionType)
+      ? newTransaction
+      : t
+    );
+    setTransactions(updatedTransactions);
+    setFilteredTransactions(updatedTransactions);
+    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
+    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+  };
+
+  const handleDeleteTransaction = (transactionToDelete: Transaction) => {
+    const updatedTransactions = transactions.filter(t => 
+      !(t.date === transactionToDelete.date &&
+        t.amount === transactionToDelete.amount &&
+        t.vendor === transactionToDelete.vendor &&
+        t.category === transactionToDelete.category &&
+        t.transactionType === transactionToDelete.transactionType)
+    );
+    setTransactions(updatedTransactions);
+    setFilteredTransactions(updatedTransactions);
+    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
+    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+  };
+
   const handleCategoryFilter = (includes: string[], excludes: string[]) => setCategoryFilter(includes);
   const handleVendorFilter = (includes: string[], excludes: string[]) => setVendorFilter(includes);
   const handleTransactionTypeFilter = (includes: string[], excludes: string[]) => setTransactionTypeFilter(includes);
@@ -128,6 +158,8 @@ export default function Home() {
               <TransactionsTable 
                 transactions={filteredTransactions} 
                 onAddTransaction={handleAddTransaction}
+                onUpdateTransaction={handleUpdateTransaction}
+                onDeleteTransaction={handleDeleteTransaction}
               />
             </div>
           </DraggableCard>
