@@ -31,7 +31,11 @@ interface GenericChartProps {
 
 const getColorPalette = (scheme: string, length: number) => {
   const palettes = {
-    default: ['#2563eb', '#16a34a', '#dc2626', '#f97316', '#f59e0b'],
+    default: [
+      '#dc2626', '#16a34a', '#2563eb', '#f97316', '#f59e0b',
+      '#84cc16', '#d946ef', '#9333ea', '#0891b2', '#0ea5e9',
+      '#a855f7', '#ec4899', '#f43f5e', '#10b981', '#3b82f6'
+    ],
     monochrome: ['#333333', '#4d4d4d', '#666666', '#808080', '#999999'],
     pastel: ['#aec6cf', '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9'],
     vibrant: ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231'],
@@ -42,14 +46,20 @@ const getColorPalette = (scheme: string, length: number) => {
   const palette = [];
   for (let i = 0; i < length; i++) {
     palette.push(baseColors[i % baseColors.length]);
+    if (i >= baseColors.length) {
+      // Generate a new color by slightly altering the base color
+      const colorIndex = i % baseColors.length;
+      const newColor = baseColors[colorIndex].replace(/\d+/g, (match) => (parseInt(match) + (i * 5) % 255).toString());
+      palette[i] = newColor;
+    }
   }
   return palette;
 };
 
 const DEFAULT_COLORS = [
-  '#2563eb', // blue-600
-  '#16a34a', // green-600
   '#dc2626', // red-600
+  '#16a34a', // green-600
+  '#2563eb', // blue-600
   '#ca8a04', // yellow-600
   '#9333ea', // purple-600
   '#0891b2', // cyan-600
