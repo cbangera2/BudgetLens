@@ -13,6 +13,7 @@ import { CSVUpload } from "@/components/dashboard/CSVUpload";
 import { FilterBar } from "@/components/dashboard/FilterBar";
 import { DraggableCard } from "@/components/dashboard/DraggableCard";
 import { TotalMetricsChart } from "@/components/dashboard/TotalMetricsChart";
+import { MonthlyTrendsChart } from "@/components/dashboard/MonthlyTrendsChart";
 import BudgetGoals from "@/components/dashboard/BudgetGoals";
 import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
 
@@ -129,6 +130,12 @@ export default function Home() {
         return (
           <DraggableCard key={`${id}-${index}`} id={id}>
             <TotalMetricsChart transactions={filteredTransactions} />
+          </DraggableCard>
+        );
+      case "monthly-trends":
+        return (
+          <DraggableCard key={`${id}-${index}`} id={id}>
+            <MonthlyTrendsChart transactions={filteredTransactions} />
           </DraggableCard>
         );
       case "budget-goals":

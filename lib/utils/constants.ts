@@ -35,6 +35,7 @@ export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
 export const INITIAL_LAYOUT = [
   "metrics",
   "total-metrics",
+  "monthly-trends",
   "monthly",
   "categories",
   "transactions",
