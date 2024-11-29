@@ -66,16 +66,25 @@ interface MetricCard {
   calculation?: (transactions: Transaction[], categories: CategoryTotal[]) => { value: string; subValue?: string };
 }
 
-const availableIcons = {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  CreditCard,
-  Receipt,
-  CalendarDays,
-  FolderTree,
-  Store,
+interface IconMap {
+  [key: string]: React.ComponentType<any>;
+}
+
+const availableIcons: IconMap = {
+  DollarSign: DollarSign,
+  TrendingUp: TrendingUp,
+  TrendingDown: TrendingDown,
+  CreditCard: CreditCard,
+  Receipt: Receipt,
+  CalendarDays: CalendarDays,
+  FolderTree: FolderTree,
+  Store: Store,
+  Plus: Plus,
+  Pencil: Pencil,
+  Trash2: Trash2
 };
+
+type IconType = keyof typeof availableIcons;
 
 function MetricCardDialog({ 
   open, 
@@ -89,19 +98,30 @@ function MetricCardDialog({
   editingCard?: MetricCard;
 }) {
   const [title, setTitle] = useState(editingCard?.title || "");
-  const [selectedIcon, setSelectedIcon] = useState<keyof typeof availableIcons>(
-    (Object.keys(availableIcons).find(key => 
-      availableIcons[key as keyof typeof availableIcons].toString() === editingCard?.icon?.type?.toString()
-    ) as keyof typeof availableIcons) || "DollarSign"
-  );
+  const [selectedIcon, setSelectedIcon] = useState<IconType>("DollarSign");
+
+  useEffect(() => {
+    if (editingCard) {
+      setTitle(editingCard.title);
+      const iconName = editingCard.icon?.type?.name as IconType;
+      if (iconName && availableIcons[iconName]) {
+        setSelectedIcon(iconName);
+      }
+    } else {
+      setTitle("");
+      setSelectedIcon("DollarSign");
+    }
+  }, [editingCard]);
 
   const handleSave = () => {
-    const IconComponent = availableIcons[selectedIcon];
+    const Icon = availableIcons[selectedIcon];
     onSave({
       title,
-      icon: <IconComponent className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: <Icon className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
     });
     onOpenChange(false);
+    setTitle("");
+    setSelectedIcon("DollarSign");
   };
 
   return (
@@ -131,7 +151,8 @@ function MetricCardDialog({
             </Label>
             <Select
               value={selectedIcon}
-              onValueChange={(value) => setSelectedIcon(value as keyof typeof availableIcons)}
+              onValueChange={(value: IconType) => setSelectedIcon(value)}
+              defaultValue="DollarSign"
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select an icon" />
@@ -302,7 +323,11 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       setMetrics((prev) =>
         prev.map((card) =>
           card.id === editingCard.id
-            ? { ...card, ...cardData }
+            ? { 
+                ...card, 
+                title: cardData.title || card.title,
+                icon: cardData.icon || card.icon
+              }
             : card
         )
       );
