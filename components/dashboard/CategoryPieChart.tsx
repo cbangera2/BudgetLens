@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { CategoryTotal, Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, ResponsiveContainer, Cell, Tooltip, Legend } from "recharts";
+import { GenericChart } from "./GenericChart";
 import { ChartSettings } from "./ChartSettings";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -23,18 +23,19 @@ interface CategoryMetrics {
 
 export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieChartProps) {
   const [chartSettings, setChartSettings] = useState({
-    valueDisplay: 'value' as const,
+    valueDisplay: 'value',
     chartHeight: 300,
-    colorScheme: 'default',
-    labelPosition: 'outside' as const,
-    animationDuration: 400
+    legendPosition: 'right',
+    labelPosition: 'outside',
+    animationDuration: 400,
+    chartType: 'pie'
   });
 
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['expenses']);
 
   // Calculate category metrics
   const categoryMetrics = transactions.reduce((acc, transaction) => {
-    const category = transaction.category;
+    const category = transaction.category || 'Uncategorized';
     const amount = transaction.amount;
     
     if (!acc[category]) {
@@ -58,13 +59,34 @@ export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieCh
     return acc;
   }, {} as Record<string, CategoryMetrics>);
 
-  const chartData = Object.values(categoryMetrics)
+  const data = Object.values(categoryMetrics)
     .map(metric => ({
-      ...metric,
-      value: selectedMetrics.reduce((sum, type) => sum + metric[type], 0)
+      name: metric.name,
+      expenses: metric.expenses,
+      income: metric.income
     }))
-    .filter(metric => metric.value > 0)
-    .sort((a, b) => b.value - a.value);
+    .filter(metric => selectedMetrics.some(type => metric[type] > 0))
+    .sort((a, b) => {
+      const totalA = selectedMetrics.reduce((sum, type) => sum + Math.abs(a[type]), 0);
+      const totalB = selectedMetrics.reduce((sum, type) => sum + Math.abs(b[type]), 0);
+      return totalB - totalA;
+    })
+    // Take top 7 categories and group the rest as "Other"
+    .reduce((acc, entry, index) => {
+      if (index < 7) {
+        acc.push(entry);
+      } else if (acc.length === 7) {
+        acc.push({
+          name: 'Other',
+          expenses: entry.expenses,
+          income: entry.income
+        });
+      } else {
+        acc[7].expenses += entry.expenses;
+        acc[7].income += entry.income;
+      }
+      return acc;
+    }, [] as CategoryMetrics[]);
 
   const handleSettingChange = useCallback((key: string, value: any) => {
     setChartSettings(prev => ({ ...prev, [key]: value }));
@@ -79,69 +101,48 @@ export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieCh
     });
   };
 
-  const getColors = useCallback(() => {
-    switch (chartSettings.colorScheme) {
-      case 'monochrome':
-        return [
-          '#1a1a1a', '#333333', '#4d4d4d', '#666666', '#808080',
-          '#999999', '#b3b3b3', '#cccccc', '#e6e6e6'
-        ];
-      case 'categorical':
-        return [
-          '#e57373', '#f06292', '#ba68c8', '#9575cd', '#7986cb',
-          '#64b5f6', '#4fc3f7', '#4dd0e1', '#4db6ac', '#81c784',
-          '#aed581', '#dce775', '#fff176', '#ffd54f', '#ffb74d'
-        ];
-      case 'sequential':
-        return [
-          '#b71c1c', '#c62828', '#d32f2f', '#e53935', '#f44336',
-          '#ef5350', '#e57373', '#ef9a9a', '#ffcdd2'
-        ];
-      default:
-        return [
-          '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#22c55e',
-          '#14b8a6', '#0ea5e9', '#6366f1', '#a855f7', '#ec4899'
-        ];
-    }
-  }, [chartSettings.colorScheme]);
+  const colors = [
+    '#dc2626', // red
+    '#f97316', // orange
+    '#f59e0b', // amber
+    '#84cc16', // lime
+    '#22c55e', // green
+    '#14b8a6', // teal
+    '#0ea5e9', // sky
+    '#6366f1', // indigo
+  ];
+
+  const metricColors = {
+    expenses: '#dc2626', // red for expenses
+    income: '#16a34a', // green for income
+  };
 
   const formatValue = useCallback((value: number) => {
-    const parts = [];
-    if (['value', 'both'].includes(chartSettings.valueDisplay)) {
-      parts.push(new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(value));
+    if (chartSettings.valueDisplay === 'percentage') {
+      const total = data.reduce((sum, category) => 
+        sum + selectedMetrics.reduce((metricSum, metric) => metricSum + Math.abs(category[metric]), 0), 0);
+      return `${((value / total) * 100).toFixed(1)}%`;
     }
-    if (['percentage', 'both'].includes(chartSettings.valueDisplay)) {
-      const total = chartData.reduce((sum, item) => sum + item.value, 0);
-      const percentage = (value / total * 100).toFixed(1);
-      parts.push(`${percentage}%`);
-    }
-    return parts.join(' / ') || '0';
-  }, [chartSettings.valueDisplay, chartData]);
-
-  const colors = getColors();
+    return `$${value.toFixed(2)}`;
+  }, [chartSettings.valueDisplay, data, selectedMetrics]);
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Category Distribution</CardTitle>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            {['expenses', 'income'].map((metric) => (
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Category Distribution</span>
+          <div className="flex items-center space-x-4">
+            {(['expenses', 'income'] as MetricType[]).map((metric, index) => (
               <div key={metric} className="flex items-center space-x-2">
                 <Checkbox
                   id={`metric-${metric}`}
-                  checked={selectedMetrics.includes(metric as MetricType)}
-                  onCheckedChange={() => handleMetricToggle(metric as MetricType)}
+                  checked={selectedMetrics.includes(metric)}
+                  onCheckedChange={() => handleMetricToggle(metric)}
                 />
                 <Label
                   htmlFor={`metric-${metric}`}
                   className="text-sm capitalize"
-                  style={{ 
-                    color: metric === 'expenses' ? '#ef4444' : '#22c55e'
-                  }}
+                  style={{ color: metricColors[metric] }}
                 >
                   {metric}
                 </Label>
@@ -153,46 +154,18 @@ export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieCh
             onSettingChange={handleSettingChange}
             type="pie"
           />
-        </div>
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div style={{ height: `${chartSettings.chartHeight}px` }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={chartSettings.chartHeight * 0.4}
-                label={chartSettings.labelPosition !== 'none' ? {
-                  position: chartSettings.labelPosition,
-                  formatter: (entry: any) => entry.name
-                } : false}
-                labelLine={chartSettings.labelPosition !== 'none'}
-                animationDuration={chartSettings.animationDuration}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell 
-                    key={entry.name} 
-                    fill={colors[index % colors.length]} 
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value: number) => [
-                  formatValue(value),
-                  selectedMetrics.length > 1 ? 'Total' : selectedMetrics[0]
-                ]}
-                contentStyle={{
-                  backgroundColor: 'var(--background)',
-                  border: '1px solid var(--border)',
-                }}
-              />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+          <GenericChart
+            data={data}
+            settings={chartSettings}
+            selectedMetrics={selectedMetrics}
+            colors={colors}
+            formatValue={formatValue}
+            formatTooltip={formatValue}
+          />
         </div>
       </CardContent>
     </Card>

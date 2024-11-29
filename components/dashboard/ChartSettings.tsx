@@ -25,12 +25,18 @@ interface ChartSettingsProps {
     colorScheme?: string
     labelPosition?: 'inside' | 'outside' | 'none'
     animationDuration?: number
+    chartType?: 'bar-vertical' | 'bar-horizontal' | 'line' | 'pie' | 'area' | 'scatter'
   }
   onSettingChange: (
-    key: keyof Pick<ChartSettingsProps['settings'], 'valueDisplay' | 'legendPosition' | 'gridType' | 'labelPosition' | 'colorScheme' | 'chartHeight' | 'animationDuration'>, 
-    value: 'none' | 'value' | 'percentage' | 'both' | 'right' | 'bottom' | 'left' | 'top' | 'horizontal' | 'vertical' | 'inside' | 'outside' | number | string
+    key: keyof Pick<ChartSettingsProps['settings'], 
+      'valueDisplay' | 'legendPosition' | 'gridType' | 'labelPosition' | 
+      'colorScheme' | 'chartHeight' | 'animationDuration' | 'chartType'
+    >, 
+    value: 'none' | 'value' | 'percentage' | 'both' | 'right' | 'bottom' | 'left' | 'top' | 
+      'horizontal' | 'vertical' | 'inside' | 'outside' | 'bar-vertical' | 'bar-horizontal' | 
+      'line' | 'pie' | 'area' | 'scatter' | number | string
   ) => void
-  type: 'pie' | 'bar'
+  type: 'pie' | 'bar' | 'line'
 }
 
 export function ChartSettings({ settings, onSettingChange, type }: ChartSettingsProps) {
@@ -47,6 +53,25 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
           <DropdownMenuLabel>Chart Settings</DropdownMenuLabel>
           <DropdownMenuSeparator />
           
+          {/* Chart Type Options */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Chart Type</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup
+                value={settings.chartType || 'bar-vertical'}
+                onValueChange={(value: 'bar-vertical' | 'bar-horizontal' | 'line' | 'pie' | 'area' | 'scatter') => 
+                  onSettingChange('chartType', value)
+                }
+              >
+                <DropdownMenuRadioItem value="bar-vertical">Bar (Vertical)</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="bar-horizontal">Bar (Horizontal)</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="line">Line</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="area">Area</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="pie">Pie</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
           {/* Value Display Options */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Value Display</DropdownMenuSubTrigger>

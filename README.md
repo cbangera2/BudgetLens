@@ -83,6 +83,24 @@
    - Analyze category-wise expenditure
    - Search and filter transactions
 
+## Generic Chart Component
+
+The dashboard now includes a versatile `GenericChart` component that allows users to create and customize various types of charts. This component supports multiple chart types including:
+
+- Bar (Vertical)
+- Bar (Horizontal)
+- Line
+- Pie
+- Area
+
+Users can easily switch between these chart types using the `ChartSettings` interface, which provides a dropdown menu for selecting the desired chart type.
+
+### Features
+- **Dynamic Chart Type Switching**: Seamlessly switch between different chart types to best visualize your data.
+- **Customizable Settings**: Adjust chart settings such as value display, legend position, and animation duration.
+
+This component is designed to enhance data visualization flexibility, making it easier to explore and present financial data in the most effective way.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -111,6 +129,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ### [v0.0.3] - 11-29-2024
 #### Added
+- Added dynamic switching between chart types such as Bar (Vertical), Bar (Horizontal), Line, Pie, and Area
 - Added table enhancements:
   - Sorting functionality for all columns
   - Edit, copy, and delete actions for transactions

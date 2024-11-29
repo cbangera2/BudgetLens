@@ -3,11 +3,12 @@
 import { useState, useCallback } from "react";
 import { Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
-import { ChartSettings } from "./ChartSettings";
+import { ResponsiveContainer } from "recharts";
+import { ChartSettings, ChartSettingsProps } from "./ChartSettings";
 import { format } from "date-fns";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { GenericChart } from "./GenericChart";
 
 interface MonthlyTrendsChartProps {
   transactions: Transaction[];
@@ -23,19 +24,19 @@ interface MonthlyMetrics {
 }
 
 export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
-  const [chartSettings, setChartSettings] = useState({
-    valueDisplay: 'value' as const,
-    gridType: 'both' as const,
+  const [chartSettings, setChartSettings] = useState<ChartSettingsProps['settings']>({
+    valueDisplay: 'value',
+    gridType: 'both',
     chartHeight: 300,
-    colorScheme: 'default',
-    labelPosition: 'outside' as const,
-    animationDuration: 400
+    legendPosition: 'right',
+    animationDuration: 400,
+    chartType: 'line'
   });
 
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['expenses', 'income', 'savings']);
 
-  // Calculate monthly totals
-  const monthlyData = transactions.reduce((acc, transaction) => {
+  // Calculate monthly metrics
+  const monthlyMetrics = transactions.reduce((acc: Record<string, MonthlyMetrics>, transaction) => {
     const date = new Date(transaction.date);
     const monthKey = format(date, 'MMM yyyy');
     const amount = transaction.amount;
@@ -59,14 +60,19 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
       acc[monthKey].expenses += amount;
     }
     
-    acc[monthKey].savings = acc[monthKey].income - acc[monthKey].expenses;
-    
     return acc;
-  }, {} as Record<string, MonthlyMetrics>);
+  }, {});
 
-  const data = Object.values(monthlyData).sort((a, b) => 
-    new Date(a.month).getTime() - new Date(b.month).getTime()
-  );
+  // Calculate savings for each month
+  Object.values(monthlyMetrics).forEach(metrics => {
+    metrics.savings = metrics.income - metrics.expenses;
+  });
+
+  const data = Object.values(monthlyMetrics).sort((a, b) => {
+    const dateA = new Date(a.month);
+    const dateB = new Date(b.month);
+    return dateA.getTime() - dateB.getTime();
+  });
 
   const handleSettingChange = useCallback((key: string, value: any) => {
     setChartSettings(prev => ({ ...prev, [key]: value }));
@@ -81,62 +87,33 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
     });
   };
 
-  const getColors = useCallback(() => {
-    const colors = {
-      expenses: {
-        default: '#ef4444',
-        monochrome: '#666666',
-        categorical: '#f44336',
-        sequential: '#ef5350'
-      },
-      income: {
-        default: '#22c55e',
-        monochrome: '#999999',
-        categorical: '#4caf50',
-        sequential: '#66bb6a'
-      },
-      savings: {
-        default: '#3b82f6',
-        monochrome: '#333333',
-        categorical: '#2196f3',
-        sequential: '#42a5f5'
-      }
-    };
+  const colors = [
+    '#dc2626', // red for expenses
+    '#16a34a', // green for income
+    '#2563eb'  // blue for savings
+  ];
 
-    return selectedMetrics.map(metric => colors[metric][chartSettings.colorScheme] || colors[metric].default);
-  }, [chartSettings.colorScheme, selectedMetrics]);
-
-  const formatValue = useCallback((value: number) => {
-    const parts = [];
-    if (['value', 'both'].includes(chartSettings.valueDisplay)) {
-      parts.push(new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(value));
+  const formatValue = (value: number) => {
+    if (chartSettings.valueDisplay === 'percentage') {
+      const total = data.reduce((sum, month) => 
+        sum + Math.abs(month.expenses) + Math.abs(month.income) + Math.abs(month.savings), 0);
+      return `${((value / total) * 100).toFixed(1)}%`;
     }
-    if (['percentage', 'both'].includes(chartSettings.valueDisplay)) {
-      const total = data.reduce((sum, item) => 
-        sum + selectedMetrics.reduce((metricSum, metric) => metricSum + Math.abs(item[metric]), 0), 0);
-      const percentage = (Math.abs(value) / total * 100).toFixed(1);
-      parts.push(`${percentage}%`);
-    }
-    return parts.join(' / ') || '0';
-  }, [chartSettings.valueDisplay, data, selectedMetrics]);
-
-  const colors = getColors();
+    return `$${value.toFixed(2)}`;
+  };
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Monthly Financial Trends</CardTitle>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            {['expenses', 'income', 'savings'].map((metric, index) => (
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Monthly Trends</span>
+          <div className="flex items-center space-x-4">
+            {(['expenses', 'income', 'savings'] as MetricType[]).map((metric, index) => (
               <div key={metric} className="flex items-center space-x-2">
                 <Checkbox
                   id={`metric-${metric}`}
-                  checked={selectedMetrics.includes(metric as MetricType)}
-                  onCheckedChange={() => handleMetricToggle(metric as MetricType)}
+                  checked={selectedMetrics.includes(metric)}
+                  onCheckedChange={() => handleMetricToggle(metric)}
                 />
                 <Label
                   htmlFor={`metric-${metric}`}
@@ -153,60 +130,18 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
             onSettingChange={handleSettingChange}
             type="line"
           />
-        </div>
+        </CardTitle>
       </CardHeader>
       <CardContent>
-        <div style={{ height: `${chartSettings.chartHeight}px` }} data-testid="line-chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={data}
-              margin={{ left: 60, right: 20, top: 20, bottom: 20 }}
-              animationDuration={chartSettings.animationDuration}
-            >
-              {chartSettings.gridType !== 'none' && (
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  horizontal={chartSettings.gridType !== 'vertical'}
-                  vertical={chartSettings.gridType !== 'horizontal'}
-                />
-              )}
-              <XAxis
-                dataKey="month"
-                tick={{ fontSize: 12 }}
-              />
-              <YAxis
-                tick={{ fontSize: 12 }}
-                tickFormatter={(value) => 
-                  chartSettings.valueDisplay !== 'percentage' 
-                    ? `$${(value / 1000).toFixed(1)}k`
-                    : `${value}%`
-                }
-              />
-              <Tooltip
-                formatter={(value: number, name: string) => [
-                  formatValue(value),
-                  name.charAt(0).toUpperCase() + name.slice(1)
-                ]}
-                contentStyle={{
-                  backgroundColor: 'var(--background)',
-                  border: '1px solid var(--border)',
-                }}
-              />
-              <Legend />
-              {selectedMetrics.map((metric, index) => (
-                <Line
-                  key={metric}
-                  type="monotone"
-                  dataKey={metric}
-                  stroke={colors[index]}
-                  strokeWidth={2}
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 6 }}
-                  name={metric.charAt(0).toUpperCase() + metric.slice(1)}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+        <div style={{ height: `${chartSettings.chartHeight}px` }}>
+          <GenericChart
+            data={data}
+            settings={chartSettings}
+            selectedMetrics={selectedMetrics}
+            colors={colors}
+            formatValue={formatValue}
+            formatTooltip={formatValue}
+          />
         </div>
       </CardContent>
     </Card>
