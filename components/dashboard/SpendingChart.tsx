@@ -8,6 +8,7 @@ import { ChartSettings, ChartSettingsProps } from "./ChartSettings";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { GenericChart } from "./GenericChart";
+import { isCreditTransaction } from "@/lib/utils/transactionUtils";
 
 interface SpendingChartProps {
   transactions: Transaction[];
@@ -48,13 +49,9 @@ export function SpendingChart({ transactions }: SpendingChartProps) {
       };
     }
     
-    if (transaction.transactionType === "income" || 
-        transaction.transactionType === "Credit" || 
-        transaction.transactionType === "credits") {
+    if (isCreditTransaction(transaction)) {
       acc[category].income += amount;
-    } else if (transaction.transactionType === "expense" || 
-               transaction.transactionType === "Debit" || 
-               transaction.transactionType === "debits") {
+    } else {
       acc[category].expenses += amount;
     }
     

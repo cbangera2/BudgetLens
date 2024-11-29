@@ -7,6 +7,7 @@ import { GenericChart } from "./GenericChart";
 import { ChartSettings } from "./ChartSettings";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { isCreditTransaction } from "@/lib/utils/transactionUtils";
 
 interface CategoryPieChartProps {
   categoryTotals: CategoryTotal[];
@@ -46,13 +47,9 @@ export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieCh
       };
     }
     
-    if (transaction.transactionType === "income" || 
-        transaction.transactionType === "Credit" || 
-        transaction.transactionType === "credits") {
+    if (isCreditTransaction(transaction)) {
       acc[category].income += amount;
-    } else if (transaction.transactionType === "expense" || 
-               transaction.transactionType === "Debit" || 
-               transaction.transactionType === "debits") {
+    } else {
       acc[category].expenses += amount;
     }
     
