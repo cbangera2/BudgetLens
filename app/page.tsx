@@ -12,7 +12,8 @@ import { TransactionsTable } from "@/components/dashboard/TransactionsTable";
 import { CSVUpload } from "@/components/dashboard/CSVUpload";
 import { FilterBar } from "@/components/dashboard/FilterBar";
 import { DraggableCard } from "@/components/dashboard/DraggableCard";
-import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE } from "@/lib/utils/constants";
+import BudgetGoals from "@/components/dashboard/BudgetGoals";
+import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
 
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -23,6 +24,16 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [vendorFilter, setVendorFilter] = useState<string[]>([]);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string[]>([]);
+  const [budgetGoals, setBudgetGoals] = useState<{ categoryId: string; amount: number; }[]>(INITIAL_BUDGET_GOALS);
+  const [budgetGoalSettings, setBudgetGoalSettings] = useState<{
+    isYearlyView: boolean;
+    showOverBudgetWarnings: boolean;
+    showProgressBars: boolean;
+  }>({
+    isYearlyView: false,
+    showOverBudgetWarnings: true,
+    showProgressBars: true
+  });
 
   useEffect(() => {
     const parsedTransactions = parseCSV(SAMPLE_DATA);
@@ -100,6 +111,18 @@ export default function Home() {
               <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
               <TransactionsTable transactions={filteredTransactions} />
             </div>
+          </DraggableCard>
+        );
+      case "budget-goals":
+        return (
+          <DraggableCard key={`${id}-${index}`} id={id}>
+            <BudgetGoals 
+              categories={categoryTotals} 
+              initialGoals={budgetGoals}
+              onSaveGoals={setBudgetGoals}
+              settings={budgetGoalSettings}
+              onSettingsChange={setBudgetGoalSettings}
+            />
           </DraggableCard>
         );
       default:

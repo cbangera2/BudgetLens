@@ -1,5 +1,19 @@
 export const RESET_FILTER_VALUE = "all";
 
+export const INITIAL_BUDGET_GOALS = [
+  { categoryId: "Food & Dining", amount: 500 },
+  { categoryId: "Transportation", amount: 200 },
+  { categoryId: "Entertainment", amount: 100 },
+  { categoryId: "Shopping", amount: 300 },
+  { categoryId: "Bills & Utilities", amount: 400 },
+  { categoryId: "Housing", amount: 1500 },
+  { categoryId: "Health & Medical", amount: 150 },
+  { categoryId: "Health & Fitness", amount: 100 },
+  { categoryId: "Education", amount: 250 },
+  { categoryId: "Insurance", amount: 200 },
+  { categoryId: "Home Improvement", amount: 200 }
+];
+
 export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
 2024-01-15,Grocery Store,75.50,Food & Dining,Debit
 2024-01-16,Gas Station,45.00,Transportation,Credit
@@ -18,4 +32,4 @@ export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
 2024-03-03,Car Insurance,120.00,Insurance,ACH
 2024-03-04,Hardware Store,67.89,Home Improvement,Credit`;
 
-export const INITIAL_LAYOUT = ["metrics", "monthly", "categories", "transactions"];
+export const INITIAL_LAYOUT = ["metrics", "monthly", "categories", "transactions", "budget-goals"];
