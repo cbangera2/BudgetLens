@@ -80,6 +80,14 @@ export default function Home() {
     setTransactionTypeFilter([]);
   };
 
+  const handleAddTransaction = (newTransaction: Transaction) => {
+    const updatedTransactions = [...transactions, newTransaction];
+    setTransactions(updatedTransactions);
+    setFilteredTransactions(updatedTransactions);
+    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
+    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+  };
+
   const handleCategoryFilter = (includes: string[], excludes: string[]) => setCategoryFilter(includes);
   const handleVendorFilter = (includes: string[], excludes: string[]) => setVendorFilter(includes);
   const handleTransactionTypeFilter = (includes: string[], excludes: string[]) => setTransactionTypeFilter(includes);
@@ -109,7 +117,10 @@ export default function Home() {
           <DraggableCard key={`${id}-${index}`} id={id}>
             <div className="p-6">
               <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
-              <TransactionsTable transactions={filteredTransactions} />
+              <TransactionsTable 
+                transactions={filteredTransactions} 
+                onAddTransaction={handleAddTransaction}
+              />
             </div>
           </DraggableCard>
         );
