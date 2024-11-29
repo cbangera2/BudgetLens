@@ -163,6 +163,27 @@ export default function Home() {
           </div>
         </SortableContext>
       </DndContext>
+
+      <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+        Created by{" "}
+        <a
+          href="https://github.com/cbangera2"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          Chirag Bangera
+        </a>{" "}
+        |{" "}
+        <a
+          href="https://github.com/cbangera2/BudgetLens"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+        >
+          View on GitHub
+        </a>
+      </div>
     </div>
   );
 }
