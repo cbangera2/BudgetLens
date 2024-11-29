@@ -32,7 +32,7 @@ import {
   rectSortingStrategy 
 } from "@dnd-kit/sortable";
 import { restrictToWindowEdges } from '@dnd-kit/modifiers';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { 
   Dialog, 
@@ -40,8 +40,7 @@ import {
   DialogDescription, 
   DialogFooter, 
   DialogHeader, 
-  DialogTitle, 
-  DialogTrigger, 
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -166,37 +165,22 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     })
   );
 
-  const totalSpent = transactions.length > 0 
-    ? transactions.reduce((sum, t) => sum + t.amount, 0)
-    : 0;
-
-  const avgTransaction = transactions.length > 0 
-    ? totalSpent / transactions.length 
-    : 0;
-
-  const maxCategory = categories.length > 0
-    ? categories.reduce((prev, current) => prev.total > current.total ? prev : current)
-    : { category: 'No Data', total: 0 };
-
-  const lastTransaction = transactions.length > 0
-    ? transactions[transactions.length - 1]
-    : { amount: 0, vendor: 'No transactions' };
-
-  const initialMetrics: MetricCard[] = [
+  const getDefaultMetrics = (): MetricCard[] => [
     {
       id: "total-spent",
       title: "Total Spent",
       icon: <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: `$${totalSpent.toFixed(2)}`,
-      calculation: (t) => ({
-        value: `$${t.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}`,
-      }),
+      value: "$0.00",
+      calculation: (t) => {
+        const total = t.reduce((sum, tx) => sum + tx.amount, 0);
+        return { value: `$${total.toFixed(2)}` };
+      },
     },
     {
       id: "avg-transaction",
       title: "Avg Transaction",
       icon: <TrendingUp className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: `$${avgTransaction.toFixed(2)}`,
+      value: "$0.00",
       calculation: (t) => {
         const avg = t.length > 0 ? t.reduce((sum, tx) => sum + tx.amount, 0) / t.length : 0;
         return { value: `$${avg.toFixed(2)}` };
@@ -206,9 +190,10 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "highest-category",
       title: "Highest Category",
       icon: <TrendingDown className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: maxCategory.category,
-      subValue: `$${maxCategory.total.toFixed(2)}`,
+      value: "No Data",
+      subValue: "$0.00",
       calculation: (t, c) => {
+        if (c.length === 0) return { value: "No Data", subValue: "$0.00" };
         const maxCategory = c.reduce((prev, current) => prev.total > current.total ? prev : current);
         return {
           value: maxCategory.category,
@@ -220,9 +205,10 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "last-transaction",
       title: "Last Transaction",
       icon: <CreditCard className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: `$${lastTransaction.amount.toFixed(2)}`,
-      subValue: lastTransaction.vendor,
+      value: "$0.00",
+      subValue: "No transactions",
       calculation: (t) => {
+        if (t.length === 0) return { value: "$0.00", subValue: "No transactions" };
         const lastTransaction = t[t.length - 1];
         return {
           value: `$${lastTransaction.amount.toFixed(2)}`,
@@ -234,7 +220,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "total-transactions",
       title: "Total Transactions",
       icon: <Receipt className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: transactions.length.toString(),
+      value: "0",
       calculation: (t) => ({
         value: t.length.toString(),
       }),
@@ -243,10 +229,11 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "daily-average",
       title: "Daily Average",
       icon: <CalendarDays className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: `$${(totalSpent / 30).toFixed(2)}`,
+      value: "$0.00",
       subValue: "Last 30 days",
       calculation: (t) => {
-        const dailyAvg = t.reduce((sum, tx) => sum + tx.amount, 0) / 30;
+        const total = t.reduce((sum, tx) => sum + tx.amount, 0);
+        const dailyAvg = total / 30;
         return {
           value: `$${dailyAvg.toFixed(2)}`,
           subValue: "Last 30 days",
@@ -257,7 +244,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "unique-categories",
       title: "Categories Used",
       icon: <FolderTree className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: categories.length.toString(),
+      value: "0",
       calculation: (t, c) => ({
         value: c.length.toString(),
       }),
@@ -266,14 +253,27 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       id: "unique-vendors",
       title: "Unique Vendors",
       icon: <Store className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: Array.from(new Set(transactions.map(t => t.vendor))).length.toString(),
+      value: "0",
       calculation: (t) => ({
         value: Array.from(new Set(t.map(tx => tx.vendor))).length.toString(),
       }),
     }
   ];
 
-  const [metrics, setMetrics] = useState<MetricCard[]>(initialMetrics);
+  const [metrics, setMetrics] = useState<MetricCard[]>(getDefaultMetrics());
+
+  // Update metric values when transactions or categories change
+  useEffect(() => {
+    setMetrics(currentMetrics => 
+      currentMetrics.map(metric => {
+        if (metric.calculation) {
+          const result = metric.calculation(transactions, categories);
+          return { ...metric, ...result };
+        }
+        return metric;
+      })
+    );
+  }, [transactions, categories]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
