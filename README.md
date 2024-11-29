@@ -140,6 +140,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Enhanced financial visualization:
   - Expanded metrics display (expenses, income, savings) across all graphs
   - New monthly financial trends graph for better tracking
+- Added delete card functionality
 
 ### [v0.0.2] - 11-28-2024
 #### Added

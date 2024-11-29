@@ -238,15 +238,6 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       },
     },
     {
-      id: "total-transactions",
-      title: "Total Transactions",
-      icon: <Receipt className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
-      value: "0",
-      calculation: (t) => ({
-        value: t.length.toString(),
-      }),
-    },
-    {
       id: "daily-average",
       title: "Daily Average",
       icon: <CalendarDays className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
@@ -260,6 +251,15 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
           subValue: "Last 30 days",
         };
       },
+    },
+    {
+      id: "total-transactions",
+      title: "Total Transactions",
+      icon: <Receipt className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      value: "0",
+      calculation: (t) => ({
+        value: t.length.toString(),
+      }),
     },
     {
       id: "unique-categories",
