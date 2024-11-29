@@ -89,27 +89,50 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Todo Features
 
-- [ ] Dark Mode / Light Mode Toggle
-- [ ] Date Range Filter for Transactions
 - [ ] Export Filtered Data to CSV
 - [ ] Multiple Currency Support
-- [ ] Budget Goal Setting and Tracking
 - [ ] Income vs Expenses Analysis
 - [ ] Transaction Categories Management (Add/Edit/Delete)
 - [ ] Data Persistence with Database Integration
 - [ ] User Authentication
 - [ ] Mobile Responsive Optimizations
-- [ ] Transaction Import from Multiple Sources (Banks, Credit Cards)
 - [ ] Recurring Transaction Detection
 - [ ] Custom Dashboard Layouts Save/Load
 - [ ] Financial Insights and Recommendations
-- [ ] Monthly Budget vs Actual Comparison
+
+#### Completed
+- [x] Dark Mode / Light Mode Toggle (v0.0.2)
+- [x] Date Range Filter for Transactions (v0.0.2)
+- [x] Budget Goal Setting and Tracking (v0.0.2)
+- [x] Add New Transaction UI (v0.0.2)
+- [x] Monthly Budget vs Actual Comparison (v0.0.2)
+
+## Changelog
+
+### [v0.0.2] - 11-28-2024
+#### Added
+- Added dark mode support with system preference detection
+- Enhanced draggable and editable metrics cards
+- Customizable graph settings and chart preferences
+- Budget goals tracking with progress indicators
+- Reorganized UI elements and added draggable cards for improved dashboard layout
+
+### [v0.0.1] - 11-27-2024
+#### Added
+- Initial dashboard layout
+- Transaction table with search and filters
+- CSV import functionality
+- Basic charts:
+  - Monthly spending trends
+  - Category breakdown
+  - Key financial metrics
+
+## Related Projects
+
+- [Credit Karma Transaction Extractor](https://github.com/cbangera2/CreditKarmaExtractor) - Chrome extension to export Credit Karma transaction data
+
 
 ## Credits
 
 - Developed by [Chirag Bangera](https://github.com/cbangera2)
 - Built with [shadcn/ui](https://ui.shadcn.com/)
-
-## Related Projects
-
-- [Credit Karma Transaction Extractor](https://github.com/cbangera2/CreditKarmaExtractor) - Chrome extension to export Credit Karma transaction data
