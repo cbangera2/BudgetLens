@@ -109,6 +109,17 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
 
+### [v0.0.3] - 11-29-2024
+#### Added
+- Added table enhancements:
+  - Sorting functionality for all columns
+  - Edit, copy, and delete actions for transactions
+- Added test coverage
+- Added filtering by date range
+- Enhanced financial visualization:
+  - Expanded metrics display (expenses, income, savings) across all graphs
+  - New monthly financial trends graph for better tracking
+
 ### [v0.0.2] - 11-28-2024
 #### Added
 - Added dark mode support with system preference detection
