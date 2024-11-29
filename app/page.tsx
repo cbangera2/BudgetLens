@@ -139,17 +139,26 @@ export default function Home() {
   const handleVendorFilter = (includes: string[], excludes: string[]) => setVendorFilter(includes);
   const handleTransactionTypeFilter = (includes: string[], excludes: string[]) => setTransactionTypeFilter(includes);
 
+  const handleEdit = (id: string) => {
+    console.log(`Edit card with id: ${id}`);
+    // Implement edit logic here
+  };
+
+  const handleDelete = (id: string) => {
+    setLayout((prevLayout) => prevLayout.filter((cardId) => cardId !== id));
+  };
+
   const renderSection = (id: string, index: number) => {
     switch (id) {
       case "metrics":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <MetricsCards transactions={filteredTransactions} categories={categoryTotals} />
           </DraggableCard>
         );
       case "monthly":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <SpendingChart 
               monthlySpending={monthlySpending} 
               transactions={filteredTransactions}
@@ -158,7 +167,7 @@ export default function Home() {
         );
       case "categories":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <CategoryPieChart 
               categoryTotals={categoryTotals}
               transactions={filteredTransactions}
@@ -167,7 +176,7 @@ export default function Home() {
         );
       case "transactions":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <div className="p-6">
               <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
               <TransactionsTable 
@@ -181,19 +190,19 @@ export default function Home() {
         );
       case "total-metrics":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <TotalMetricsChart transactions={filteredTransactions} />
           </DraggableCard>
         );
       case "monthly-trends":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <MonthlyTrendsChart transactions={filteredTransactions} />
           </DraggableCard>
         );
       case "budget-goals":
         return (
-          <DraggableCard key={`${id}-${index}`} id={id}>
+          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
             <BudgetGoals 
               categories={categoryTotals} 
               initialGoals={budgetGoals}

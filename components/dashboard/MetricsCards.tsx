@@ -348,7 +348,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
             strategy={rectSortingStrategy}
           >
             {metrics.map((metric) => (
-              <DraggableCard key={metric.id} id={metric.id}>
+              <DraggableCard key={metric.id} id={metric.id} showDeleteButton={false}>
                 <Card className="border-0 shadow-none group">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
@@ -361,14 +361,6 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
                         data-testid="edit-button"
                       >
                         <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => handleDeleteCard(metric.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
                       </Button>
                       {metric.icon}
                     </div>
