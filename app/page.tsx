@@ -95,12 +95,12 @@ export default function Home() {
         );
       case "transactions":
         return (
-            <div className="rounded-lg border bg-card">
-              <div className="p-6">
-                <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
-                <TransactionsTable transactions={filteredTransactions} />
-              </div>
+          <div key={`${id}-${index}`} className="rounded-lg border bg-card">
+            <div className="p-6">
+              <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
+              <TransactionsTable transactions={filteredTransactions} />
             </div>
+          </div>
         );
       default:
         return null;
