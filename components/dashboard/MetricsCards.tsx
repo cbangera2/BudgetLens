@@ -110,7 +110,7 @@ function MetricCardDialog({
         <DialogHeader>
           <DialogTitle>{editingCard ? "Edit Metric Card" : "Add New Metric Card"}</DialogTitle>
           <DialogDescription>
-            Customize your metric card here. Click save when you're done.
+            Customize your metric card here. Click save when you&apos;re done.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">

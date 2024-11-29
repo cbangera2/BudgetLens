@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
@@ -66,7 +66,7 @@ export function TotalMetricsChart({ transactions }: TotalMetricsChartProps) {
     savings: 0
   });
 
-  const data = [totalMetrics];
+  const data = useMemo(() => [totalMetrics], [totalMetrics]);
 
   const handleSettingChange = useCallback((key: string, value: any) => {
     setChartSettings(prev => ({ ...prev, [key]: value }));

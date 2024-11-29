@@ -288,7 +288,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandList className="overflow-y-auto max-h-[200px]">
                           <CommandEmpty>
                             <div className="p-2 text-sm">
-                              Press enter to add "{newTransaction.vendor}" as a new vendor
+                              Press enter to add &quot;{newTransaction.vendor}&quot; as a new vendor
                             </div>
                           </CommandEmpty>
                           <CommandGroup heading="Vendors">
@@ -353,7 +353,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandList className="overflow-y-auto max-h-[200px]">
                           <CommandEmpty>
                             <div className="p-2 text-sm">
-                              Press enter to add "{newTransaction.category}" as a new category
+                              Press enter to add &quot;{newTransaction.category}&quot; as a new category
                             </div>
                           </CommandEmpty>
                           <CommandGroup heading="Categories">
@@ -418,7 +418,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandList className="overflow-y-auto max-h-[200px]">
                           <CommandEmpty>
                             <div className="p-2 text-sm">
-                              Press enter to add "{newTransaction.transactionType}" as a new type
+                              Press enter to add &quot;{newTransaction.transactionType}&quot; as a new type
                             </div>
                           </CommandEmpty>
                           <CommandGroup heading="Types">
@@ -614,7 +614,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandList className="overflow-y-auto max-h-[200px]">
                         <CommandEmpty>
                           <div className="p-2 text-sm">
-                            Press enter to add "{newTransaction.vendor}" as a new vendor
+                            Press enter to add &quot;{newTransaction.vendor}&quot; as a new vendor
                           </div>
                         </CommandEmpty>
                         <CommandGroup heading="Vendors">
@@ -679,7 +679,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandList className="overflow-y-auto max-h-[200px]">
                         <CommandEmpty>
                           <div className="p-2 text-sm">
-                            Press enter to add "{newTransaction.category}" as a new category
+                            Press enter to add &quot;{newTransaction.category}&quot; as a new category
                           </div>
                         </CommandEmpty>
                         <CommandGroup heading="Categories">
@@ -744,7 +744,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandList className="overflow-y-auto max-h-[200px]">
                         <CommandEmpty>
                           <div className="p-2 text-sm">
-                            Press enter to add "{newTransaction.transactionType}" as a new type
+                            Press enter to add &quot;{newTransaction.transactionType}&quot; as a new type
                           </div>
                         </CommandEmpty>
                         <CommandGroup heading="Types">
