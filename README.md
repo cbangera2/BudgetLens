@@ -34,7 +34,8 @@
 4. Your Credit Karma transactions will be automatically visualized in the dashboard
 
 ## Screenshots
-![image](https://github.com/user-attachments/assets/d3be7096-7df0-4123-a416-74af011b4b82)
+![image](https://github.com/user-attachments/assets/3102e8d9-f142-4374-855b-36bdd6ee5123)
+
 
 
 
