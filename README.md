@@ -130,6 +130,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### [v0.0.3] - 11-29-2024
 #### Added
 - Added dynamic switching between chart types such as Bar (Vertical), Bar (Horizontal), Line, Pie, and Area
+- Added better graph color schemes
 - Added table enhancements:
   - Sorting functionality for all columns
   - Edit, copy, and delete actions for transactions

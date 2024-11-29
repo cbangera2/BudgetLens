@@ -29,6 +29,23 @@ interface GenericChartProps {
   formatAxisLabel?: (value: number) => string;
 }
 
+const getColorPalette = (scheme: string, length: number) => {
+  const palettes = {
+    default: ['#2563eb', '#16a34a', '#dc2626', '#f97316', '#f59e0b'],
+    monochrome: ['#333333', '#4d4d4d', '#666666', '#808080', '#999999'],
+    pastel: ['#aec6cf', '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9'],
+    vibrant: ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231'],
+    cool: ['#30a5ff', '#1f77b4', '#aec7e8', '#ffbb78', '#98df8a'],
+    warm: ['#ff7f0e', '#ffbb78', '#d62728', '#ff9896', '#9467bd']
+  };
+  const baseColors = palettes[scheme] || palettes.default;
+  const palette = [];
+  for (let i = 0; i < length; i++) {
+    palette.push(baseColors[i % baseColors.length]);
+  }
+  return palette;
+};
+
 const DEFAULT_COLORS = [
   '#2563eb', // blue-600
   '#16a34a', // green-600
@@ -61,6 +78,8 @@ export function GenericChart({
   formatTooltip = (value) => `$${value.toFixed(2)}`,
   formatAxisLabel = (value) => `$${(value / 1000).toFixed(1)}k`
 }: GenericChartProps) {
+  const chartColors = getColorPalette(settings.colorScheme, selectedMetrics.length);
+
   const commonTooltipProps = {
     formatter: (value: number, name: string | undefined) => [
       formatTooltip(value),
@@ -107,7 +126,7 @@ export function GenericChart({
               <Bar
                 key={metric}
                 dataKey={metric}
-                fill={colors[index]}
+                fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
               />
             ))}
@@ -127,7 +146,7 @@ export function GenericChart({
               <Bar
                 key={metric}
                 dataKey={metric}
-                fill={colors[index]}
+                fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
               />
             ))}
@@ -148,7 +167,7 @@ export function GenericChart({
                 key={metric}
                 type="monotone"
                 dataKey={metric}
-                stroke={colors[index]}
+                stroke={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
               />
             ))}
@@ -169,8 +188,8 @@ export function GenericChart({
                 key={metric}
                 type="monotone"
                 dataKey={metric}
-                fill={colors[index]}
-                stroke={colors[index]}
+                fill={chartColors[index]}
+                stroke={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
               />
             ))}
@@ -186,7 +205,7 @@ export function GenericChart({
         originalValue: selectedMetrics.reduce((sum, metric) => sum + (item[metric] || 0), 0)
       }));
 
-      const chartColors = generateColorPalette(pieData.length);
+      const chartColorsForPie = getColorPalette(settings.colorScheme, pieData.length);
 
       return (
         <ResponsiveContainer width="100%" height={settings.chartHeight}>
@@ -216,7 +235,7 @@ export function GenericChart({
               } : false}
             >
               {pieData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={chartColors[index]} />
+                <Cell key={`cell-${index}`} fill={chartColorsForPie[index]} />
               ))}
             </Pie>
             <Tooltip 

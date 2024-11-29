@@ -148,18 +148,22 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
-          {/* Color Scheme */}
+          {/* Color Scheme Options */}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Color Scheme</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.colorScheme || 'default'}
-                onValueChange={(value) => onSettingChange('colorScheme', value)}
+                onValueChange={(value: 'default' | 'monochrome' | 'pastel' | 'vibrant' | 'cool' | 'warm') => 
+                  onSettingChange('colorScheme', value)
+                }
               >
                 <DropdownMenuRadioItem value="default">Default</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="monochrome">Monochrome</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="categorical">Categorical</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="sequential">Sequential</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="pastel">Pastel</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="vibrant">Vibrant</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="cool">Cool</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="warm">Warm</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
