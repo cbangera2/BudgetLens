@@ -15,22 +15,36 @@ export const INITIAL_BUDGET_GOALS = [
 ];
 
 export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
-2024-01-15,Grocery Store,75.50,Food & Dining,Debit
-2024-01-16,Gas Station,45.00,Transportation,Credit
-2024-01-17,Netflix,15.99,Entertainment,Recurring
-2024-01-18,Restaurant,32.40,Food & Dining,Credit
-2024-01-19,Amazon,129.99,Shopping,Credit
-2024-01-20,Utility Company,85.00,Bills & Utilities,ACH
-2024-02-01,Rent Payment,1200.00,Housing,ACH
-2024-02-02,Pharmacy,22.50,Health & Medical,Debit
-2024-02-03,Coffee Shop,4.75,Food & Dining,Debit
-2024-02-04,Mobile Phone,65.00,Bills & Utilities,Recurring
-2024-02-05,Gym Membership,49.99,Health & Fitness,Recurring
-2024-02-06,Online Course,199.99,Education,Credit
-2024-03-01,Grocery Store,82.35,Food & Dining,Debit
-2024-03-02,Movie Theater,30.00,Entertainment,Credit
-2024-03-03,Car Insurance,120.00,Insurance,ACH
-2024-03-04,Hardware Store,67.89,Home Improvement,Credit`;
+2024-01-01,Job,2000.00,Job,Credit
+2024-01-05,Grocery Store,150.00,Food & Dining,Debit
+2024-01-10,Gas Station,60.00,Transportation,Debit
+2024-01-12,Netflix,15.99,Entertainment,Debit
+2024-01-15,Restaurant,45.00,Food & Dining,Debit
+2024-01-18,Amazon,200.00,Shopping,Debit
+2024-01-20,Utility Company,90.00,Bills & Utilities,Debit
+2024-01-22,Refund,50.00,Refund,Credit
+2024-01-25,Rent Payment,1200.00,Housing,Debit
+2024-01-28,Pharmacy,25.00,Health & Medical,Debit
+2024-02-02,Coffee Shop,5.00,Food & Dining,Debit
+2024-02-05,Mobile Phone,70.00,Bills & Utilities,Debit
+2024-02-08,Gym Membership,50.00,Health & Fitness,Debit
+2024-02-10,Online Course,200.00,Education,Debit
+2024-02-12,Car Insurance,125.00,Insurance,Debit
+2024-02-15,Hardware Store,75.00,Home Improvement,Debit
+2024-02-18,Freelance Work,500.00,Job,Credit
+2024-02-20,Supermarket,100.00,Food & Dining,Debit
+2024-02-22,Taxi,30.00,Transportation,Debit
+2024-02-25,Concert,50.00,Entertainment,Debit
+2024-02-28,Clothing Store,150.00,Shopping,Debit
+2024-02-28,Side Hustle,150.00,Job,Credit
+2024-03-01,Electricity Bill,100.00,Bills & Utilities,Debit
+2024-03-05,Water Bill,30.00,Bills & Utilities,Debit
+2024-03-05,Refund,25.00,Refund,Credit
+2024-03-08,Doctor Visit,75.00,Health & Medical,Debit
+2024-03-10,Bookstore,40.00,Education,Debit
+2024-03-10,Side Hustle,200.00,Job,Credit
+2024-03-12,Home Decor,60.00,Home Improvement,Debit
+2024-03-15,Part-time Job,300.00,Job,Credit`;
 
 export const INITIAL_LAYOUT = [
   "metrics",
