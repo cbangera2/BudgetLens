@@ -35,7 +35,8 @@
 
 ## Screenshots
 
-![screencapture-localhost-3000-2024-11-27-20_34_28](https://github.com/user-attachments/assets/c969f8f6-8783-457c-ad2a-c428e6316d8e)
+![image](https://github.com/user-attachments/assets/dbba2086-5b67-4f59-a28d-43d8268b011a)
+
 
 ## Tech Stack
 
