@@ -114,7 +114,10 @@ export default function Home() {
       case "categories":
         return (
           <DraggableCard key={`${id}-${index}`} id={id}>
-            <CategoryPieChart categories={categoryTotals} />
+            <CategoryPieChart 
+              categoryTotals={categoryTotals}
+              transactions={filteredTransactions}
+            />
           </DraggableCard>
         );
       case "transactions":
