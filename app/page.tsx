@@ -26,6 +26,8 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [vendorFilter, setVendorFilter] = useState<string[]>([]);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [budgetGoals, setBudgetGoals] = useState<{ categoryId: string; amount: number; }[]>(INITIAL_BUDGET_GOALS);
   const [budgetGoalSettings, setBudgetGoalSettings] = useState<{
     isYearlyView: boolean;
@@ -57,11 +59,24 @@ export default function Home() {
     if (transactionTypeFilter.length > 0) {
       filtered = filtered.filter(t => transactionTypeFilter.includes(t.transactionType));
     }
+    if (startDate || endDate) {
+      filtered = filtered.filter(t => {
+        const transactionDate = new Date(t.date);
+        if (startDate && endDate) {
+          return transactionDate >= startDate && transactionDate <= endDate;
+        } else if (startDate) {
+          return transactionDate >= startDate;
+        } else if (endDate) {
+          return transactionDate <= endDate;
+        }
+        return true;
+      });
+    }
 
     setFilteredTransactions(filtered);
     setCategoryTotals(calculateCategoryTotals(filtered));
     setMonthlySpending(calculateMonthlySpending(filtered));
-  }, [transactions, categoryFilter, vendorFilter, transactionTypeFilter]);
+  }, [transactions, categoryFilter, vendorFilter, transactionTypeFilter, startDate, endDate]);
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -203,9 +218,13 @@ export default function Home() {
 
       <FilterBar
         transactions={transactions}
-        onCategoryFilter={handleCategoryFilter}
-        onVendorFilter={handleVendorFilter}
-        onTransactionTypeFilter={handleTransactionTypeFilter}
+        onCategoryFilter={(includes) => setCategoryFilter(includes)}
+        onVendorFilter={(includes) => setVendorFilter(includes)}
+        onTransactionTypeFilter={(includes) => setTransactionTypeFilter(includes)}
+        onDateFilter={(start, end) => {
+          setStartDate(start);
+          setEndDate(end);
+        }}
       />
 
       <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
