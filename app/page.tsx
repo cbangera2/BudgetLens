@@ -95,12 +95,12 @@ export default function Home() {
         );
       case "transactions":
         return (
-          <div key={`${id}-${index}`} className="rounded-lg border bg-card">
+          <DraggableCard key={`${id}-${index}`} id={id}>
             <div className="p-6">
               <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
               <TransactionsTable transactions={filteredTransactions} />
             </div>
-          </div>
+          </DraggableCard>
         );
       default:
         return null;
