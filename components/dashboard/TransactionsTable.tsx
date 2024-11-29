@@ -145,8 +145,9 @@ export function TransactionsTable({ transactions, onAddTransaction }: Transactio
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <label className="text-right text-sm">Date</label>
+                <label htmlFor="date" className="text-right text-sm">Date</label>
                 <Input
+                  id="date"
                   type="date"
                   value={newTransaction.date}
                   onChange={(e) => setNewTransaction(prev => ({ ...prev, date: e.target.value }))}
@@ -154,8 +155,9 @@ export function TransactionsTable({ transactions, onAddTransaction }: Transactio
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <label className="text-right text-sm">Amount</label>
+                <label htmlFor="amount" className="text-right text-sm">Amount</label>
                 <Input
+                  id="amount"
                   type="number"
                   step="0.01"
                   placeholder="0.00"
@@ -165,14 +167,16 @@ export function TransactionsTable({ transactions, onAddTransaction }: Transactio
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <label className="text-right text-sm">Vendor</label>
+                <label htmlFor="vendor" className="text-right text-sm">Vendor</label>
                 <div className="col-span-3">
                   <Popover open={openVendor} onOpenChange={setOpenVendor}>
                     <PopoverTrigger asChild>
                       <Button
+                        id="vendor"
                         variant="outline"
                         role="combobox"
                         aria-expanded={openVendor}
+                        aria-label="Select vendor"
                         className="w-[300px] justify-between"
                       >
                         {newTransaction.vendor || "Select vendor..."}
@@ -228,14 +232,16 @@ export function TransactionsTable({ transactions, onAddTransaction }: Transactio
                 </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <label className="text-right text-sm">Category</label>
+                <label htmlFor="category" className="text-right text-sm">Category</label>
                 <div className="col-span-3">
                   <Popover open={openCategory} onOpenChange={setOpenCategory}>
                     <PopoverTrigger asChild>
                       <Button
+                        id="category"
                         variant="outline"
                         role="combobox"
                         aria-expanded={openCategory}
+                        aria-label="Select category"
                         className="w-[300px] justify-between"
                       >
                         {newTransaction.category || "Select category..."}
@@ -291,14 +297,16 @@ export function TransactionsTable({ transactions, onAddTransaction }: Transactio
                 </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <label className="text-right text-sm">Type</label>
+                <label htmlFor="type" className="text-right text-sm">Type</label>
                 <div className="col-span-3">
                   <Popover open={openType} onOpenChange={setOpenType}>
                     <PopoverTrigger asChild>
                       <Button
+                        id="type"
                         variant="outline"
                         role="combobox"
                         aria-expanded={openType}
+                        aria-label="Select type"
                         className="w-[300px] justify-between"
                       >
                         {newTransaction.transactionType || "Select type..."}

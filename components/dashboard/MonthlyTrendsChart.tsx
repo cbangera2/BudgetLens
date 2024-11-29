@@ -156,7 +156,7 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div style={{ height: `${chartSettings.chartHeight}px` }}>
+        <div style={{ height: `${chartSettings.chartHeight}px` }} data-testid="line-chart">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={data}

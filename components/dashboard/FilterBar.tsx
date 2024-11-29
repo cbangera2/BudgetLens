@@ -69,7 +69,7 @@ export function FilterBar({ transactions, onCategoryFilter, onVendorFilter, onTr
   return (
     <div className="flex gap-4 mb-6">
       <Select value="category" onValueChange={() => {}}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-[180px]" aria-label="Filter by Category">
           <SelectValue>Filter by Category</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -95,7 +95,7 @@ export function FilterBar({ transactions, onCategoryFilter, onVendorFilter, onTr
       </Select>
 
       <Select value="vendor" onValueChange={() => {}}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-[180px]" aria-label="Filter by Vendor">
           <SelectValue>Filter by Vendor</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -121,7 +121,7 @@ export function FilterBar({ transactions, onCategoryFilter, onVendorFilter, onTr
       </Select>
 
       <Select value="type" onValueChange={() => {}}>
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-[180px]" aria-label="Filter by Type">
           <SelectValue>Filter by Type</SelectValue>
         </SelectTrigger>
         <SelectContent>

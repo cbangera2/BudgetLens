@@ -358,6 +358,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
                         size="icon"
                         className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={() => handleEditCard(metric)}
+                        data-testid="edit-button"
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
