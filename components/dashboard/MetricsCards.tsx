@@ -2,12 +2,56 @@
 
 import { Transaction, CategoryTotal } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, TrendingDown, TrendingUp, CreditCard, Receipt, CalendarDays, FolderTree, Store } from "lucide-react";
+import { 
+  DollarSign, 
+  TrendingDown, 
+  TrendingUp, 
+  CreditCard, 
+  Receipt, 
+  CalendarDays, 
+  FolderTree, 
+  Store, 
+  Plus, 
+  Pencil, 
+  Trash2 
+} from "lucide-react";
 import { DraggableCard } from "./DraggableCard";
-import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, rectSortingStrategy } from "@dnd-kit/sortable";
+import { 
+  DndContext, 
+  closestCenter, 
+  DragEndEvent, 
+  KeyboardSensor, 
+  PointerSensor, 
+  useSensor, 
+  useSensors 
+} from "@dnd-kit/core";
+import { 
+  SortableContext, 
+  arrayMove, 
+  sortableKeyboardCoordinates, 
+  rectSortingStrategy 
+} from "@dnd-kit/sortable";
 import { restrictToWindowEdges } from '@dnd-kit/modifiers';
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger, 
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue, 
+} from "@/components/ui/select";
 
 interface MetricsCardsProps {
   transactions: Transaction[];
@@ -20,9 +64,108 @@ interface MetricCard {
   icon: React.ReactNode;
   value: string;
   subValue?: string;
+  calculation?: (transactions: Transaction[], categories: CategoryTotal[]) => { value: string; subValue?: string };
+}
+
+const availableIcons = {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  CreditCard,
+  Receipt,
+  CalendarDays,
+  FolderTree,
+  Store,
+};
+
+function MetricCardDialog({ 
+  open, 
+  onOpenChange, 
+  onSave, 
+  editingCard 
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void; 
+  onSave: (card: Partial<MetricCard>) => void;
+  editingCard?: MetricCard;
+}) {
+  const [title, setTitle] = useState(editingCard?.title || "");
+  const [selectedIcon, setSelectedIcon] = useState<keyof typeof availableIcons>(
+    (Object.keys(availableIcons).find(key => 
+      availableIcons[key as keyof typeof availableIcons].toString() === editingCard?.icon?.type?.toString()
+    ) as keyof typeof availableIcons) || "DollarSign"
+  );
+
+  const handleSave = () => {
+    const IconComponent = availableIcons[selectedIcon];
+    onSave({
+      title,
+      icon: <IconComponent className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>{editingCard ? "Edit Metric Card" : "Add New Metric Card"}</DialogTitle>
+          <DialogDescription>
+            Customize your metric card here. Click save when you're done.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="title" className="text-right">
+              Title
+            </Label>
+            <Input
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="col-span-3"
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="icon" className="text-right">
+              Icon
+            </Label>
+            <Select
+              value={selectedIcon}
+              onValueChange={(value) => setSelectedIcon(value as keyof typeof availableIcons)}
+            >
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select an icon" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(availableIcons).map((iconName) => (
+                  <SelectItem key={iconName} value={iconName}>
+                    {iconName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={handleSave}>Save changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState<MetricCard | undefined>();
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
   const totalSpent = transactions.length > 0 
     ? transactions.reduce((sum, t) => sum + t.amount, 0)
     : 0;
@@ -45,12 +188,19 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       title: "Total Spent",
       icon: <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: `$${totalSpent.toFixed(2)}`,
+      calculation: (t) => ({
+        value: `$${t.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}`,
+      }),
     },
     {
       id: "avg-transaction",
       title: "Avg Transaction",
       icon: <TrendingUp className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: `$${avgTransaction.toFixed(2)}`,
+      calculation: (t) => {
+        const avg = t.length > 0 ? t.reduce((sum, tx) => sum + tx.amount, 0) / t.length : 0;
+        return { value: `$${avg.toFixed(2)}` };
+      },
     },
     {
       id: "highest-category",
@@ -58,6 +208,13 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       icon: <TrendingDown className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: maxCategory.category,
       subValue: `$${maxCategory.total.toFixed(2)}`,
+      calculation: (t, c) => {
+        const maxCategory = c.reduce((prev, current) => prev.total > current.total ? prev : current);
+        return {
+          value: maxCategory.category,
+          subValue: `$${maxCategory.total.toFixed(2)}`,
+        };
+      },
     },
     {
       id: "last-transaction",
@@ -65,12 +222,22 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       icon: <CreditCard className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: `$${lastTransaction.amount.toFixed(2)}`,
       subValue: lastTransaction.vendor,
+      calculation: (t) => {
+        const lastTransaction = t[t.length - 1];
+        return {
+          value: `$${lastTransaction.amount.toFixed(2)}`,
+          subValue: lastTransaction.vendor,
+        };
+      },
     },
     {
       id: "total-transactions",
       title: "Total Transactions",
       icon: <Receipt className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: transactions.length.toString(),
+      calculation: (t) => ({
+        value: t.length.toString(),
+      }),
     },
     {
       id: "daily-average",
@@ -78,29 +245,35 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       icon: <CalendarDays className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: `$${(totalSpent / 30).toFixed(2)}`,
       subValue: "Last 30 days",
+      calculation: (t) => {
+        const dailyAvg = t.reduce((sum, tx) => sum + tx.amount, 0) / 30;
+        return {
+          value: `$${dailyAvg.toFixed(2)}`,
+          subValue: "Last 30 days",
+        };
+      },
     },
     {
       id: "unique-categories",
       title: "Categories Used",
       icon: <FolderTree className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: categories.length.toString(),
+      calculation: (t, c) => ({
+        value: c.length.toString(),
+      }),
     },
     {
       id: "unique-vendors",
       title: "Unique Vendors",
       icon: <Store className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
       value: Array.from(new Set(transactions.map(t => t.vendor))).length.toString(),
+      calculation: (t) => ({
+        value: Array.from(new Set(t.map(tx => tx.vendor))).length.toString(),
+      }),
     }
   ];
 
   const [metrics, setMetrics] = useState<MetricCard[]>(initialMetrics);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -114,36 +287,110 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     }
   };
 
+  const handleDeleteCard = (id: string) => {
+    setMetrics((prev) => prev.filter((card) => card.id !== id));
+  };
+
+  const handleEditCard = (card: MetricCard) => {
+    setEditingCard(card);
+    setDialogOpen(true);
+  };
+
+  const handleSaveCard = (cardData: Partial<MetricCard>) => {
+    if (editingCard) {
+      // Edit existing card
+      setMetrics((prev) =>
+        prev.map((card) =>
+          card.id === editingCard.id
+            ? { ...card, ...cardData }
+            : card
+        )
+      );
+      setEditingCard(undefined);
+    } else {
+      // Add new card
+      const newCard: MetricCard = {
+        id: `custom-${Date.now()}`,
+        title: cardData.title || "New Metric",
+        icon: cardData.icon || <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+        value: "Custom Value",
+      };
+      setMetrics((prev) => [...prev, newCard]);
+    }
+  };
+
   return (
-    <DndContext 
-      sensors={sensors}
-      collisionDetection={closestCenter} 
-      onDragEnd={handleDragEnd}
-      modifiers={[restrictToWindowEdges]}
-    >
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <SortableContext 
-          items={metrics.map(m => m.id)} 
-          strategy={rectSortingStrategy}
+    <>
+      <div className="flex justify-end mb-4">
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => {
+            setEditingCard(undefined);
+            setDialogOpen(true);
+          }}
         >
-          {metrics.map((metric) => (
-            <DraggableCard key={metric.id} id={metric.id}>
-              <Card className="border-0 shadow-none">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
-                  {metric.icon}
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{metric.value}</div>
-                  {metric.subValue && (
-                    <p className="text-xs text-muted-foreground">{metric.subValue}</p>
-                  )}
-                </CardContent>
-              </Card>
-            </DraggableCard>
-          ))}
-        </SortableContext>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Metric
+        </Button>
       </div>
-    </DndContext>
+      
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter} 
+        onDragEnd={handleDragEnd}
+        modifiers={[restrictToWindowEdges]}
+      >
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <SortableContext 
+            items={metrics.map(m => m.id)} 
+            strategy={rectSortingStrategy}
+          >
+            {metrics.map((metric) => (
+              <DraggableCard key={metric.id} id={metric.id}>
+                <Card className="border-0 shadow-none group">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleEditCard(metric)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleDeleteCard(metric.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      {metric.icon}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{metric.value}</div>
+                    {metric.subValue && (
+                      <p className="text-xs text-muted-foreground">{metric.subValue}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </DraggableCard>
+            ))}
+          </SortableContext>
+        </div>
+      </DndContext>
+
+      <MetricCardDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSave={handleSaveCard}
+        editingCard={editingCard}
+      />
+    </>
   );
 }
