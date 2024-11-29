@@ -12,6 +12,7 @@ import { TransactionsTable } from "@/components/dashboard/TransactionsTable";
 import { CSVUpload } from "@/components/dashboard/CSVUpload";
 import { FilterBar } from "@/components/dashboard/FilterBar";
 import { DraggableCard } from "@/components/dashboard/DraggableCard";
+import { TotalMetricsChart } from "@/components/dashboard/TotalMetricsChart";
 import BudgetGoals from "@/components/dashboard/BudgetGoals";
 import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
 
@@ -122,6 +123,12 @@ export default function Home() {
                 onAddTransaction={handleAddTransaction}
               />
             </div>
+          </DraggableCard>
+        );
+      case "total-metrics":
+        return (
+          <DraggableCard key={`${id}-${index}`} id={id}>
+            <TotalMetricsChart transactions={filteredTransactions} />
           </DraggableCard>
         );
       case "budget-goals":

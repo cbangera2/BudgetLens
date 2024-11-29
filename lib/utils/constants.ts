@@ -32,4 +32,11 @@ export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
 2024-03-03,Car Insurance,120.00,Insurance,ACH
 2024-03-04,Hardware Store,67.89,Home Improvement,Credit`;
 
-export const INITIAL_LAYOUT = ["metrics", "monthly", "categories", "transactions", "budget-goals"];
+export const INITIAL_LAYOUT = [
+  "metrics",
+  "total-metrics",
+  "monthly",
+  "categories",
+  "transactions",
+  "budget-goals"
+];
