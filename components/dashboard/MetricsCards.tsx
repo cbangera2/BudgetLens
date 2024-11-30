@@ -38,7 +38,7 @@ import {
   Dialog, 
   DialogContent, 
   DialogDescription, 
-  DialogFooter, 
+  DialogFooter,
   DialogHeader, 
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -51,6 +51,7 @@ import {
   SelectTrigger, 
   SelectValue, 
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 interface MetricsCardsProps {
   transactions: Transaction[];
@@ -63,6 +64,7 @@ interface MetricCard {
   icon: React.ReactNode;
   value: string;
   subValue?: string;
+  backgroundColor?: string;
   calculation?: (transactions: Transaction[], categories: CategoryTotal[]) => { value: string; subValue?: string };
 }
 
@@ -86,6 +88,35 @@ const availableIcons: IconMap = {
 
 type IconType = keyof typeof availableIcons;
 
+const CARD_COLORS = {
+  "Default": {
+    bg: "bg-background hover:bg-accent/20",
+    indicator: "bg-background border-2 border-muted-foreground/20",
+  },
+  "Blue": {
+    bg: "bg-blue-100/90 hover:bg-blue-200 dark:bg-blue-900/90 dark:hover:bg-blue-800",
+    indicator: "bg-blue-500",
+  },
+  "Green": {
+    bg: "bg-green-100/90 hover:bg-green-200 dark:bg-green-900/90 dark:hover:bg-green-800",
+    indicator: "bg-green-500",
+  },
+  "Purple": {
+    bg: "bg-purple-100/90 hover:bg-purple-200 dark:bg-purple-900/90 dark:hover:bg-purple-800",
+    indicator: "bg-purple-500",
+  },
+  "Yellow": {
+    bg: "bg-yellow-100/90 hover:bg-yellow-200 dark:bg-yellow-900/90 dark:hover:bg-yellow-800",
+    indicator: "bg-yellow-500",
+  },
+  "Red": {
+    bg: "bg-red-100/90 hover:bg-red-200 dark:bg-red-900/90 dark:hover:bg-red-800",
+    indicator: "bg-red-500",
+  },
+} as const;
+
+type CardColor = keyof typeof CARD_COLORS;
+
 function MetricCardDialog({ 
   open, 
   onOpenChange, 
@@ -99,6 +130,7 @@ function MetricCardDialog({
 }) {
   const [title, setTitle] = useState(editingCard?.title || "");
   const [selectedIcon, setSelectedIcon] = useState<IconType>("DollarSign");
+  const [selectedColor, setSelectedColor] = useState<CardColor>("Default");
 
   useEffect(() => {
     if (editingCard) {
@@ -107,9 +139,15 @@ function MetricCardDialog({
       if (iconName && availableIcons[iconName]) {
         setSelectedIcon(iconName);
       }
+      // Find the color key by value
+      const colorKey = Object.entries(CARD_COLORS).find(
+        ([_, value]) => value.bg === editingCard.backgroundColor
+      )?.[0] as CardColor;
+      setSelectedColor(colorKey || "Default");
     } else {
       setTitle("");
       setSelectedIcon("DollarSign");
+      setSelectedColor("Default");
     }
   }, [editingCard]);
 
@@ -118,10 +156,12 @@ function MetricCardDialog({
     onSave({
       title,
       icon: <Icon className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      backgroundColor: CARD_COLORS[selectedColor].bg,
     });
     onOpenChange(false);
     setTitle("");
     setSelectedIcon("DollarSign");
+    setSelectedColor("Default");
   };
 
   return (
@@ -165,6 +205,28 @@ function MetricCardDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label className="text-right">
+              Color
+            </Label>
+            <div className="col-span-3 flex items-center gap-2">
+              {Object.entries(CARD_COLORS).map(([colorName, { indicator }]) => (
+                <button
+                  key={colorName}
+                  onClick={() => setSelectedColor(colorName as CardColor)}
+                  className={cn(
+                    "h-6 w-6 rounded-full transition-all",
+                    indicator,
+                    selectedColor === colorName 
+                      ? "ring-2 ring-offset-2 ring-ring" 
+                      : "hover:scale-110"
+                  )}
+                  type="button"
+                  title={colorName}
+                />
+              ))}
+            </div>
           </div>
         </div>
         <DialogFooter>
@@ -326,7 +388,8 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
             ? { 
                 ...card, 
                 title: cardData.title || card.title,
-                icon: cardData.icon || card.icon
+                icon: cardData.icon || card.icon,
+                backgroundColor: cardData.backgroundColor || card.backgroundColor
               }
             : card
         )
@@ -339,6 +402,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
         title: cardData.title || "New Metric",
         icon: cardData.icon || <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
         value: "Custom Value",
+        backgroundColor: cardData.backgroundColor || "bg-card",
       };
       setMetrics((prev) => [...prev, newCard]);
     }
@@ -360,28 +424,33 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
           Add Metric
         </Button>
       </div>
-      
-      <DndContext 
-        sensors={sensors}
-        collisionDetection={closestCenter} 
-        onDragEnd={handleDragEnd}
-        modifiers={[restrictToWindowEdges]}
-      >
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <DndContext 
+          sensors={sensors}
+          collisionDetection={closestCenter} 
+          onDragEnd={handleDragEnd}
+          modifiers={[restrictToWindowEdges]}
+        >
           <SortableContext 
-            items={metrics.map(m => m.id)} 
+            items={metrics.map(metric => metric.id)} 
             strategy={rectSortingStrategy}
           >
             {metrics.map((metric) => (
               <DraggableCard key={metric.id} id={metric.id} showDeleteButton={false}>
-                <Card className="border-0 shadow-none group">
+                <Card className={cn(
+                  "relative h-[120px] border transition-colors duration-200",
+                  metric.backgroundColor || CARD_COLORS["Default"].bg
+                )}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">{metric.title}</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      {metric.title}
+                    </CardTitle>
                     <div className="flex items-center space-x-2">
+                      {metric.icon}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-8 w-8 p-0 hover:bg-transparent"
                         onClick={() => handleEditCard(metric)}
                         data-testid="edit-button"
                       >
@@ -389,27 +458,27 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-8 w-8 p-0 hover:bg-transparent"
                         onClick={() => handleDeleteCard(metric.id)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                      {metric.icon}
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{metric.value}</div>
                     {metric.subValue && (
-                      <p className="text-xs text-muted-foreground">{metric.subValue}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {metric.subValue}
+                      </p>
                     )}
                   </CardContent>
                 </Card>
               </DraggableCard>
             ))}
           </SortableContext>
-        </div>
-      </DndContext>
+        </DndContext>
+      </div>
 
       <MetricCardDialog
         open={dialogOpen}
