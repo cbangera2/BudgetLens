@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Transaction, CategoryTotal } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -13,7 +14,8 @@ import {
   Store, 
   Plus, 
   Pencil, 
-  Trash2 
+  Trash2, 
+  Edit 
 } from "lucide-react";
 import { DraggableCard } from "./DraggableCard";
 import { 
@@ -61,7 +63,7 @@ interface MetricsCardsProps {
 interface MetricCard {
   id: string;
   title: string;
-  icon: React.ReactNode;
+  icon: IconType;
   value: string;
   subValue?: string;
   backgroundColor?: string;
@@ -83,7 +85,8 @@ const availableIcons: IconMap = {
   Store: Store,
   Plus: Plus,
   Pencil: Pencil,
-  Trash2: Trash2
+  Trash2: Trash2,
+  Edit: Edit
 };
 
 type IconType = keyof typeof availableIcons;
@@ -135,7 +138,7 @@ function MetricCardDialog({
   useEffect(() => {
     if (editingCard) {
       setTitle(editingCard.title);
-      const iconName = editingCard.icon?.type?.name as IconType;
+      const iconName = editingCard.icon;
       if (iconName && availableIcons[iconName]) {
         setSelectedIcon(iconName);
       }
@@ -152,10 +155,9 @@ function MetricCardDialog({
   }, [editingCard]);
 
   const handleSave = () => {
-    const Icon = availableIcons[selectedIcon];
     onSave({
       title,
-      icon: <Icon className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: selectedIcon,
       backgroundColor: CARD_COLORS[selectedColor].bg,
     });
     onOpenChange(false);
@@ -252,7 +254,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "total-spent",
       title: "Total Spent",
-      icon: <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "DollarSign",
       value: "$0.00",
       calculation: (t) => {
         const total = t.reduce((sum, tx) => sum + tx.amount, 0);
@@ -262,7 +264,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "avg-transaction",
       title: "Avg Transaction",
-      icon: <TrendingUp className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "TrendingUp",
       value: "$0.00",
       calculation: (t) => {
         const avg = t.length > 0 ? t.reduce((sum, tx) => sum + tx.amount, 0) / t.length : 0;
@@ -272,7 +274,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "highest-category",
       title: "Highest Category",
-      icon: <TrendingDown className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "TrendingDown",
       value: "No Data",
       subValue: "$0.00",
       calculation: (t, c) => {
@@ -287,7 +289,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "last-transaction",
       title: "Last Transaction",
-      icon: <CreditCard className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "CreditCard",
       value: "$0.00",
       subValue: "No transactions",
       calculation: (t) => {
@@ -302,7 +304,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "daily-average",
       title: "Daily Average",
-      icon: <CalendarDays className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "CalendarDays",
       value: "$0.00",
       subValue: "Last 30 days",
       calculation: (t) => {
@@ -317,7 +319,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "total-transactions",
       title: "Total Transactions",
-      icon: <Receipt className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "Receipt",
       value: "0",
       calculation: (t) => ({
         value: t.length.toString(),
@@ -326,7 +328,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "unique-categories",
       title: "Categories Used",
-      icon: <FolderTree className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "FolderTree",
       value: "0",
       calculation: (t, c) => ({
         value: c.length.toString(),
@@ -335,7 +337,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
     {
       id: "unique-vendors",
       title: "Unique Vendors",
-      icon: <Store className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+      icon: "Store",
       value: "0",
       calculation: (t) => ({
         value: Array.from(new Set(t.map(tx => tx.vendor))).length.toString(),
@@ -400,7 +402,7 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
       const newCard: MetricCard = {
         id: `custom-${Date.now()}`,
         title: cardData.title || "New Metric",
-        icon: cardData.icon || <DollarSign className="h-4 w-4 text-muted-foreground" strokeWidth={2} />,
+        icon: cardData.icon || "DollarSign",
         value: "Custom Value",
         backgroundColor: cardData.backgroundColor || "bg-card",
       };
@@ -439,38 +441,49 @@ export function MetricsCards({ transactions, categories }: MetricsCardsProps) {
             {metrics.map((metric) => (
               <DraggableCard key={metric.id} id={metric.id} showDeleteButton={false}>
                 <Card className={cn(
-                  "relative h-[120px] border transition-colors duration-200",
+                  "relative h-[120px] border transition-colors duration-200 group",
                   metric.backgroundColor || CARD_COLORS["Default"].bg
                 )}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">
                       {metric.title}
                     </CardTitle>
-                    <div className="flex items-center space-x-2">
-                      {metric.icon}
+                    <div className="flex space-x-1">
                       <Button
                         variant="ghost"
-                        className="h-8 w-8 p-0 hover:bg-transparent"
-                        onClick={() => handleEditCard(metric)}
-                        data-testid="edit-button"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => {
+                          setEditingCard(metric);
+                          setDialogOpen(true);
+                        }}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Edit className="h-3 w-3" />
                       </Button>
                       <Button
                         variant="ghost"
-                        className="h-8 w-8 p-0 hover:bg-transparent"
+                        size="icon"
+                        className="h-6 w-6 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={() => handleDeleteCard(metric.id)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{metric.value}</div>
-                    {metric.subValue && (
-                      <p className="text-xs text-muted-foreground">
-                        {metric.subValue}
-                      </p>
+                  <CardContent className="flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-bold">{metric.value}</div>
+                      {metric.subValue && (
+                        <p className="text-xs text-muted-foreground">{metric.subValue}</p>
+                      )}
+                    </div>
+                    {metric.icon && (
+                      <div className="h-8 w-8 text-muted-foreground">
+                        {React.createElement(availableIcons[metric.icon], {
+                          className: "h-8 w-8",
+                          strokeWidth: 1.5
+                        })}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
