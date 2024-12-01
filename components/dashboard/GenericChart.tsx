@@ -114,7 +114,7 @@ export function GenericChart({
   };
 
   const commonLegendProps = settings.legendPosition !== 'none' ? {
-    layout: settings.legendPosition === 'left' || settings.legendPosition === 'right' ? 'vertical' : 'horizontal',
+    layout: settings.legendPosition === 'left' || settings.legendPosition === 'right' ? 'vertical' : 'horizontal' as const,
     align: settings.legendPosition === 'left' ? 'left' : settings.legendPosition === 'right' ? 'right' : 'center',
     verticalAlign: settings.legendPosition === 'top' ? 'top' : 'bottom',
     wrapperStyle: {
@@ -122,6 +122,40 @@ export function GenericChart({
       paddingBottom: settings.legendPosition === 'top' ? '20px' : '0px'
     }
   } : undefined;
+
+  const renderLabel = (props: any) => {
+    if (settings.valueDisplay === 'none') return '';
+    
+    const { value } = props;
+    const total = data.reduce((sum, item) => 
+      sum + selectedMetrics.reduce((metricSum, metric) => metricSum + (item[metric] || 0), 0), 0);
+    const percentage = ((value / total) * 100).toFixed(1);
+    
+    switch (settings.valueDisplay) {
+      case 'value':
+        return formatValue(value);
+      case 'percentage':
+        return `${percentage}%`;
+      case 'both':
+        return `${formatValue(value)} (${percentage}%)`;
+      default:
+        return '';
+    }
+  };
+
+  const commonBarProps = {
+    label: settings.valueDisplay !== 'none' ? {
+      position: 'top',
+      content: renderLabel
+    } : false
+  };
+
+  const commonLineProps = {
+    label: settings.valueDisplay !== 'none' ? {
+      position: 'top',
+      content: renderLabel
+    } : false
+  };
 
   switch (settings.chartType) {
     case 'bar-vertical':
@@ -138,8 +172,10 @@ export function GenericChart({
                 dataKey={metric}
                 fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
+                {...commonBarProps}
               />
             ))}
+            {commonLegendProps && <Legend {...commonLegendProps} />}
           </BarChart>
         </ResponsiveContainer>
       );
@@ -150,7 +186,7 @@ export function GenericChart({
           <BarChart {...commonProps} layout="vertical">
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis type="number" tickFormatter={formatAxisLabel} />
-            <YAxis type="category" dataKey="name" />
+            <YAxis dataKey="name" type="category" />
             <Tooltip {...commonTooltipProps} />
             {selectedMetrics.map((metric, index) => (
               <Bar
@@ -158,8 +194,10 @@ export function GenericChart({
                 dataKey={metric}
                 fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
+                {...commonBarProps}
               />
             ))}
+            {commonLegendProps && <Legend {...commonLegendProps} />}
           </BarChart>
         </ResponsiveContainer>
       );
@@ -179,8 +217,10 @@ export function GenericChart({
                 dataKey={metric}
                 stroke={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
+                {...commonLineProps}
               />
             ))}
+            {commonLegendProps && <Legend {...commonLegendProps} />}
           </LineChart>
         </ResponsiveContainer>
       );
@@ -201,21 +241,40 @@ export function GenericChart({
                 fill={chartColors[index]}
                 stroke={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
+                {...commonLineProps}
               />
             ))}
+            {commonLegendProps && <Legend {...commonLegendProps} />}
           </AreaChart>
         </ResponsiveContainer>
       );
 
     case 'pie':
-      // For pie charts, we only use the first selected metric and show all categories
       const pieData = data.map(item => ({
         name: item.name,
         value: selectedMetrics.reduce((sum, metric) => sum + Math.abs(item[metric] || 0), 0),
         originalValue: selectedMetrics.reduce((sum, metric) => sum + (item[metric] || 0), 0)
       }));
-
       const chartColorsForPie = getColorPalette(settings.colorScheme, pieData.length);
+      const total = pieData.reduce((sum: number, item: any) => sum + item.value, 0);
+
+      const renderPieLabel = (entry: any) => {
+        if (settings.valueDisplay === 'none') return '';
+        
+        const value = formatValue(entry.value);
+        const percentage = `${((entry.value / total) * 100).toFixed(1)}%`;
+        
+        switch (settings.valueDisplay) {
+          case 'value':
+            return value;
+          case 'percentage':
+            return percentage;
+          case 'both':
+            return `${value} (${percentage})`;
+          default:
+            return '';
+        }
+      };
 
       return (
         <ResponsiveContainer width="100%" height={settings.chartHeight}>

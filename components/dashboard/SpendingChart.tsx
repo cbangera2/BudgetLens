@@ -28,7 +28,7 @@ export function SpendingChart({ transactions }: SpendingChartProps) {
     valueDisplay: 'value',
     gridType: 'both',
     chartHeight: 300,
-    legendPosition: 'right',
+    legendPosition: 'bottom',
     animationDuration: 400,
     chartType: 'bar-vertical'
   });

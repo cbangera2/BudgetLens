@@ -91,7 +91,7 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
           </DropdownMenuSub>
 
           {/* Legend Position Options */}
-          {type === 'pie' && (
+ 
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Legend Position</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -109,7 +109,7 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-          )}
+          
 
           {/* Grid Options for Bar Chart */}
           {type === 'bar' && (

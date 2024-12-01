@@ -29,7 +29,7 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
     valueDisplay: 'value',
     gridType: 'both',
     chartHeight: 300,
-    legendPosition: 'right',
+    legendPosition: 'bottom',
     animationDuration: 400,
     chartType: 'line'
   });
