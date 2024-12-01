@@ -43,10 +43,13 @@ export function ChartCreator({ onCreateChart, availableMetrics }: ChartCreatorPr
     valueDisplay: 'value',
     gridType: 'both',
     chartHeight: 300,
+    chartWidth: undefined, // Auto width
     legendPosition: 'bottom',
     animationDuration: 400,
     chartType: 'bar-vertical',
-    colorScheme: 'default'
+    colorScheme: 'default',
+    labelColor: 'black',
+    chartSize: 'medium'
   });
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>([]);
 
@@ -60,7 +63,7 @@ export function ChartCreator({ onCreateChart, availableMetrics }: ChartCreatorPr
     onCreateChart({
       title,
       settings: chartSettings,
-      selectedMetrics,
+      selectedMetrics: selectedMetrics.length > 0 ? selectedMetrics : availableMetrics.slice(0, 2),
     });
 
     // Reset form
@@ -70,10 +73,13 @@ export function ChartCreator({ onCreateChart, availableMetrics }: ChartCreatorPr
       valueDisplay: 'value',
       gridType: 'both',
       chartHeight: 300,
+      chartWidth: undefined, // Auto width
       legendPosition: 'bottom',
       animationDuration: 400,
       chartType: 'bar-vertical',
-      colorScheme: 'default'
+      colorScheme: 'default',
+      labelColor: 'black',
+      chartSize: 'medium'
     });
     setOpen(false);
   };

@@ -114,6 +114,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Added Filter Bar and CSV Import as draggable and deletable components
 - Added working data labels to graphs
 - Added ability to customize label color in graphs
+- Added customizable width and height for graphs
 
 ### [v0.3] - 11-29-2024
 #### Added

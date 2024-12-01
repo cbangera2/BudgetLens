@@ -263,7 +263,10 @@ export function GenericChart({
   switch (settings.chartType) {
     case 'bar-vertical':
       return (
-        <ResponsiveContainer width="100%" height={settings.chartHeight}>
+        <ResponsiveContainer
+          width={settings.chartWidth || "100%"}
+          height={settings.chartHeight || 300}
+        >
           <BarChart {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis 
@@ -289,7 +292,10 @@ export function GenericChart({
 
     case 'bar-horizontal':
       return (
-        <ResponsiveContainer width="100%" height={settings.chartHeight}>
+        <ResponsiveContainer
+          width={settings.chartWidth || "100%"}
+          height={settings.chartHeight || 300}
+        >
           <BarChart layout="vertical" {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis type="number" tickFormatter={formatAxisLabel} />
@@ -315,7 +321,10 @@ export function GenericChart({
 
     case 'line':
       return (
-        <ResponsiveContainer width="100%" height={settings.chartHeight}>
+        <ResponsiveContainer
+          width={settings.chartWidth || "100%"}
+          height={settings.chartHeight || 300}
+        >
           <LineChart {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis 
@@ -342,7 +351,10 @@ export function GenericChart({
 
     case 'area':
       return (
-        <ResponsiveContainer width="100%" height={settings.chartHeight}>
+        <ResponsiveContainer
+          width={settings.chartWidth || "100%"}
+          height={settings.chartHeight || 300}
+        >
           <AreaChart {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis dataKey="name" />
@@ -392,7 +404,10 @@ export function GenericChart({
       };
 
       return (
-        <ResponsiveContainer width="100%" height={settings.chartHeight}>
+        <ResponsiveContainer
+          width={settings.chartWidth || "100%"}
+          height={settings.chartHeight || 300}
+        >
           <PieChart margin={commonProps.margin}>
             <Pie
               data={pieData}
