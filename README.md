@@ -34,9 +34,7 @@
 4. Your Credit Karma transactions will be automatically visualized in the dashboard
 
 ## Screenshots
-![image](https://github.com/user-attachments/assets/3102e8d9-f142-4374-855b-36bdd6ee5123)
-
-
+![image](https://github.com/user-attachments/assets/81259dc8-b211-4b16-a9b8-cd5fabb25f7e)
 
 
 ## Tech Stack
@@ -102,15 +100,22 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [ ] Financial Insights and Recommendations
 
 #### Completed
-- [x] Dark Mode / Light Mode Toggle (v0.0.2)
-- [x] Date Range Filter for Transactions (v0.0.2)
-- [x] Budget Goal Setting and Tracking (v0.0.2)
-- [x] Add New Transaction UI (v0.0.2)
-- [x] Monthly Budget vs Actual Comparison (v0.0.2)
+- [x] Dark Mode / Light Mode Toggle (v0.2)
+- [x] Date Range Filter for Transactions (v0.2)
+- [x] Budget Goal Setting and Tracking (v0.2)
+- [x] Add New Transaction UI (v0.2)
+- [x] Monthly Budget vs Actual Comparison (v0.2)
 
 ## Changelog
+### [v0.4] - 12-01-2024
+#### Added
+- Added ability to add new UI elements
+- Added ability to create custom graphs (WIP)
+- Added Filter Bar and CSV Import as draggable and deletable components
+- Added working data labels to graphs
+- Added ability to customize label color in graphs
 
-### [v0.0.3] - 11-29-2024
+### [v0.3] - 11-29-2024
 #### Added
 - Added dynamic switching between chart types such as Bar (Vertical), Bar (Horizontal), Line, Pie, and Area
 - Added better graph color schemes
@@ -124,7 +129,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
   - New monthly financial trends graph for better tracking
 - Added delete card functionality
 
-### [v0.0.2] - 11-28-2024
+### [v0.2] - 11-28-2024
 #### Added
 - Added dark mode support with system preference detection
 - Enhanced draggable and editable metrics cards
@@ -132,7 +137,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Budget goals tracking with progress indicators
 - Reorganized UI elements and added draggable cards for improved dashboard layout
 
-### [v0.0.1] - 11-27-2024
+### [v0.1] - 11-27-2024
 #### Added
 - Initial dashboard layout
 - Transaction table with search and filters
