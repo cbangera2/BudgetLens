@@ -13,6 +13,7 @@ import { isCreditTransaction } from "@/lib/utils/transactionUtils";
 
 interface MonthlyTrendsChartProps {
   transactions: Transaction[];
+  chartType: 'line' | 'bar-vertical' | 'bar-horizontal' | 'pie';
 }
 
 type MetricType = 'expenses' | 'income' | 'savings';
@@ -24,14 +25,14 @@ interface MonthlyMetrics {
   savings: number;
 }
 
-export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
+export function MonthlyTrendsChart({ transactions, chartType }: MonthlyTrendsChartProps) {
   const [chartSettings, setChartSettings] = useState<ChartSettingsProps['settings']>({
     valueDisplay: 'value',
     gridType: 'both',
     chartHeight: 300,
     legendPosition: 'bottom',
     animationDuration: 400,
-    chartType: 'line'
+    chartType: chartType
   });
 
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['expenses', 'income', 'savings']);
@@ -125,7 +126,7 @@ export function MonthlyTrendsChart({ transactions }: MonthlyTrendsChartProps) {
           <ChartSettings
             settings={chartSettings}
             onSettingChange={handleSettingChange}
-            type="line"
+            type={chartType}
           />
         </CardTitle>
       </CardHeader>

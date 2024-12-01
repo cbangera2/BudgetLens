@@ -15,9 +15,11 @@ import {
   Tooltip,
   CartesianGrid,
   Cell,
-  Legend
+  Legend,
+  LabelList
 } from "recharts";
 import { ChartSettingsProps } from "./ChartSettings";
+import { format, parseISO } from "date-fns";
 
 interface GenericChartProps {
   data: any[];
@@ -161,6 +163,8 @@ export function GenericChart({
   formatTooltip = (value) => `$${value.toFixed(2)}`,
   formatAxisLabel = (value) => `$${(value / 1000).toFixed(1)}k`
 }: GenericChartProps) {
+  console.log('Chart data:', data); // Debug log
+
   const chartColors = getColorPalette(settings.colorScheme, selectedMetrics.length);
 
   const commonTooltipProps = {
@@ -197,28 +201,40 @@ export function GenericChart({
   } : undefined;
 
   const renderLabel = (props: any) => {
-    if (settings.valueDisplay === 'none') return '';
-    
-    const { value } = props;
-    const total = data.reduce((sum, item) => 
+    const { value, x, y, width, height, viewBox } = props;
+    const total = data.reduce((sum, item) =>
       sum + selectedMetrics.reduce((metricSum, metric) => metricSum + (item[metric] || 0), 0), 0);
-    const percentage = ((value / total) * 100).toFixed(1);
-    
-    switch (settings.valueDisplay) {
-      case 'value':
-        return formatValue(value);
-      case 'percentage':
-        return `${percentage}%`;
-      case 'both':
-        return `${formatValue(value)} (${percentage}%)`;
-      default:
-        return '';
+
+    if (settings.valueDisplay === 'none') return null;
+
+    const displayValue = settings.valueDisplay === 'percentage' || settings.valueDisplay === 'both'
+      ? `${((value / total) * 100).toFixed(1)}%`
+      : formatValue(value);
+
+    const displayBoth = settings.valueDisplay === 'both'
+      ? `${formatValue(value)} (${((value / total) * 100).toFixed(1)}%)`
+      : displayValue;
+
+    // For bar charts
+    if (width !== undefined && height !== undefined) {
+      return (
+        <text x={x + width / 2} y={y + height / 2} fill={settings.labelColor} textAnchor="middle" dominantBaseline="middle">
+          {displayBoth}
+        </text>
+      );
     }
+    
+    // For line charts
+    return (
+      <text x={x} y={y - 10} fill={settings.labelColor} textAnchor="middle">
+        {displayBoth}
+      </text>
+    );
   };
 
   const commonBarProps = {
     label: settings.valueDisplay !== 'none' ? {
-      position: 'top',
+      position: 'inside',
       content: renderLabel
     } : false
   };
@@ -230,13 +246,30 @@ export function GenericChart({
     } : false
   };
 
+  const formatXAxis = (value: string) => {
+    // If the value is already formatted (e.g., "Jan 2024"), return it as is
+    if (value.match(/^[A-Za-z]{3}\s+\d{4}$/)) {
+      return value;
+    }
+
+    try {
+      const date = parseISO(value);
+      return format(date, 'MMM yyyy');
+    } catch (error) {
+      return value;
+    }
+  };
+
   switch (settings.chartType) {
     case 'bar-vertical':
       return (
         <ResponsiveContainer width="100%" height={settings.chartHeight}>
           <BarChart {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
-            <XAxis dataKey="name" />
+            <XAxis 
+              dataKey="month"
+              type="category"
+            />
             <YAxis tickFormatter={formatAxisLabel} />
             <Tooltip {...commonTooltipProps} />
             {selectedMetrics.map((metric, index) => (
@@ -246,7 +279,8 @@ export function GenericChart({
                 fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
                 {...commonBarProps}
-              />
+              >
+              </Bar>
             ))}
             {commonLegendProps && <Legend {...commonLegendProps} />}
           </BarChart>
@@ -256,10 +290,13 @@ export function GenericChart({
     case 'bar-horizontal':
       return (
         <ResponsiveContainer width="100%" height={settings.chartHeight}>
-          <BarChart {...commonProps} layout="vertical">
+          <BarChart layout="vertical" {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
             <XAxis type="number" tickFormatter={formatAxisLabel} />
-            <YAxis dataKey="name" type="category" />
+            <YAxis 
+              dataKey="month"
+              type="category"
+            />
             <Tooltip {...commonTooltipProps} />
             {selectedMetrics.map((metric, index) => (
               <Bar
@@ -268,7 +305,8 @@ export function GenericChart({
                 fill={chartColors[index]}
                 name={metric.charAt(0).toUpperCase() + metric.slice(1)}
                 {...commonBarProps}
-              />
+              >
+              </Bar>
             ))}
             {commonLegendProps && <Legend {...commonLegendProps} />}
           </BarChart>
@@ -280,7 +318,10 @@ export function GenericChart({
         <ResponsiveContainer width="100%" height={settings.chartHeight}>
           <LineChart {...commonProps}>
             {commonGridProps && <CartesianGrid {...commonGridProps} />}
-            <XAxis dataKey="name" />
+            <XAxis 
+              dataKey="month"
+              type="category"
+            />
             <YAxis tickFormatter={formatAxisLabel} />
             <Tooltip {...commonTooltipProps} />
             {selectedMetrics.map((metric, index) => (
@@ -289,9 +330,10 @@ export function GenericChart({
                 type="monotone"
                 dataKey={metric}
                 stroke={chartColors[index]}
-                name={metric.charAt(0).toUpperCase() + metric.slice(1)}
                 {...commonLineProps}
-              />
+              >
+
+              </Line>
             ))}
             {commonLegendProps && <Legend {...commonLegendProps} />}
           </LineChart>
@@ -361,6 +403,7 @@ export function GenericChart({
               outerRadius={80}
               label={settings.labelPosition !== 'none' ? {
                 position: settings.labelPosition,
+                fill: settings.labelColor,
                 formatter: (entry: any) => {
                   const total = pieData.reduce((sum: number, item: any) => sum + item.value, 0);
                   const percent = (entry.value / total) * 100;

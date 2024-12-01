@@ -14,6 +14,8 @@ import { FilterBar } from "@/components/dashboard/FilterBar";
 import { DraggableCard } from "@/components/dashboard/DraggableCard";
 import { TotalMetricsChart } from "@/components/dashboard/TotalMetricsChart";
 import { MonthlyTrendsChart } from "@/components/dashboard/MonthlyTrendsChart";
+import { DynamicCharts } from "@/components/dashboard/DynamicCharts";
+import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer";
 import BudgetGoals from "@/components/dashboard/BudgetGoals";
 import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
 
@@ -23,6 +25,7 @@ export default function Home() {
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotal[]>([]);
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpending[]>([]);
   const [layout, setLayout] = useState(INITIAL_LAYOUT);
+  const [activeComponents, setActiveComponents] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [vendorFilter, setVendorFilter] = useState<string[]>([]);
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string[]>([]);
@@ -43,9 +46,14 @@ export default function Home() {
     const parsedTransactions = parseCSV(SAMPLE_DATA);
     setTransactions(parsedTransactions);
     setFilteredTransactions(parsedTransactions);
-    setCategoryTotals(calculateCategoryTotals(parsedTransactions));
-    setMonthlySpending(calculateMonthlySpending(parsedTransactions));
   }, []);
+
+  useEffect(() => {
+    const totals = calculateCategoryTotals(filteredTransactions);
+    setCategoryTotals(totals);
+    const monthly = calculateMonthlySpending(filteredTransactions);
+    setMonthlySpending(monthly);
+  }, [filteredTransactions]);
 
   useEffect(() => {
     let filtered = transactions;
@@ -74,9 +82,12 @@ export default function Home() {
     }
 
     setFilteredTransactions(filtered);
-    setCategoryTotals(calculateCategoryTotals(filtered));
-    setMonthlySpending(calculateMonthlySpending(filtered));
   }, [transactions, categoryFilter, vendorFilter, transactionTypeFilter, startDate, endDate]);
+
+  const handleAddComponent = (componentType: string) => {
+    setActiveComponents(prev => [...prev, componentType]);
+    setLayout(prev => [...prev, componentType]);
+  };
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -148,122 +159,103 @@ export default function Home() {
     setLayout((prevLayout) => prevLayout.filter((cardId) => cardId !== id));
   };
 
-  const renderSection = (id: string, index: number) => {
-    switch (id) {
-      case "metrics":
+  const renderComponent = (type: string) => {
+    switch (type) {
+      case 'metrics':
+        return <MetricsCards transactions={filteredTransactions} categories={categoryTotals} />;
+      case 'filter':
         return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <MetricsCards transactions={filteredTransactions} categories={categoryTotals} />
-          </DraggableCard>
-        );
-      case "monthly":
-        return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <SpendingChart 
-              monthlySpending={monthlySpending} 
-              transactions={filteredTransactions}
+          <div className="mt-6">
+            <FilterBar
+              transactions={transactions}
+              onCategoryFilter={(includes, excludes) => {
+                setCategoryFilter(includes);
+              }}
+              onVendorFilter={(includes, excludes) => {
+                setVendorFilter(includes);
+              }}
+              onTransactionTypeFilter={(includes, excludes) => {
+                setTransactionTypeFilter(includes);
+              }}
+              onDateFilter={(start, end) => {
+                setStartDate(start);
+                setEndDate(end);
+              }}
             />
-          </DraggableCard>
+          </div>
         );
-      case "categories":
+      case 'dynamic-charts':
         return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <CategoryPieChart 
-              categoryTotals={categoryTotals}
-              transactions={filteredTransactions}
+          <DynamicCharts
+            data={filteredTransactions}
+            availableMetrics={['expenses', 'income', 'savings']}
+            formatValue={(value) => (typeof value === 'number' ? `$${value.toFixed(2)}` : '$0.00')}
+            formatTooltip={(value) => (typeof value === 'number' ? `$${value.toFixed(2)}` : '$0.00')}
+            formatAxisLabel={(value) => (typeof value === 'number' ? `$${(value / 1000).toFixed(1)}k` : '$0k')}
+          />
+        );
+      case 'spending':
+        return <SpendingChart transactions={filteredTransactions} />
+      case 'categories':
+        return <CategoryPieChart transactions={filteredTransactions} categoryTotals={categoryTotals} />;
+      case 'total-metrics':
+        return <TotalMetricsChart transactions={filteredTransactions} />;
+      case 'monthly-trends':
+        return <MonthlyTrendsChart transactions={filteredTransactions} chartType='line' />;
+      case 'monthly':
+        return <MonthlyTrendsChart transactions={filteredTransactions} chartType='bar-vertical' />;
+      case 'transactions':
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
+            <TransactionsTable 
+              transactions={filteredTransactions} 
+              onAddTransaction={handleAddTransaction}
+              onUpdateTransaction={handleUpdateTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
             />
-          </DraggableCard>
+          </div>
         );
-      case "transactions":
+      case 'budget-goals':
         return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <div className="p-6">
-              <h2 className="text-2xl font-semibold mb-4">Recent Transactions</h2>
-              <TransactionsTable 
-                transactions={filteredTransactions} 
-                onAddTransaction={handleAddTransaction}
-                onUpdateTransaction={handleUpdateTransaction}
-                onDeleteTransaction={handleDeleteTransaction}
-              />
-            </div>
-          </DraggableCard>
+          <BudgetGoals 
+            categories={categoryTotals} 
+            initialGoals={budgetGoals}
+            onSaveGoals={setBudgetGoals}
+            settings={budgetGoalSettings}
+            onSettingsChange={setBudgetGoalSettings}
+          />
         );
-      case "total-metrics":
-        return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <TotalMetricsChart transactions={filteredTransactions} />
-          </DraggableCard>
-        );
-      case "monthly-trends":
-        return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <MonthlyTrendsChart transactions={filteredTransactions} />
-          </DraggableCard>
-        );
-      case "budget-goals":
-        return (
-          <DraggableCard key={`${id}-${index}`} id={id} onEdit={() => handleEdit(id)} onDelete={() => handleDelete(id)}>
-            <BudgetGoals 
-              categories={categoryTotals} 
-              initialGoals={budgetGoals}
-              onSaveGoals={setBudgetGoals}
-              settings={budgetGoalSettings}
-              onSettingsChange={setBudgetGoalSettings}
-            />
-          </DraggableCard>
-        );
+      case 'csv-upload':
+        return <CSVUpload onUpload={handleCSVUpload} />;
       default:
         return null;
     }
   };
 
   return (
-    <div className="container mx-auto py-8">
+    <main className="container mx-auto py-8">
       <h1 className="text-4xl font-bold mb-8">BudgetLens Dashboard</h1>
-      
-      <div className="mb-8">
-        <CSVUpload onUpload={handleCSVUpload} />
-      </div>
 
-      <FilterBar
-        transactions={transactions}
-        onCategoryFilter={(includes) => setCategoryFilter(includes)}
-        onVendorFilter={(includes) => setVendorFilter(includes)}
-        onTransactionTypeFilter={(includes) => setTransactionTypeFilter(includes)}
-        onDateFilter={(start, end) => {
-          setStartDate(start);
-          setEndDate(end);
-        }}
+      <DashboardCustomizer
+        onAddComponent={handleAddComponent}
+        activeComponents={activeComponents}
       />
 
-      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
         <SortableContext items={layout} strategy={rectSortingStrategy}>
           <div className="space-y-8">
-            {layout.map((id, index) => renderSection(id, index))}
+            {layout.map((componentType) => (
+              <DraggableCard key={componentType} id={componentType} onEdit={() => handleEdit(componentType)} onDelete={() => handleDelete(componentType)}>
+                {renderComponent(componentType)}
+              </DraggableCard>
+            ))}
           </div>
         </SortableContext>
       </DndContext>
-
-      <div className="mt-8 border-t border-gray-200 dark:border-gray-700 pt-4 text-center text-sm text-gray-500 dark:text-gray-400">
-        Created by{" "}
-        <a
-          href="https://github.com/cbangera2"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-        >
-          Chirag Bangera
-        </a>{" "}
-        |{" "}
-        <a
-          href="https://github.com/cbangera2/BudgetLens"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-        >
-          View on GitHub
-        </a>
-      </div>
-    </div>
+    </main>
   );
 }

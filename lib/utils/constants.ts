@@ -47,6 +47,8 @@ export const SAMPLE_DATA = `date,vendor,amount,category,transactionType
 2024-03-15,Part-time Job,300.00,Job,Credit`;
 
 export const INITIAL_LAYOUT = [
+  'csv-upload',
+  "filter",
   "metrics",
   "total-metrics",
   "monthly-trends",

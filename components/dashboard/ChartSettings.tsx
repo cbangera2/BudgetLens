@@ -21,6 +21,7 @@ export type GridType = 'none' | 'horizontal' | 'vertical' | 'both';
 export type LegendPosition = 'none' | 'right' | 'bottom' | 'left' | 'top';
 export type LabelPosition = 'none' | 'inside' | 'outside' | 'center';
 export type ColorScheme = 'default' | 'warm' | 'cool' | 'rainbow';
+export type LabelColor = 'white' | 'gray' | 'black';
 
 export interface ChartSettingsProps {
   settings: {
@@ -32,6 +33,7 @@ export interface ChartSettingsProps {
     labelPosition?: LabelPosition;
     colorScheme?: ColorScheme;
     animationDuration?: number;
+    labelColor?: LabelColor;
   };
   onSettingChange: (key: string, value: any) => void;
   type?: 'bar' | 'line' | 'pie';
@@ -72,7 +74,7 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
 
           {/* Value Display Options */}
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Value Display</DropdownMenuSubTrigger>
+            <DropdownMenuSubTrigger>Label Display</DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.valueDisplay}
@@ -84,6 +86,23 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
                 <DropdownMenuRadioItem value="value">Values Only</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="percentage">Percentages Only</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="both">Both</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          {/* Label Color Options */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Label Color</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup
+                value={settings.labelColor || 'black'}
+                onValueChange={(value: LabelColor) => 
+                  onSettingChange('labelColor', value)
+                }
+              >
+                <DropdownMenuRadioItem value="white">White</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="gray">Gray</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="black">Black</DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
