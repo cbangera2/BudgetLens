@@ -29,31 +29,104 @@ interface GenericChartProps {
   formatAxisLabel?: (value: number) => string;
 }
 
-const getColorPalette = (scheme: string, length: number) => {
-  const palettes = {
-    default: [
-      '#dc2626', '#16a34a', '#2563eb', '#f97316', '#f59e0b',
-      '#84cc16', '#d946ef', '#9333ea', '#0891b2', '#0ea5e9',
-      '#a855f7', '#ec4899', '#f43f5e', '#10b981', '#3b82f6'
-    ],
-    monochrome: ['#333333', '#4d4d4d', '#666666', '#808080', '#999999'],
-    pastel: ['#aec6cf', '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9'],
-    vibrant: ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231'],
-    cool: ['#30a5ff', '#1f77b4', '#aec7e8', '#ffbb78', '#98df8a'],
-    warm: ['#ff7f0e', '#ffbb78', '#d62728', '#ff9896', '#9467bd']
-  };
-  const baseColors = palettes[scheme] || palettes.default;
-  const palette = [];
-  for (let i = 0; i < length; i++) {
-    palette.push(baseColors[i % baseColors.length]);
-    if (i >= baseColors.length) {
-      // Generate a new color by slightly altering the base color
-      const colorIndex = i % baseColors.length;
-      const newColor = baseColors[colorIndex].replace(/\d+/g, (match) => (parseInt(match) + (i * 5) % 255).toString());
-      palette[i] = newColor;
-    }
+const getColorPalette = (scheme: 'default' | 'warm' | 'cool' | 'rainbow' = 'default', length: number) => {
+  const defaultColors = [
+    '#dc2626', // red-600
+    '#16a34a', // green-600
+    '#2563eb', // blue-600
+    '#9333ea', // purple-600
+    '#d97706', // amber-600
+    '#0891b2', // cyan-600
+    '#4f46e5', // indigo-600
+    '#be185d', // pink-600
+  ];
+
+  const warmColors = [
+    '#dc2626', // red
+    '#f97316', // orange
+    '#f59e0b', // amber
+    '#ca8a04', // yellow
+    '#84cc16', // lime
+    '#22c55e', // green
+    '#14b8a6', // teal
+    '#0ea5e9', // sky
+  ];
+
+  const coolColors = [
+    '#2563eb', // blue
+    '#0ea5e9', // sky
+    '#06b6d4', // cyan
+    '#14b8a6', // teal
+    '#10b981', // emerald
+    '#6366f1', // indigo
+    '#8b5cf6', // violet
+    '#a855f7', // purple
+  ];
+
+  const rainbowColors = [
+    '#ef4444', // red
+    '#f97316', // orange
+    '#eab308', // yellow
+    '#22c55e', // green
+    '#06b6d4', // cyan
+    '#3b82f6', // blue
+    '#8b5cf6', // violet
+    '#d946ef', // fuchsia
+  ];
+
+  let baseColors: string[];
+  switch (scheme) {
+    case 'warm':
+      baseColors = warmColors;
+      break;
+    case 'cool':
+      baseColors = coolColors;
+      break;
+    case 'rainbow':
+      baseColors = rainbowColors;
+      break;
+    default:
+      baseColors = defaultColors;
   }
-  return palette;
+
+  // If we need more colors than in our base palette, interpolate between existing colors
+  if (length > baseColors.length) {
+    const result: string[] = [];
+    for (let i = 0; i < length; i++) {
+      const index = (i * baseColors.length) / length;
+      const start = Math.floor(index);
+      const end = (start + 1) % baseColors.length;
+      const fraction = index - start;
+      
+      // Simple linear interpolation between colors
+      const startColor = baseColors[start];
+      const endColor = baseColors[end];
+      const interpolatedColor = interpolateColor(startColor, endColor, fraction);
+      result.push(interpolatedColor);
+    }
+    return result;
+  }
+
+  return baseColors.slice(0, length);
+};
+
+const interpolateColor = (color1: string, color2: string, factor: number): string => {
+  const c1 = {
+    r: parseInt(color1.slice(1, 3), 16),
+    g: parseInt(color1.slice(3, 5), 16),
+    b: parseInt(color1.slice(5, 7), 16)
+  };
+  const c2 = {
+    r: parseInt(color2.slice(1, 3), 16),
+    g: parseInt(color2.slice(3, 5), 16),
+    b: parseInt(color2.slice(5, 7), 16)
+  };
+
+  const r = Math.round(c1.r + (c2.r - c1.r) * factor);
+  const g = Math.round(c1.g + (c2.g - c1.g) * factor);
+  const b = Math.round(c1.b + (c2.b - c1.b) * factor);
+
+  return `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
 };
 
 const DEFAULT_COLORS = [
