@@ -45,26 +45,91 @@
 - **Drag and Drop**: @dnd-kit/core
 - **Data Handling**: CSV parsing and manipulation
 
-## Installation
+## Installation Options
 
-1. **Clone the Repository**:
+### Option 1: Local Development Setup
+1. **Prerequisites**:
+   - Node.js 18+
+   - PostgreSQL
+   - npm or yarn
+
+2. **Clone the Repository**:
    ```bash
    git clone https://github.com/cbangera2/BudgetLens.git
    cd BudgetLens
    ```
 
-2. **Install Dependencies**:
+3. **Install Dependencies**:
    ```bash
    npm install
    ```
 
-3. **Run Development Server**:
+4. **Setup Environment**:
+   - Copy `.env_example` to `.env`
+   - Update database connection details
+
+5. **Initialize Database**:
+   ```bash
+   npx prisma migrate dev
+   npx prisma db seed
+   ```
+
+6. **Run the Application**:
    ```bash
    npm run dev
    ```
 
-4. **Open Browser**:
-   Navigate to `http://localhost:3000`
+### Option 2: Docker Deployment (Recommended)
+
+1. **Prerequisites**:
+   - Docker
+   - Docker Compose
+
+2. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/cbangera2/BudgetLens.git
+   cd BudgetLens
+   ```
+
+3. **Configure Environment**:
+   - Copy `.env_example` to `.env`
+   - *No additional configuration needed* - default credentials are pre-configured
+
+4. **Build and Run with Docker**:
+   ```bash
+   docker-compose up --build
+   ```
+
+   This will:
+   - Build the Next.js application
+   - Start a PostgreSQL database with default credentials
+     * Database: `budget_lens_db`
+     * Username: `budget_lens_user`
+     * Password: `budget_lens_password`
+   - Run database migrations
+   - Seed initial data
+   - Start the application on `http://localhost:3000`
+
+### Configuration
+
+- **Environment Variables**:
+  - `DATABASE_URL`: PostgreSQL connection string
+  - `POSTGRES_USER`: Database username
+  - `POSTGRES_PASSWORD`: Database password
+
+### Deployment Notes
+
+- The Docker setup includes:
+  - Multi-stage build for optimized image
+  - Automatic database migrations
+  - Database seeding
+  - Production-ready configuration
+
+## Troubleshooting
+
+- Ensure Docker is running with sufficient resources
+- Check Docker logs for any startup issues
+- Verify environment variable configurations
 
 ## Usage
 
@@ -107,6 +172,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [x] Monthly Budget vs Actual Comparison (v0.2)
 
 ## Changelog
+### [v0.5] - 12-08-2024
+#### Added
+- Added docker installation support
+- Fixed TypeScript errors
+
 ### [v0.4] - 12-01-2024
 #### Added
 - Added ability to add new UI elements
