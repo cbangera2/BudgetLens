@@ -53,31 +53,39 @@
    - PostgreSQL
    - npm or yarn
 
-2. **Clone the Repository**:
+2. **One-Click Local Setup**:
    ```bash
-   git clone https://github.com/cbangera2/BudgetLens.git
-   cd BudgetLens
+   # Make the setup script executable (first time only)
+   chmod +x setup.sh
+
+   # Run the setup script
+   ./setup.sh
    ```
 
-3. **Install Dependencies**:
+   The setup script will:
+   - Check system prerequisites
+   - Create `.env` file
+   - Install dependencies
+   - Setup database (migrations and seed)
+   - Start the development server
+
+3. **Manual Setup Alternative**:
+   If you prefer manual steps:
    ```bash
+   # Install dependencies
    npm install
-   ```
 
-4. **Setup Environment**:
-   - Copy `.env_example` to `.env`
-   - Update database connection details
-
-5. **Initialize Database**:
-   ```bash
+   # Setup database
+   npx prisma generate
    npx prisma migrate dev
    npx prisma db seed
-   ```
 
-6. **Run the Application**:
-   ```bash
+   # Start development server
    npm run dev
    ```
+
+4. **Open Browser**:
+   Navigate to `http://localhost:3000`
 
 ### Option 2: Docker Deployment (Recommended)
 
@@ -175,6 +183,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ### [v0.5] - 12-08-2024
 #### Added
 - Added docker installation support
+- Created install script for local setup
 - Fixed TypeScript errors
 
 ### [v0.4] - 12-01-2024
