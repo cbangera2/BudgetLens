@@ -18,9 +18,20 @@ import { DynamicCharts } from "@/components/dashboard/DynamicCharts";
 import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer";
 import BudgetGoals from "@/components/dashboard/BudgetGoals";
 import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
+import { useTransactions } from "@/hooks/useTransactions";
 
 export default function Home() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const {
+    transactions,
+    loading,
+    error,
+    fetchTransactions,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    importTransactions
+  } = useTransactions();
+  
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [categoryTotals, setCategoryTotals] = useState<CategoryTotal[]>([]);
   const [monthlySpending, setMonthlySpending] = useState<MonthlySpending[]>([]);
@@ -42,19 +53,7 @@ export default function Home() {
     showProgressBars: true
   });
 
-  useEffect(() => {
-    const parsedTransactions = parseCSV(SAMPLE_DATA);
-    setTransactions(parsedTransactions);
-    setFilteredTransactions(parsedTransactions);
-  }, []);
-
-  useEffect(() => {
-    const totals = calculateCategoryTotals(filteredTransactions);
-    setCategoryTotals(totals);
-    const monthly = calculateMonthlySpending(filteredTransactions);
-    setMonthlySpending(monthly);
-  }, [filteredTransactions]);
-
+  // Set filtered transactions whenever transactions or filters change
   useEffect(() => {
     let filtered = transactions;
     
@@ -84,6 +83,14 @@ export default function Home() {
     setFilteredTransactions(filtered);
   }, [transactions, categoryFilter, vendorFilter, transactionTypeFilter, startDate, endDate]);
 
+  // Calculate totals whenever filtered transactions change
+  useEffect(() => {
+    const totals = calculateCategoryTotals(filteredTransactions);
+    setCategoryTotals(totals);
+    const monthly = calculateMonthlySpending(filteredTransactions);
+    setMonthlySpending(monthly);
+  }, [filteredTransactions]);
+
   const handleAddComponent = (componentType: string) => {
     setActiveComponents(prev => [...prev, componentType]);
     setLayout(prev => [...prev, componentType]);
@@ -100,50 +107,41 @@ export default function Home() {
     }
   };
 
-  const handleCSVUpload = (content: string) => {
-    const parsedTransactions = parseCSV(content);
-    setTransactions(parsedTransactions);
+  const handleCSVUpload = async (content: string) => {
+    await importTransactions(content);
     setCategoryFilter([]);
     setVendorFilter([]);
     setTransactionTypeFilter([]);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
   const handleAddTransaction = (newTransaction: Transaction) => {
-    const updatedTransactions = [...transactions, newTransaction];
-    setTransactions(updatedTransactions);
-    setFilteredTransactions(updatedTransactions);
-    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
-    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+    addTransaction(newTransaction);
   };
 
   const handleUpdateTransaction = (oldTransaction: Transaction, newTransaction: Transaction) => {
-    const updatedTransactions = transactions.map(t => 
-      (t.date === oldTransaction.date &&
-       t.amount === oldTransaction.amount &&
-       t.vendor === oldTransaction.vendor &&
-       t.category === oldTransaction.category &&
-       t.transactionType === oldTransaction.transactionType)
-      ? newTransaction
-      : t
-    );
-    setTransactions(updatedTransactions);
-    setFilteredTransactions(updatedTransactions);
-    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
-    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+    updateTransaction(oldTransaction, newTransaction);
   };
 
   const handleDeleteTransaction = (transactionToDelete: Transaction) => {
-    const updatedTransactions = transactions.filter(t => 
-      !(t.date === transactionToDelete.date &&
-        t.amount === transactionToDelete.amount &&
-        t.vendor === transactionToDelete.vendor &&
-        t.category === transactionToDelete.category &&
-        t.transactionType === transactionToDelete.transactionType)
-    );
-    setTransactions(updatedTransactions);
-    setFilteredTransactions(updatedTransactions);
-    setCategoryTotals(calculateCategoryTotals(updatedTransactions));
-    setMonthlySpending(calculateMonthlySpending(updatedTransactions));
+    deleteTransaction(transactionToDelete);
   };
 
   const handleCategoryFilter = (includes: string[], excludes: string[]) => setCategoryFilter(includes);
