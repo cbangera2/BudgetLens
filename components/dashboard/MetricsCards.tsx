@@ -192,7 +192,7 @@ function MetricCardDialog({
               Icon
             </Label>
             <Select
-              value={selectedIcon}
+              value={selectedIcon as string}
               onValueChange={(value: IconType) => setSelectedIcon(value)}
               defaultValue="DollarSign"
             >

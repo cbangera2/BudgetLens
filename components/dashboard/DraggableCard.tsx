@@ -7,6 +7,7 @@ import { GripVertical, Trash2 } from "lucide-react";
 interface DraggableCardProps {
   id: string;
   children: React.ReactNode;
+  onEdit?: () => void;
   onDelete?: () => void;
   showDeleteButton?: boolean;
 }
@@ -36,7 +37,7 @@ export function DraggableCard({ id, children, onDelete, showDeleteButton = true 
       </div>
       <div className="absolute -right-3 -top-3">
         {showDeleteButton && (
-          <button onClick={onDelete} className="flex items-center justify-center w-6 h-6 rounded-full bg-red-600 text-white hover:bg-red-800 shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={onDelete} title="Delete" className="flex items-center justify-center w-6 h-6 rounded-full bg-red-600 text-white hover:bg-red-800 shadow-md opacity-0 group-hover:opacity-100 transition-opacity">
             <Trash2 className="h-3 w-3" />
           </button>
         )}

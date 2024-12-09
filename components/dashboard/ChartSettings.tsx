@@ -89,7 +89,7 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent className="min-w-[250px]">
               <DropdownMenuRadioGroup
                 value={settings.chartSize || 'medium'}
-                onValueChange={handleChartSizeChange}
+                onValueChange={(value: string) => handleChartSizeChange(value as ChartSize)}
               >
                 <DropdownMenuRadioItem value="small">Small (200px height)</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="medium">Medium (300px height)</DropdownMenuRadioItem>
@@ -146,8 +146,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.chartType || 'bar-vertical'}
-                onValueChange={(value: ChartType) => 
-                  onSettingChange('chartType', value)
+                onValueChange={(value: string) => 
+                  onSettingChange('chartType', value as ChartType)
                 }
               >
                 <DropdownMenuRadioItem value="bar-vertical">Bar (Vertical)</DropdownMenuRadioItem>
@@ -165,8 +165,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.valueDisplay}
-                onValueChange={(value: ValueDisplayType) => 
-                  onSettingChange('valueDisplay', value)
+                onValueChange={(value: string) => 
+                  onSettingChange('valueDisplay', value as ValueDisplayType)
                 }
               >
                 <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
@@ -183,8 +183,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.labelColor || 'black'}
-                onValueChange={(value: LabelColor) => 
-                  onSettingChange('labelColor', value)
+                onValueChange={(value: string) => 
+                  onSettingChange('labelColor', value as LabelColor)
                 }
               >
                 <DropdownMenuRadioItem value="white">White</DropdownMenuRadioItem>
@@ -200,8 +200,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.legendPosition || 'right'}
-                onValueChange={(value: LegendPosition) => 
-                  onSettingChange('legendPosition', value)
+                onValueChange={(value: string) => 
+                  onSettingChange('legendPosition', value as LegendPosition)
                 }
               >
                 <DropdownMenuRadioItem value="none">Hidden</DropdownMenuRadioItem>
@@ -220,8 +220,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup
                   value={settings.labelPosition || 'outside'}
-                  onValueChange={(value: LabelPosition) => 
-                    onSettingChange('labelPosition', value)
+                  onValueChange={(value: string) => 
+                    onSettingChange('labelPosition', value as LabelPosition)
                   }
                 >
                   <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
@@ -240,8 +240,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup
                   value={settings.gridType || 'none'}
-                  onValueChange={(value: GridType) => 
-                    onSettingChange('gridType', value)
+                  onValueChange={(value: string) => 
+                    onSettingChange('gridType', value as GridType)
                   }
                 >
                   <DropdownMenuRadioItem value="none">None</DropdownMenuRadioItem>
@@ -259,8 +259,8 @@ export function ChartSettings({ settings, onSettingChange, type }: ChartSettings
             <DropdownMenuSubContent>
               <DropdownMenuRadioGroup
                 value={settings.colorScheme || 'default'}
-                onValueChange={(value: ColorScheme) => 
-                  onSettingChange('colorScheme', value)
+                onValueChange={(value: string) => 
+                  onSettingChange('colorScheme', value as ColorScheme)
                 }
               >
                 <DropdownMenuRadioItem value="default">Default</DropdownMenuRadioItem>

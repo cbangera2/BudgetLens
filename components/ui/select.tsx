@@ -123,6 +123,7 @@ const SelectItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
     selectionState?: SelectionState;
     onMultiStateChange?: (value: string, state: SelectionState) => void;
+    value: string;
   }
 >(({ className, children, value = '', selectionState = 0, onMultiStateChange, ...props }, ref) => {
   const handleClick = (e: React.MouseEvent) => {

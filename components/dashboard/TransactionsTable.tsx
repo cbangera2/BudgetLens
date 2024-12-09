@@ -55,7 +55,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
-    amount: "",
+    amount: 0,
     vendor: "",
     category: "",
     transactionType: ""
@@ -91,7 +91,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
     ) {
       onAddTransaction?.({
         date: newTransaction.date,
-        amount: parseFloat(newTransaction.amount as string),
+        amount: parseFloat(newTransaction.amount as unknown as string),
         vendor: newTransaction.vendor,
         category: newTransaction.category,
         transactionType: newTransaction.transactionType
@@ -99,7 +99,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
       setIsAddingTransaction(false);
       setNewTransaction({
         date: new Date().toISOString().split('T')[0],
-        amount: "",
+        amount: 0,
         vendor: "",
         category: "",
         transactionType: ""
@@ -118,7 +118,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
     ) {
       onUpdateTransaction?.(editingTransaction, {
         date: newTransaction.date,
-        amount: parseFloat(newTransaction.amount as string),
+        amount: parseFloat(newTransaction.amount as unknown as string),
         vendor: newTransaction.vendor,
         category: newTransaction.category,
         transactionType: newTransaction.transactionType
@@ -127,7 +127,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
       setEditingTransaction(null);
       setNewTransaction({
         date: new Date().toISOString().split('T')[0],
-        amount: "",
+        amount: 0,
         vendor: "",
         category: "",
         transactionType: ""
@@ -147,7 +147,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
     setEditingTransaction(transaction);
     setNewTransaction({
       date: transaction.date,
-      amount: transaction.amount.toString(),
+      amount: transaction.amount,
       vendor: transaction.vendor,
       category: transaction.category,
       transactionType: transaction.transactionType
@@ -179,7 +179,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
   const handleCopyTransaction = (transaction: Transaction) => {
     setNewTransaction({
       date: new Date().toISOString().split('T')[0],
-      amount: transaction.amount.toString(),
+      amount: transaction.amount,
       vendor: transaction.vendor,
       category: transaction.category,
       transactionType: transaction.transactionType
@@ -261,7 +261,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                   step="0.01"
                   placeholder="0.00"
                   value={newTransaction.amount}
-                  onChange={(e) => setNewTransaction(prev => ({ ...prev, amount: e.target.value }))}
+                  onChange={(e) => setNewTransaction(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
                   className="col-span-3"
                 />
               </div>
@@ -523,7 +523,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       setEditingTransaction(transaction);
                       setNewTransaction({
                         date: transaction.date,
-                        amount: transaction.amount.toString(),
+                        amount: transaction.amount,
                         vendor: transaction.vendor,
                         category: transaction.category,
                         transactionType: transaction.transactionType
@@ -587,7 +587,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                 step="0.01"
                 placeholder="0.00"
                 value={newTransaction.amount}
-                onChange={(e) => setNewTransaction(prev => ({ ...prev, amount: e.target.value }))}
+                onChange={(e) => setNewTransaction(prev => ({ ...prev, amount: parseFloat(e.target.value) }))}
                 className="col-span-3"
               />
             </div>
@@ -793,7 +793,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
               setEditingTransaction(null);
               setNewTransaction({
                 date: new Date().toISOString().split('T')[0],
-                amount: "",
+                amount: 0,
                 vendor: "",
                 category: "",
                 transactionType: ""

@@ -62,7 +62,7 @@ export function FilterBar({
       setEndDate(newEndDate);
       onDateFilter(newStartDate, newEndDate);
     }
-  }, [transactions.length]); // Only run when transactions change
+  }, [dateRange.max, dateRange.min, endDate, onDateFilter, startDate, transactions.length]); // Only run when transactions change
 
   const categories = Array.from(new Set(transactions.map(t => t.category)));
   const vendors = Array.from(new Set(transactions.map(t => t.vendor)));

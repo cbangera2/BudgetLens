@@ -66,7 +66,6 @@ export function SpendingChart({ transactions }: SpendingChartProps) {
   // Convert to array and sort by total amount
   const data = Object.entries(categoryMetrics)
     .map(([category, metrics]) => ({
-      name: category,
       ...metrics
     }))
     .sort((a, b) => {

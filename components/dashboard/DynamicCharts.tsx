@@ -153,7 +153,6 @@ export function DynamicCharts({
                   key={chart.id}
                   id={chart.id}
                   onDelete={() => handleRemoveChart(chart.id)}
-                  className="w-full"
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">
@@ -188,8 +187,8 @@ export function DynamicCharts({
                       }}
                       onTransactionTypeFilter={(includes, excludes) => {
                         const filtered = data.filter(t => {
-                          if (includes.length && !includes.includes(t.type)) return false;
-                          if (excludes.length && excludes.includes(t.type)) return false;
+                          if (includes.length && !includes.includes(t.transactionType)) return false;
+                          if (excludes.length && excludes.includes(t.transactionType)) return false;
                           return true;
                         });
                         handleFilter(chart.id, filtered);

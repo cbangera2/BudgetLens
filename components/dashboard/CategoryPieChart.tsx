@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { CategoryTotal, Transaction } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GenericChart } from "./GenericChart";
-import { ChartSettings } from "./ChartSettings";
+import { ChartSettings, ChartSettingsProps, ChartType, ValueDisplayType } from "./ChartSettings";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { isCreditTransaction } from "@/lib/utils/transactionUtils";
@@ -23,13 +23,13 @@ interface CategoryMetrics {
 }
 
 export function CategoryPieChart({ categoryTotals, transactions }: CategoryPieChartProps) {
-  const [chartSettings, setChartSettings] = useState({
+  const [chartSettings, setChartSettings] = useState<ChartSettingsProps["settings"]>({
+    chartType: 'pie',
     valueDisplay: 'value',
     chartHeight: 300,
     legendPosition: 'right',
     labelPosition: 'outside',
     animationDuration: 400,
-    chartType: 'pie'
   });
 
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['expenses']);

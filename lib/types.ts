@@ -16,3 +16,5 @@ export interface MonthlySpending {
   month: string;
   total: number;
 }
+
+export type MetricType = 'expenses' | 'income' | 'savings';

@@ -16,6 +16,7 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  LegendProps,
   LabelList
 } from "recharts";
 import { ChartSettingsProps } from "./ChartSettings";
@@ -190,10 +191,10 @@ export function GenericChart({
     animationDuration: settings.animationDuration
   };
 
-  const commonLegendProps = settings.legendPosition !== 'none' ? {
-    layout: settings.legendPosition === 'left' || settings.legendPosition === 'right' ? 'vertical' : 'horizontal' as const,
-    align: settings.legendPosition === 'left' ? 'left' : settings.legendPosition === 'right' ? 'right' : 'center',
-    verticalAlign: settings.legendPosition === 'top' ? 'top' : 'bottom',
+  const commonLegendProps: LegendProps | undefined = settings.legendPosition !== 'none' ? {
+    layout: settings.legendPosition === 'left' || settings.legendPosition === 'right' ? 'vertical' as 'vertical' : 'horizontal' as 'horizontal',
+    align: settings.legendPosition === 'left' ? 'left' : settings.legendPosition === 'right' ? 'right' : 'center' as 'left' | 'right' | 'center',
+    verticalAlign: settings.legendPosition === 'top' ? 'top' : 'bottom' ,
     wrapperStyle: {
       paddingTop: settings.legendPosition === 'bottom' ? '20px' : '0px',
       paddingBottom: settings.legendPosition === 'top' ? '20px' : '0px'
@@ -234,14 +235,14 @@ export function GenericChart({
 
   const commonBarProps = {
     label: settings.valueDisplay !== 'none' ? {
-      position: 'inside',
+      position: 'inside' as 'inside' | 'top' | 'bottom' | 'left' | 'right' | 'center',
       content: renderLabel
     } : false
   };
 
   const commonLineProps = {
     label: settings.valueDisplay !== 'none' ? {
-      position: 'top',
+      position: 'top' as 'inside' | 'top' | 'bottom' | 'left' | 'right' | 'center',
       content: renderLabel
     } : false
   };
@@ -285,7 +286,7 @@ export function GenericChart({
               >
               </Bar>
             ))}
-            {commonLegendProps && <Legend {...commonLegendProps} />}
+            {commonLegendProps && <Legend {...(commonLegendProps as any)} />}
           </BarChart>
         </ResponsiveContainer>
       );
@@ -314,7 +315,7 @@ export function GenericChart({
               >
               </Bar>
             ))}
-            {commonLegendProps && <Legend {...commonLegendProps} />}
+            {commonLegendProps && <Legend {...commonLegendProps as any} />}
           </BarChart>
         </ResponsiveContainer>
       );
@@ -344,7 +345,7 @@ export function GenericChart({
 
               </Line>
             ))}
-            {commonLegendProps && <Legend {...commonLegendProps} />}
+            {commonLegendProps && <Legend {...commonLegendProps as any} />}
           </LineChart>
         </ResponsiveContainer>
       );
@@ -371,7 +372,7 @@ export function GenericChart({
                 {...commonLineProps}
               />
             ))}
-            {commonLegendProps && <Legend {...commonLegendProps} />}
+            {commonLegendProps && <Legend {...commonLegendProps as any} />}
           </AreaChart>
         </ResponsiveContainer>
       );
@@ -416,22 +417,25 @@ export function GenericChart({
               cx="50%"
               cy="50%"
               outerRadius={80}
-              label={settings.labelPosition !== 'none' ? {
-                position: settings.labelPosition,
-                fill: settings.labelColor,
-                formatter: (entry: any) => {
-                  const total = pieData.reduce((sum: number, item: any) => sum + item.value, 0);
-                  const percent = (entry.value / total) * 100;
-                  
-                  if (settings.valueDisplay === 'percentage') {
-                    return `${percent.toFixed(1)}%`;
-                  } else if (settings.valueDisplay === 'value') {
-                    return formatValue(entry.value);
-                  } else if (settings.valueDisplay === 'both') {
-                    return `${formatValue(entry.value)} (${percent.toFixed(1)}%)`;
-                  }
-                  return entry.name;
+              label={settings.labelPosition !== 'none' ? (props: any) => {
+                const { value, name, x, y } = props;
+                const total = pieData.reduce((sum: number, item: any) => sum + item.value, 0);
+                const percent = (value / total) * 100;
+                let displayValue = '';
+
+                if (settings.valueDisplay === 'percentage') {
+                  displayValue = `${percent.toFixed(1)}%`;
+                } else if (settings.valueDisplay === 'value') {
+                  displayValue = formatValue(value);
+                } else if (settings.valueDisplay === 'both') {
+                  displayValue = `${formatValue(value)} (${percent.toFixed(1)}%)`;
                 }
+
+                return (
+                  <text x={x} y={y} fill={settings.labelColor} textAnchor="middle" dominantBaseline="central">
+                    {displayValue}
+                  </text>
+                );
               } : false}
             >
               {pieData.map((entry, index) => (
@@ -444,7 +448,7 @@ export function GenericChart({
                 entry.payload.name
               ]}
             />
-            {commonLegendProps && <Legend {...commonLegendProps} />}
+            {commonLegendProps && <Legend {...commonLegendProps as any} />}
           </PieChart>
         </ResponsiveContainer>
       );
