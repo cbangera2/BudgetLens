@@ -13,14 +13,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Pencil, Trash2, Copy } from "lucide-react";
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
   DialogTitle,
-  DialogTrigger,
+  DialogTrigger
 } from "@/components/ui/dialog";
 import {
   Command,
@@ -65,6 +65,15 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
   const [openVendor, setOpenVendor] = useState(false);
   const [sortColumn, setSortColumn] = useState<keyof Transaction | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const [isNewCategoryDialogOpen, setIsNewCategoryDialogOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+
+  const [isNewTypeDialogOpen, setIsNewTypeDialogOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+
+  const [isNewVendorDialogOpen, setIsNewVendorDialogOpen] = useState(false);
+  const [newVendorName, setNewVendorName] = useState('');
 
   const handleSort = (column: keyof Transaction) => {
     if (sortColumn === column) {
@@ -155,17 +164,43 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
     setIsEditingTransaction(true);
   };
 
-  const handleAddNewCategory = (category: string) => {
-    if (category && !uniqueCategories.includes(category)) {
-      setNewTransaction(prev => ({ ...prev, category }));
-      setOpenCategory(false);
+  const handleAddNewCategory = () => {
+    if (newCategoryName.trim()) {
+      // Add the new category to the list of unique categories
+      const updatedCategories = [...new Set([...uniqueCategories, newCategoryName.trim()])];
+      
+      // Update the categories
+      // setCategories(updatedCategories);
+      
+      // Set the new transaction's category to the newly added category
+      setNewTransaction(prev => ({ 
+        ...prev, 
+        category: newCategoryName.trim() 
+      }));
+      
+      // Reset and close the dialog
+      setNewCategoryName('');
+      setIsNewCategoryDialogOpen(false);
     }
   };
 
-  const handleAddNewType = (type: string) => {
-    if (type && !uniqueTypes.includes(type)) {
-      setNewTransaction(prev => ({ ...prev, transactionType: type }));
-      setOpenType(false);
+  const handleAddNewType = () => {
+    if (newTypeName.trim()) {
+      // Add the new type to the list of unique types
+      const updatedTypes = [...new Set([...uniqueTypes, newTypeName.trim()])];
+      
+      // Update the transaction types
+      // setTransactionTypes(updatedTypes);
+      
+      // Set the new transaction's type to the newly added type
+      setNewTransaction(prev => ({ 
+        ...prev, 
+        transactionType: newTypeName.trim() 
+      }));
+      
+      // Reset and close the dialog
+      setNewTypeName('');
+      setIsNewTypeDialogOpen(false);
     }
   };
 
@@ -316,9 +351,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandGroup>
                           <CommandItem
                             onSelect={() => {
-                              if (newTransaction.vendor) {
-                                handleAddNewVendor(newTransaction.vendor);
-                              }
+                              setIsNewVendorDialogOpen(true);
                             }}
                           >
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -381,9 +414,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandGroup>
                           <CommandItem
                             onSelect={() => {
-                              if (newTransaction.category) {
-                                handleAddNewCategory(newTransaction.category);
-                              }
+                              setIsNewCategoryDialogOpen(true);
                             }}
                           >
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -446,9 +477,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                         <CommandGroup>
                           <CommandItem
                             onSelect={() => {
-                              if (newTransaction.transactionType) {
-                                handleAddNewType(newTransaction.transactionType);
-                              }
+                              setIsNewTypeDialogOpen(true);
                             }}
                           >
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -469,6 +498,94 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={isNewCategoryDialogOpen} onOpenChange={setIsNewCategoryDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Category</DialogTitle>
+              <DialogDescription>
+                Enter the name of the new category.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="new-category-name" className="text-right text-sm">Category Name</label>
+                <Input
+                  id="new-category-name"
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="col-span-3"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsNewCategoryDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddNewCategory}>Add Category</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isNewTypeDialogOpen} onOpenChange={setIsNewTypeDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Type</DialogTitle>
+              <DialogDescription>
+                Enter the name of the new type.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="new-type-name" className="text-right text-sm">Type Name</label>
+                <Input
+                  id="new-type-name"
+                  type="text"
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  className="col-span-3"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsNewTypeDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleAddNewType}>Add Type</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isNewVendorDialogOpen} onOpenChange={setIsNewVendorDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Vendor</DialogTitle>
+              <DialogDescription>
+                Enter the name of the new vendor.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <label htmlFor="new-vendor-name" className="text-right text-sm">Vendor Name</label>
+                <Input
+                  id="new-vendor-name"
+                  type="text"
+                  value={newVendorName}
+                  onChange={(e) => setNewVendorName(e.target.value)}
+                  className="col-span-3"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsNewVendorDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => handleAddNewVendor(newVendorName)}>Add Vendor</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
       <div className="rounded-md border">
         <Table>
@@ -642,9 +759,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandGroup>
                         <CommandItem
                           onSelect={() => {
-                            if (newTransaction.vendor) {
-                              handleAddNewVendor(newTransaction.vendor);
-                            }
+                            setIsNewVendorDialogOpen(true);
                           }}
                         >
                           <PlusCircle className="mr-2 h-4 w-4" />
@@ -707,9 +822,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandGroup>
                         <CommandItem
                           onSelect={() => {
-                            if (newTransaction.category) {
-                              handleAddNewCategory(newTransaction.category);
-                            }
+                            setIsNewCategoryDialogOpen(true);
                           }}
                         >
                           <PlusCircle className="mr-2 h-4 w-4" />
@@ -772,9 +885,7 @@ export function TransactionsTable({ transactions, onAddTransaction, onUpdateTran
                       <CommandGroup>
                         <CommandItem
                           onSelect={() => {
-                            if (newTransaction.transactionType) {
-                              handleAddNewType(newTransaction.transactionType);
-                            }
+                            setIsNewTypeDialogOpen(true);
                           }}
                         >
                           <PlusCircle className="mr-2 h-4 w-4" />
