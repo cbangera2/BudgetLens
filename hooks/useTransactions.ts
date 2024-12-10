@@ -47,7 +47,9 @@ export const useTransactions = () => {
       if (!response.ok) throw new Error('Failed to add transaction');
       
       const newTransaction = await response.json();
-      setTransactions(prev => [...prev, newTransaction]);
+      
+      setTransactions(prev => [newTransaction, ...prev]);
+      
       return newTransaction;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add transaction');
