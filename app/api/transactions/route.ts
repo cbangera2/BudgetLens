@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const vendor = searchParams.get('vendor');
     const transactionType = searchParams.get('transactionType');
+    const amount = searchParams.get('amount');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
     if (category) where.category = category;
     if (vendor) where.vendor = vendor;
     if (transactionType) where.transactionType = transactionType;
+    if (amount) where.amount = parseFloat(amount);
     if (startDate || endDate) {
       where.date = {};
       if (startDate) where.date.gte = startDate;

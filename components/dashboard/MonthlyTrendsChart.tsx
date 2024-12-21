@@ -32,7 +32,7 @@ export function MonthlyTrendsChart({ transactions, chartType }: MonthlyTrendsCha
     chartHeight: 300,
     legendPosition: 'bottom',
     animationDuration: 400,
-    chartType: (chartType === 'bar-vertical' || chartType === 'bar-horizontal' ? 'bar' : chartType) as ChartSettingsProps['settings']['chartType']
+    chartType: chartType as ChartSettingsProps['settings']['chartType']
   });
 
   const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['expenses', 'income', 'savings']);

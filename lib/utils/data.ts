@@ -7,7 +7,7 @@ export const parseCSV = (csvContent: string): Transaction[] => {
     return {
       date,
       vendor,
-      amount: parseFloat(amount.replace('$', '')),
+      amount: parseFloat(amount.replace(/[^\d.-]/g, '')),
       category,
       transactionType
     };

@@ -97,11 +97,11 @@ export const useTransactions = () => {
     try {
       const lines = csvContent.trim().split('\n');
       const transactions = lines.slice(1).map(line => {
-        const [date, vendor, amount, category, transactionType] = line.split(',').map(item => item.trim());
+        const [date, vendor, amount, category, transactionType] = line.split(',').map(item => item.trim().replace(/^"|"$/g, ''));
         return {
           date,
           vendor,
-          amount: parseFloat(amount.replace('$', '')),
+          amount: parseFloat(amount.replace(/[^\d.-]/g, '')),
           category,
           transactionType
         };
