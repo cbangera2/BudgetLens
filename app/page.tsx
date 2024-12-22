@@ -19,6 +19,8 @@ import { DashboardCustomizer } from "@/components/dashboard/DashboardCustomizer"
 import BudgetGoals from "@/components/dashboard/BudgetGoals";
 import { SAMPLE_DATA, INITIAL_LAYOUT, RESET_FILTER_VALUE, INITIAL_BUDGET_GOALS } from "@/lib/utils/constants";
 import { useTransactions } from "@/hooks/useTransactions";
+import { AIProvider } from "@/context/AIContext";
+import { AIChat } from "@/components/AIChat";
 
 export default function Home() {
   const {
@@ -254,6 +256,9 @@ export default function Home() {
           </div>
         </SortableContext>
       </DndContext>
+      <AIProvider>
+        <AIChat />
+      </AIProvider>
     </main>
   );
 }
