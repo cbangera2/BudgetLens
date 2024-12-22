@@ -7,17 +7,23 @@ export async function POST(request: NextRequest) {
   try {
     const transactions = await request.json();
     
+    // Ensure each transaction has an amount
+    const processedTransactions = transactions.map((transaction: any) => ({
+      ...transaction,
+      amount: transaction.amount ?? 0, // Default to 0 if amount is missing
+    }));
+    
     // If it's a single transaction
-    if (!Array.isArray(transactions)) {
+    if (!Array.isArray(processedTransactions)) {
       const transaction = await prisma.transaction.create({
-        data: transactions,
+        data: processedTransactions,
       });
       return NextResponse.json(transaction);
     }
     
     // If it's an array of transactions (CSV import)
     const createdTransactions = await prisma.transaction.createMany({
-      data: transactions,
+      data: processedTransactions,
       skipDuplicates: true,
     });
     

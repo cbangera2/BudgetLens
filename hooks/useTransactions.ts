@@ -101,7 +101,7 @@ export const useTransactions = () => {
         return {
           date,
           vendor,
-          amount: parseFloat(amount.replace(/[^\d.-]/g, '')),
+          amount: amount ? parseFloat(amount.replace(/[^\d.-]/g, '')) : 0,
           category,
           transactionType
         };

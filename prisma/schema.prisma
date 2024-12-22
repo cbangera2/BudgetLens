@@ -17,7 +17,7 @@ model Transaction {
   id              String   @id @default(uuid())
   date            String
   vendor          String
-  amount          Float
+  amount          Float?   @default(0.0)
   category        String
   transactionType String
   createdAt       DateTime @default(now())
