@@ -27,9 +27,15 @@ check_prerequisites() {
         exit 1
     fi
     
-    # Check PostgreSQL
+    # Check PostgreSQL tools
     if ! command_exists psql; then
-        echo -e "${YELLOW}Warning: PostgreSQL is not detected. Ensure you have a PostgreSQL server running.${NC}"
+        echo -e "${RED}psql is not installed. Please install PostgreSQL first.${NC}"
+        exit 1
+    fi
+    
+    if ! command_exists createdb; then
+        echo -e "${RED}createdb is not installed. Please install PostgreSQL first.${NC}"
+        exit 1
     fi
 }
 
@@ -53,6 +59,36 @@ install_dependencies() {
 # Setup database
 setup_database() {
     echo -e "${YELLOW}Setting up database...${NC}"
+    
+    # Check if DATABASE_URL is set in .env
+    if [ -f .env ]; then
+        # Source .env file to get environment variables
+        set -a
+        source .env
+        set +a
+        
+        # Validate DATABASE_URL
+        if [ -z "$DATABASE_URL" ]; then
+            echo -e "${RED}Error: DATABASE_URL is not set in .env file.${NC}"
+            exit 1
+        fi
+        
+        # Extract database connection details
+        DB_HOST=$(echo "$DATABASE_URL" | sed -E 's/.*:\/\/([^:]+):?([0-9]+)?@([^:/]+).*/\3/')
+        DB_PORT=$(echo "$DATABASE_URL" | sed -E 's/.*:\/\/[^:]+:?([0-9]+)?@[^:/]+:?([0-9]+)?.*/\2/' | grep -E '^[0-9]+$' || echo "5432")
+        DB_NAME=$(echo "$DATABASE_URL" | sed -E 's/.*\/([^?]+).*/\1/')
+        
+        # Attempt to create database
+        echo -e "${YELLOW}Attempting to create database: $DB_NAME${NC}"
+        if PGPASSWORD=$(echo "$DATABASE_URL" | sed -E 's/.*:\/\/[^:]+:([^@]+)@.*/\1/') createdb -h "$DB_HOST" -p "$DB_PORT" "$DB_NAME" 2>/dev/null; then
+            echo -e "${GREEN}Database $DB_NAME created successfully.${NC}"
+        else
+            echo -e "${YELLOW}Database $DB_NAME may already exist or creation failed. Continuing...${NC}"
+        fi
+    else
+        echo -e "${RED}Error: .env file not found. Please create .env file with DATABASE_URL.${NC}"
+        exit 1
+    fi
     
     # Generate Prisma client
     npx prisma generate
