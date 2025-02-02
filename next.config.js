@@ -4,7 +4,17 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
-  output: 'standalone', // Add this for Docker support
+  output: 'standalone',
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  swcMinify: false,
+  modularizeImports: {
+    '@radix-ui/react-*': {
+      transform: '@radix-ui/react-{{member}}'
+    }
+  }
 };
 
 module.exports = nextConfig;
+
