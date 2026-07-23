@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "perf": "warn",
+    "suspicious": "error"
+  },
+  "plugins": ["react", "typescript", "unicorn", "jsx-a11y", "vitest"],
+  "options": {
+    "typeAware": true,
+    "maxWarnings": 0
+  },
+  "ignorePatterns": [
+    ".next/**",
+    "components/**",
+    "coverage/**",
+    "dist/**",
+    "node_modules/**",
+    "playwright-report/**",
+    "test-results/**"
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "jsx-a11y/heading-has-content": "off",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error"
+  }
+}

@@ -1,0 +1,4 @@
+Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Provider,Labels,Notes
+2026-01-03,"Example Market, North",-42.50,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,"weekly;essential","A synthetic, quoted note"
+1/4/2026,"Quoted ""Merchant""",1250.00,Income,Credit,Everyday Checking,Checking,Sample Credit Union,income,"Synthetic
+multiline note"

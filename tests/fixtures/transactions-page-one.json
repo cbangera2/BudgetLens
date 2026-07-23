@@ -1,0 +1,33 @@
+{
+  "data": {
+    "prime": {
+      "transactionsHub": {
+        "transactionPage": {
+          "transactions": [
+            {
+              "id": "synthetic-json-1",
+              "date": "2026-03-01T12:00:00Z",
+              "description": "Invented Corner Shop",
+              "amount": { "value": 18.75 },
+              "category": { "name": "Shopping", "type": "EXPENSE" },
+              "transactionType": "debit",
+              "account": {
+                "name": "Sample Checking",
+                "type": "CHECKING",
+                "providerName": "Example Cooperative"
+              }
+            },
+            {
+              "id": "synthetic-json-2",
+              "date": "2026-03-02",
+              "merchant": { "name": "Fictional Employer" },
+              "amount": { "value": 2500 },
+              "category": { "name": "Paycheck", "type": "INCOME" },
+              "account": { "name": "Sample Checking", "accountType": "CHECKING" }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

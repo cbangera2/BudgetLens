@@ -8,12 +8,9 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
 # production
-/build
+/dist
+/.next/
 
 # misc
 .DS_Store
@@ -38,9 +35,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Prisma
-prisma/migrations/
-prisma/dev.db
+# Private financial and browser data
+*.har
+*.csv
+*.db
+*.sqlite
+*.sqlite3
+.local-fixtures/
+# Synthetic fixtures are safe and intentionally tracked
+!tests/fixtures/*.csv
 
 # IDE specific files
 .vscode/
@@ -62,9 +65,6 @@ jspm_packages/
 # Optional npm cache directory
 .npm
 
-# Optional eslint cache
-.eslintcache
-
 # Optional REPL history
 .node_repl_history
 
@@ -80,3 +80,7 @@ jspm_packages/
 # Temporary files
 .temp/
 temp/
+
+# Browser test artifacts
+/playwright-report/
+/test-results/
