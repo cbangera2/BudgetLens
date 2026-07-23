@@ -7,7 +7,7 @@ investment-history exports from
 Financial data stays in the browser's IndexedDB storage. BudgetLens has no account system,
 analytics, application server, or database service, and it does not upload imported files.
 
-![BudgetLens 2.0 dashboard populated with synthetic financial data](docs/images/budgetlens-dashboard.jpg)
+![BudgetLens 1.0 dashboard populated with synthetic financial data](docs/images/budgetlens-dashboard.jpg)
 
 _The screenshot contains invented demo data only._
 
@@ -84,9 +84,9 @@ Backups contain financial data and should be stored privately.
 Never commit real financial exports, HAR files, credentials, generated backups, browser databases,
 or screenshots containing personal data.
 
-## Version 2 migration
+## Migration from the legacy app
 
-BudgetLens 2.0 is a clean local-first rewrite. Data from the previous Next.js/PostgreSQL application
+BudgetLens 1.0 is a clean local-first rewrite. Data from the previous Next.js/PostgreSQL application
 is not migrated automatically. Re-import your Credit Karma exports into the new browser app.
 
 Browser data is tied to the exact site origin. Changing the hostname, port, or deployment URL creates
@@ -139,7 +139,7 @@ and which flows were manually tested.
 
 ## Changelog
 
-### 2.0.0 — July 2026
+### 1.0.0 — July 2026
 
 - Replaced Next.js, PostgreSQL, Prisma, Docker, npm, and ESLint with a static Vite, pnpm, Oxlint,
   and Oxfmt application.
@@ -154,9 +154,8 @@ and which flows were manually tested.
 - Added component, domain, import, accessibility, and desktop/mobile browser coverage with hardened
   CI.
 
-Earlier release history remains available in Git.
+Earlier development history remains available in Git.
 
 ## Credits
 
-Developed by [Chirag Bangera](https://github.com/cbangera2) and built with
-[shadcn/ui](https://ui.shadcn.com/).
+Developed by [Chirag Bangera](https://github.com/cbangera2).

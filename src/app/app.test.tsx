@@ -37,7 +37,7 @@ describe("BudgetLens application shell", () => {
       expect(link).toHaveAttribute("rel", "noopener noreferrer")
     }
 
-    expect(footer).toHaveTextContent("BudgetLens v2.0.0")
+    expect(footer).toHaveTextContent("BudgetLens v1.0.0")
     expect(footer).not.toHaveTextContent("Not affiliated with Credit Karma")
     expect(footer).not.toHaveTextContent("Credit Karma transactions")
     expect(footer).not.toHaveTextContent("TMOAP")
