@@ -62,6 +62,8 @@ describe("ImportPage", () => {
         { series: "netWorth", date: "2026-01-01", valueMinor: 100_000 },
         { series: "netWorth", date: "2026-02-01", valueMinor: 110_000 },
       ],
+      wealthBreakdown: [],
+      wealthAccounts: [],
       issues: [],
       duplicateFile: false,
       duplicateCount: 0,
@@ -90,6 +92,8 @@ describe("ImportPage", () => {
       rowCount: 2,
       transactions: [],
       wealth: [],
+      wealthBreakdown: [],
+      wealthAccounts: [],
       issues: [],
       duplicateFile: false,
       duplicateCount: 0,
@@ -139,6 +143,8 @@ describe("ImportPage", () => {
       },
       deletedTransactionCount: 2,
       deletedWealthCount: 0,
+      deletedWealthBreakdownCount: 0,
+      deletedWealthAccountCount: 0,
     })
   })
 

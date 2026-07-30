@@ -1,7 +1,16 @@
 import Papa from "papaparse"
 import { z } from "zod"
 
-import type { TransactionDraft, WealthSeries, WealthSnapshotDraft } from "@/domain/models"
+import type {
+  TransactionDraft,
+  WealthAccountSnapshotDraft,
+  WealthAccountType,
+  WealthBreakdownSnapshotDraft,
+  WealthSection,
+  WealthSegment,
+  WealthSeries,
+  WealthSnapshotDraft,
+} from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import {
   DEFAULT_IMPORT_LIMITS,
@@ -335,6 +344,8 @@ export async function parseJsonImport(
     rowCount: rows.length,
     transactions,
     wealth: [],
+    wealthBreakdown: [],
+    wealthAccounts: [],
     issues,
   }
 }
@@ -367,6 +378,73 @@ function parseWealth(
   const value = moneySchema.safeParse(raw[valueHeader] ?? "")
   if (!value.success) throw new Error(`Invalid value: ${describeZodError(value.error)}`)
   return { series, date: date.data, valueMinor: value.data }
+}
+
+function parseSnapshotDate(value: string): string {
+  const date = dateSchema.safeParse(jsonDate(value))
+  if (!date.success) throw new Error(`Invalid As Of: ${describeZodError(date.error)}`)
+  return date.data
+}
+
+function parseWealthBreakdown(raw: Record<string, string>): WealthBreakdownSnapshotDraft {
+  const sectionValue = raw.section?.trim().toLocaleLowerCase()
+  if (sectionValue !== "assets" && sectionValue !== "debts") {
+    throw new Error("Section must be assets or debts.")
+  }
+  const segmentKey =
+    raw.segment
+      ?.trim()
+      .toLocaleLowerCase()
+      .replaceAll(/[\s_-]/g, "") ?? ""
+  const segments: Record<string, WealthSegment> = {
+    cash: "cash",
+    investments: "investments",
+    property: "property",
+    creditcards: "creditCards",
+    loans: "loans",
+  }
+  const segment = segments[segmentKey]
+  if (!segment) {
+    throw new Error("Segment must be cash, investments, property, creditCards, or loans.")
+  }
+  const expectedSection: WealthSection =
+    segment === "creditCards" || segment === "loans" ? "debts" : "assets"
+  if (sectionValue !== expectedSection) {
+    throw new Error(`${segment} must use the ${expectedSection} section.`)
+  }
+  const value = moneySchema.safeParse(raw.balance ?? "")
+  if (!value.success) throw new Error(`Invalid Balance: ${describeZodError(value.error)}`)
+
+  return {
+    date: parseSnapshotDate(raw["as of"] ?? ""),
+    section: sectionValue,
+    segment,
+    valueMinor: value.data,
+    descriptor: nullable(raw.descriptor),
+  }
+}
+
+function isWealthAccountType(value: string): value is WealthAccountType {
+  return value === "cash" || value === "investments" || value === "property"
+}
+
+function parseWealthAccount(raw: Record<string, string>): WealthAccountSnapshotDraft {
+  const accountTypeValue = raw["account type"]?.trim().toLocaleLowerCase() ?? ""
+  if (!isWealthAccountType(accountTypeValue)) {
+    throw new Error("Account Type must be cash, investments, or property.")
+  }
+  const sourceLabel = raw["source label"]?.trim()
+  if (!sourceLabel) throw new Error("Source Label is required.")
+  const value = moneySchema.safeParse(raw.balance ?? "")
+  if (!value.success) throw new Error(`Invalid Balance: ${describeZodError(value.error)}`)
+
+  return {
+    date: parseSnapshotDate(raw["as of"] ?? ""),
+    accountType: accountTypeValue,
+    sourceLabel,
+    valueMinor: value.data,
+    descriptor: nullable(raw.descriptor),
+  }
 }
 
 export async function parseImportText(
@@ -404,7 +482,17 @@ export async function parseImportText(
   const fieldSet = new Set(fields)
   let kind: ParsedImport["kind"]
   let wealthHeader: string | null = null
-  if (fieldSet.has("date") && fieldSet.has("net worth") && fields.length === 2) {
+  const isBreakdown = ["as of", "section", "segment", "balance", "descriptor"].every((field) =>
+    fieldSet.has(field),
+  )
+  const isWealthAccounts = ["as of", "account type", "source label", "balance", "descriptor"].every(
+    (field) => fieldSet.has(field),
+  )
+  if (isBreakdown && fields.length === 5) {
+    kind = "wealthBreakdown"
+  } else if (isWealthAccounts && fields.length === 5) {
+    kind = "wealthAccounts"
+  } else if (fieldSet.has("date") && fieldSet.has("net worth") && fields.length === 2) {
     kind = "netWorth"
     wealthHeader = "net worth"
   } else if (fieldSet.has("date") && fieldSet.has("investment value") && fields.length === 2) {
@@ -414,7 +502,7 @@ export async function parseImportText(
     kind = "transactions"
   } else {
     throw new Error(
-      "Unsupported headers. Expected Date and Amount, Date and Net Worth, or Date and Investment Value.",
+      "Unsupported headers. Expected a transaction, wealth history, net worth breakdown, or wealth accounts CSV.",
     )
   }
 
@@ -433,6 +521,8 @@ export async function parseImportText(
 
   const transactions: TransactionDraft[] = []
   const wealth: WealthSnapshotDraft[] = []
+  const wealthBreakdown: WealthBreakdownSnapshotDraft[] = []
+  const wealthAccounts: WealthAccountSnapshotDraft[] = []
   const issues: ImportIssue[] = []
 
   parsed.data.forEach((candidate, index) => {
@@ -444,7 +534,13 @@ export async function parseImportText(
     }
     try {
       if (kind === "transactions") transactions.push(parseTransaction(rawResult.data, mapping))
-      else wealth.push(parseWealth(rawResult.data, wealthHeader!, kind))
+      else if (kind === "wealthBreakdown") {
+        wealthBreakdown.push(parseWealthBreakdown(rawResult.data))
+      } else if (kind === "wealthAccounts") {
+        wealthAccounts.push(parseWealthAccount(rawResult.data))
+      } else {
+        wealth.push(parseWealth(rawResult.data, wealthHeader!, kind))
+      }
     } catch (error) {
       issues.push({ row, message: error instanceof Error ? error.message : "Invalid row." })
     }
@@ -457,6 +553,8 @@ export async function parseImportText(
     rowCount: parsed.data.length,
     transactions,
     wealth,
+    wealthBreakdown,
+    wealthAccounts,
     issues,
   }
 }

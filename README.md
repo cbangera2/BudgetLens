@@ -18,7 +18,9 @@ _The screenshot contains invented demo data only._
 - Preview every import, skip duplicate transactions by default, continue when one JSON file fails,
   and remove the records associated with a completed import batch.
 - Import `Date,Net Worth` and `Date,Investment Value` histories independently.
-- Compare net worth and investments over 1M, 3M, 6M, YTD, 1Y, or all available history.
+- Import dated net-worth breakdown and account-source snapshots from Credit Karma Extractor.
+- Compare net worth, investments, assets, debts, five breakdown segments, and available account
+  sources over 1M, 3M, 6M, YTD, 1Y, or all available history.
 - Search, filter, sort, add, edit, and delete transactions.
 - Track monthly or yearly category budgets.
 - Rearrange, hide, and restore overview modules.
@@ -74,6 +76,22 @@ Date,Investment Value
 ```
 
 Review the detected type, duplicate policy, conflicts, and row counts before confirming an import.
+
+Current snapshot exports from Credit Karma Extractor use these additional shapes:
+
+```csv
+As Of,Section,Segment,Balance,Descriptor
+2026-07-29T12:00:00.000Z,assets,cash,1200.50,2 accounts
+2026-07-29T12:00:00.000Z,debts,creditCards,500.25,3 accounts
+```
+
+```csv
+As Of,Account Type,Source Label,Balance,Descriptor
+2026-07-29T12:00:00.000Z,investments,Synthetic Brokerage,8000.00,Connected
+```
+
+Import snapshots from different dates to build segment and account histories. Same-date conflicts
+can be kept or replaced explicitly, and removing an import removes only its associated rows.
 
 ## Privacy and backups
 
@@ -138,6 +156,11 @@ checks above, and use synthetic fixtures only. Pull requests should state which 
 and which flows were manually tested.
 
 ## Changelog
+
+### Unreleased
+
+- Added dated asset/debt breakdown and account-source imports, versioned local storage, backups,
+  summary metrics, editable charts, accessible tables, and import-batch removal.
 
 ### 1.0.0 — July 2026
 

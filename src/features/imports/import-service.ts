@@ -2,7 +2,16 @@ import Dexie from "dexie"
 
 import type { BudgetLensDatabase } from "@/db/database"
 import { database } from "@/db/database"
-import type { ImportBatch, Transaction, TransactionDraft, WealthSnapshot } from "@/domain/models"
+import type {
+  ImportBatch,
+  Transaction,
+  TransactionDraft,
+  WealthAccountSnapshot,
+  WealthAccountSnapshotDraft,
+  WealthBreakdownSnapshot,
+  WealthBreakdownSnapshotDraft,
+  WealthSnapshot,
+} from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { parseImportContent, sanitizeImportSourceName } from "@/features/imports/parser"
 import {
@@ -47,6 +56,24 @@ function wealthFingerprint(series: string, date: string, valueMinor: number): Pr
   return digest(JSON.stringify([series, date, valueMinor]))
 }
 
+function wealthBreakdownFingerprint(draft: WealthBreakdownSnapshotDraft): Promise<string> {
+  return digest(
+    JSON.stringify([draft.date, draft.section, draft.segment, draft.valueMinor, draft.descriptor]),
+  )
+}
+
+function wealthAccountFingerprint(draft: WealthAccountSnapshotDraft): Promise<string> {
+  return digest(
+    JSON.stringify([
+      draft.date,
+      draft.accountType,
+      draft.sourceLabel,
+      draft.valueMinor,
+      draft.descriptor,
+    ]),
+  )
+}
+
 export class ImportService {
   constructor(private readonly db: BudgetLensDatabase = database) {}
 
@@ -79,7 +106,7 @@ export class ImportService {
           importableCount += 1
         }
       }
-    } else {
+    } else if (parsed.kind === "netWorth" || parsed.kind === "investment") {
       const existing = new Map(
         (await this.db.wealth.where("series").equals(parsed.kind).toArray()).map((row) => [
           row.date,
@@ -97,6 +124,50 @@ export class ImportService {
           } else duplicateCount += 1
         } else {
           existing.set(draft.date, draft.valueMinor)
+          importableCount += 1
+        }
+      }
+    } else if (parsed.kind === "wealthBreakdown") {
+      const existing = new Map(
+        (await this.db.wealthBreakdown.toArray()).map((row) => [
+          `${row.segment}\0${row.date}`,
+          row.valueMinor,
+        ]),
+      )
+      for (const draft of parsed.wealthBreakdown) {
+        const key = `${draft.segment}\0${draft.date}`
+        const prior = existing.get(key)
+        if (prior === draft.valueMinor) duplicateCount += 1
+        else if (prior !== undefined) {
+          if (wealthPolicy === "replace") {
+            replacementCount += 1
+            importableCount += 1
+            existing.set(key, draft.valueMinor)
+          } else duplicateCount += 1
+        } else {
+          existing.set(key, draft.valueMinor)
+          importableCount += 1
+        }
+      }
+    } else {
+      const existing = new Map(
+        (await this.db.wealthAccounts.toArray()).map((row) => [
+          `${row.accountType}\0${row.sourceLabel}\0${row.date}`,
+          row.valueMinor,
+        ]),
+      )
+      for (const draft of parsed.wealthAccounts) {
+        const key = `${draft.accountType}\0${draft.sourceLabel}\0${draft.date}`
+        const prior = existing.get(key)
+        if (prior === draft.valueMinor) duplicateCount += 1
+        else if (prior !== undefined) {
+          if (wealthPolicy === "replace") {
+            replacementCount += 1
+            importableCount += 1
+            existing.set(key, draft.valueMinor)
+          } else duplicateCount += 1
+        } else {
+          existing.set(key, draft.valueMinor)
           importableCount += 1
         }
       }
@@ -237,9 +308,27 @@ export class ImportService {
         fingerprint: await wealthFingerprint(draft.series, draft.date, draft.valueMinor),
       })),
     )
+    const wealthBreakdownCandidates = await Promise.all(
+      preview.wealthBreakdown.map(async (draft) => ({
+        draft,
+        fingerprint: await wealthBreakdownFingerprint(draft),
+      })),
+    )
+    const wealthAccountCandidates = await Promise.all(
+      preview.wealthAccounts.map(async (draft) => ({
+        draft,
+        fingerprint: await wealthAccountFingerprint(draft),
+      })),
+    )
     const result = await this.db.transaction(
       "rw",
-      [this.db.transactions, this.db.wealth, this.db.imports],
+      [
+        this.db.transactions,
+        this.db.wealth,
+        this.db.wealthBreakdown,
+        this.db.wealthAccounts,
+        this.db.imports,
+      ],
       async () => {
         if (
           preview.duplicatePolicy === "skip" &&
@@ -277,7 +366,7 @@ export class ImportService {
           }
           if (rows.length) await this.db.transactions.bulkAdd(rows)
           importedCount = rows.length
-        } else {
+        } else if (preview.kind === "netWorth" || preview.kind === "investment") {
           for (const { draft, fingerprint } of wealthCandidates) {
             // oxlint-disable-next-line no-await-in-loop -- Same-date decisions are order dependent.
             const existing = await this.db.wealth
@@ -301,6 +390,60 @@ export class ImportService {
             }
             // oxlint-disable-next-line no-await-in-loop -- Preserve source order for same-date rows.
             await this.db.wealth.put(snapshot)
+            importedCount += 1
+            if (existing) replacedCount += 1
+          }
+        } else if (preview.kind === "wealthBreakdown") {
+          for (const { draft, fingerprint } of wealthBreakdownCandidates) {
+            // oxlint-disable-next-line no-await-in-loop -- Same-date decisions are order dependent.
+            const existing = await this.db.wealthBreakdown
+              .where("[segment+date]")
+              .equals([draft.segment, draft.date])
+              .first()
+            if (existing?.valueMinor === draft.valueMinor) {
+              duplicateCount += 1
+              continue
+            }
+            if (existing && preview.wealthPolicy === "skip") {
+              duplicateCount += 1
+              continue
+            }
+            const snapshot: WealthBreakdownSnapshot = {
+              ...draft,
+              id: existing?.id ?? identifier(),
+              importBatchId: batchId,
+              fingerprint,
+              createdAt: importedAt,
+            }
+            // oxlint-disable-next-line no-await-in-loop -- Preserve source order for same-date rows.
+            await this.db.wealthBreakdown.put(snapshot)
+            importedCount += 1
+            if (existing) replacedCount += 1
+          }
+        } else {
+          for (const { draft, fingerprint } of wealthAccountCandidates) {
+            // oxlint-disable-next-line no-await-in-loop -- Same-account decisions are order dependent.
+            const existing = await this.db.wealthAccounts
+              .where("[accountType+sourceLabel+date]")
+              .equals([draft.accountType, draft.sourceLabel, draft.date])
+              .first()
+            if (existing?.valueMinor === draft.valueMinor) {
+              duplicateCount += 1
+              continue
+            }
+            if (existing && preview.wealthPolicy === "skip") {
+              duplicateCount += 1
+              continue
+            }
+            const snapshot: WealthAccountSnapshot = {
+              ...draft,
+              id: existing?.id ?? identifier(),
+              importBatchId: batchId,
+              fingerprint,
+              createdAt: importedAt,
+            }
+            // oxlint-disable-next-line no-await-in-loop -- Preserve source order for same-account rows.
+            await this.db.wealthAccounts.put(snapshot)
             importedCount += 1
             if (existing) replacedCount += 1
           }
@@ -331,23 +474,46 @@ export class ImportService {
   async deleteBatch(batchId: string): Promise<ImportDeletionReceipt> {
     return this.db.transaction(
       "rw",
-      [this.db.transactions, this.db.wealth, this.db.imports],
+      [
+        this.db.transactions,
+        this.db.wealth,
+        this.db.wealthBreakdown,
+        this.db.wealthAccounts,
+        this.db.imports,
+      ],
       async () => {
         const batch = await this.db.imports.get(batchId)
         if (!batch) throw new Error("Import not found.")
 
         const transactionRows = this.db.transactions.where("importBatchId").equals(batchId)
         const wealthRows = this.db.wealth.where("importBatchId").equals(batchId)
-        const [deletedTransactionCount, deletedWealthCount] = await Promise.all([
+        const breakdownRows = this.db.wealthBreakdown.where("importBatchId").equals(batchId)
+        const accountRows = this.db.wealthAccounts.where("importBatchId").equals(batchId)
+        const [
+          deletedTransactionCount,
+          deletedWealthCount,
+          deletedWealthBreakdownCount,
+          deletedWealthAccountCount,
+        ] = await Promise.all([
           transactionRows.count(),
           wealthRows.count(),
+          breakdownRows.count(),
+          accountRows.count(),
         ])
 
         await transactionRows.delete()
         await wealthRows.delete()
+        await breakdownRows.delete()
+        await accountRows.delete()
         await this.db.imports.delete(batchId)
 
-        return { batch, deletedTransactionCount, deletedWealthCount }
+        return {
+          batch,
+          deletedTransactionCount,
+          deletedWealthCount,
+          deletedWealthBreakdownCount,
+          deletedWealthAccountCount,
+        }
       },
     )
   }

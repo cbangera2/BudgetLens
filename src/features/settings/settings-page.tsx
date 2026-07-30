@@ -23,12 +23,20 @@ export function SettingsPage() {
   const [confirmation, setConfirmation] = useState("")
   const [busy, setBusy] = useState(false)
   const counts = useLiveQuery(async () => {
-    const [transactions, wealth, imports] = await Promise.all([
+    const [transactions, wealth, wealthBreakdown, wealthAccounts, imports] = await Promise.all([
       repositories.transactions.list(),
       repositories.wealth.list(),
+      repositories.wealthBreakdown.list(),
+      repositories.wealthAccounts.list(),
       repositories.imports.list(),
     ])
-    return { transactions: transactions.length, wealth: wealth.length, imports: imports.length }
+    return {
+      transactions: transactions.length,
+      wealth: wealth.length,
+      wealthBreakdown: wealthBreakdown.length,
+      wealthAccounts: wealthAccounts.length,
+      imports: imports.length,
+    }
   }, [])
 
   async function downloadBackup() {
@@ -109,7 +117,7 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <dl className="grid gap-3 text-sm sm:grid-cols-3">
+          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-lg bg-muted p-3">
               <dt className="text-muted-foreground">Transactions</dt>
               <dd className="mt-1 text-xl font-semibold tabular-nums">
@@ -119,6 +127,18 @@ export function SettingsPage() {
             <div className="rounded-lg bg-muted p-3">
               <dt className="text-muted-foreground">Wealth observations</dt>
               <dd className="mt-1 text-xl font-semibold tabular-nums">{counts?.wealth ?? 0}</dd>
+            </div>
+            <div className="rounded-lg bg-muted p-3">
+              <dt className="text-muted-foreground">Breakdown snapshots</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">
+                {counts?.wealthBreakdown ?? 0}
+              </dd>
+            </div>
+            <div className="rounded-lg bg-muted p-3">
+              <dt className="text-muted-foreground">Account snapshots</dt>
+              <dd className="mt-1 text-xl font-semibold tabular-nums">
+                {counts?.wealthAccounts ?? 0}
+              </dd>
             </div>
             <div className="rounded-lg bg-muted p-3">
               <dt className="text-muted-foreground">Import batches</dt>
@@ -145,7 +165,8 @@ export function SettingsPage() {
         <CardHeader>
           <CardTitle>Delete all local data</CardTitle>
           <CardDescription>
-            This permanently removes transactions, wealth history, budgets, and import history.
+            This permanently removes transactions, wealth history, breakdowns, account snapshots,
+            budgets, and import history.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

@@ -2,7 +2,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react"
 import type React from "react"
 import { describe, expect, it, vi } from "vitest"
 
-import type { WealthSnapshot } from "@/domain/models"
+import type {
+  WealthAccountSnapshot,
+  WealthBreakdownSnapshot,
+  WealthSnapshot,
+} from "@/domain/models"
 import { NetWorthDashboard } from "@/features/net-worth/net-worth-dashboard"
 
 vi.mock("recharts", async (importOriginal) => {
@@ -13,6 +17,8 @@ vi.mock("recharts", async (importOriginal) => {
       <div data-testid="wealth-chart">{children}</div>
     ),
     Area: ({ name }: { name?: string }) => <span>{name}</span>,
+    BarChart: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    Bar: ({ name }: { name?: string }) => <span>{name}</span>,
     CartesianGrid: () => null,
     XAxis: () => null,
     YAxis: () => null,
@@ -42,6 +48,36 @@ const history = [
   snapshot("netWorth", "2026-07-01", 12_000_00),
   snapshot("investment", "2026-07-01", 3_000_00),
 ]
+
+function breakdown(
+  segment: WealthBreakdownSnapshot["segment"],
+  section: WealthBreakdownSnapshot["section"],
+  valueMinor: number,
+): WealthBreakdownSnapshot {
+  return {
+    id: `breakdown-${segment}`,
+    date: "2026-07-20",
+    segment,
+    section,
+    valueMinor,
+    descriptor: "Synthetic snapshot",
+    importBatchId: "synthetic-breakdown",
+    fingerprint: `synthetic-${segment}`,
+    createdAt: "2026-07-20T12:00:00.000Z",
+  }
+}
+
+const account: WealthAccountSnapshot = {
+  id: "account-1",
+  date: "2026-07-20",
+  accountType: "cash",
+  sourceLabel: "Synthetic Checking",
+  valueMinor: 1_000_00,
+  descriptor: "Connected",
+  importBatchId: "synthetic-accounts",
+  fingerprint: "synthetic-account",
+  createdAt: "2026-07-20T12:00:00.000Z",
+}
 
 describe("NetWorthDashboard", () => {
   it("explains how to begin when no data has been imported", () => {
@@ -106,5 +142,31 @@ describe("NetWorthDashboard", () => {
     expect(screen.getByText(/only one observation/i)).toBeInTheDocument()
     expect(screen.getByText(/includes a negative value/i)).toBeInTheDocument()
     expect(screen.getByText("One observation—change unavailable")).toBeInTheDocument()
+  })
+
+  it("shows segment totals and detailed source balances without legacy history", () => {
+    render(
+      <NetWorthDashboard
+        snapshots={[]}
+        breakdown={[
+          breakdown("cash", "assets", 1_000_00),
+          breakdown("investments", "assets", 4_000_00),
+          breakdown("creditCards", "debts", 500_00),
+        ]}
+        accounts={[account]}
+        today="2026-07-22"
+        locale="en-US"
+      />,
+    )
+
+    expect(screen.getByText("Latest assets")).toBeInTheDocument()
+    expect(screen.getByText("$5,000.00")).toBeInTheDocument()
+    expect(screen.getByText("Latest debts")).toBeInTheDocument()
+    expect(screen.getAllByText("$500.00").length).toBeGreaterThan(0)
+    expect(screen.getByText("Assets minus debts")).toBeInTheDocument()
+    expect(screen.getByText("$4,500.00")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Net worth breakdown history" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Latest account balances" })).toBeInTheDocument()
+    expect(screen.getAllByText("Synthetic Checking").length).toBeGreaterThan(0)
   })
 })

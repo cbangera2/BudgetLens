@@ -56,6 +56,77 @@ describe("parseImportText", () => {
     expect(parsed.issues).toEqual([])
   })
 
+  it("parses dated net worth breakdown snapshots", async () => {
+    const parsed = await parseImportText(
+      [
+        "As Of,Section,Segment,Balance,Descriptor",
+        '2026-07-29T12:00:00.000Z,assets,cash,1200.50,"2 accounts"',
+        '2026-07-29T12:00:00.000Z,debts,creditCards,500.25,"3 accounts"',
+      ].join("\n"),
+      "net_worth_breakdown_2026-07-29.csv",
+    )
+
+    expect(parsed.kind).toBe("wealthBreakdown")
+    expect(parsed.wealthBreakdown).toEqual([
+      {
+        date: "2026-07-29",
+        section: "assets",
+        segment: "cash",
+        valueMinor: 120_050,
+        descriptor: "2 accounts",
+      },
+      {
+        date: "2026-07-29",
+        section: "debts",
+        segment: "creditCards",
+        valueMinor: 50_025,
+        descriptor: "3 accounts",
+      },
+    ])
+    expect(parsed.issues).toEqual([])
+  })
+
+  it("parses dated detailed wealth account snapshots", async () => {
+    const parsed = await parseImportText(
+      [
+        "As Of,Account Type,Source Label,Balance,Descriptor",
+        '2026-07-29T12:00:00.000Z,investments,"Synthetic Brokerage",8000.00,Connected',
+        '2026-07-29T12:00:00.000Z,property,"Example Property",10000.00,Manual',
+      ].join("\n"),
+      "wealth_accounts_2026-07-29.csv",
+    )
+
+    expect(parsed.kind).toBe("wealthAccounts")
+    expect(parsed.wealthAccounts).toEqual([
+      {
+        date: "2026-07-29",
+        accountType: "investments",
+        sourceLabel: "Synthetic Brokerage",
+        valueMinor: 800_000,
+        descriptor: "Connected",
+      },
+      {
+        date: "2026-07-29",
+        accountType: "property",
+        sourceLabel: "Example Property",
+        valueMinor: 1_000_000,
+        descriptor: "Manual",
+      },
+    ])
+    expect(parsed.issues).toEqual([])
+  })
+
+  it("rejects mismatched net worth sections without echoing balances", async () => {
+    const parsed = await parseImportText(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,loans,1234.56,Example",
+      "invalid-breakdown.csv",
+    )
+
+    expect(parsed.wealthBreakdown).toEqual([])
+    expect(parsed.issues[0]?.message).toContain("loans must use the debts section")
+    expect(parsed.issues[0]?.message).not.toContain("1234.56")
+  })
+
   it("reports invalid rows without including their raw values", async () => {
     const parsed = await parseImportText(
       "Date,Amount\nnot-a-date,10\n2026-01-01,not-money\n",

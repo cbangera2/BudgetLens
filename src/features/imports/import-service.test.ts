@@ -190,6 +190,47 @@ describe("ImportService", () => {
     expect(await db.wealth.where("series").equals("netWorth").count()).toBe(0)
   })
 
+  it("imports, replaces, and removes net worth breakdown snapshots by batch", async () => {
+    const original = await service.preview(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,cash,1000.00,2 accounts",
+      "breakdown.csv",
+    )
+    const first = await service.commit(original)
+
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    const replacement = await service.preview(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,cash,1100.00,2 accounts",
+      "breakdown-updated.csv",
+      "replace",
+    )
+    expect(replacement).toMatchObject({ replacementCount: 1, importableCount: 1 })
+    const second = await service.commit(replacement)
+    expect((await db.wealthBreakdown.toArray())[0]?.valueMinor).toBe(110_000)
+
+    const deletion = await service.deleteBatch(second.batch.id)
+    expect(deletion.deletedWealthBreakdownCount).toBe(1)
+    expect(await db.wealthBreakdown.count()).toBe(0)
+    expect(await db.imports.get(first.batch.id)).toBeDefined()
+  })
+
+  it("imports multiple source balances for the same account type and date", async () => {
+    const preview = await service.preview(
+      [
+        "As Of,Account Type,Source Label,Balance,Descriptor",
+        "2026-07-29,cash,Synthetic Checking,100.00,Connected",
+        "2026-07-29,cash,Synthetic Savings,200.00,Connected",
+      ].join("\n"),
+      "wealth-accounts.csv",
+    )
+    const receipt = await service.commit(preview)
+
+    expect(receipt.batch).toMatchObject({ kind: "wealthAccounts", importedCount: 2 })
+    expect(await db.wealthAccounts.count()).toBe(2)
+    const deletion = await service.deleteBatch(receipt.batch.id)
+    expect(deletion.deletedWealthAccountCount).toBe(2)
+    expect(await db.wealthAccounts.count()).toBe(0)
+  })
+
   it("rolls back every row when batch metadata cannot be saved", async () => {
     const preview = await service.preview(
       "Date,Description,Amount\n2026-01-01,Synthetic One,-1.00\n2026-01-02,Synthetic Two,-2.00",

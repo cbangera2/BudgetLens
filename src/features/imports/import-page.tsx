@@ -21,6 +21,8 @@ import {
 function kindLabel(kind: ImportBatch["kind"]): string {
   if (kind === "netWorth") return "Net worth"
   if (kind === "investment") return "Investments"
+  if (kind === "wealthBreakdown") return "Net worth breakdown"
+  if (kind === "wealthAccounts") return "Wealth accounts"
   return "Transactions"
 }
 
@@ -247,7 +249,11 @@ export function ImportPage() {
       const receipt = await importService.deleteBatch(deletingBatch.id)
       setHistory(await repositories.imports.list())
       setDeletingBatch(null)
-      const deletedCount = receipt.deletedTransactionCount + receipt.deletedWealthCount
+      const deletedCount =
+        receipt.deletedTransactionCount +
+        receipt.deletedWealthCount +
+        receipt.deletedWealthBreakdownCount +
+        receipt.deletedWealthAccountCount
       setStatus(
         `Removed ${deletedCount.toLocaleString()} stored row${deletedCount === 1 ? "" : "s"} from ${receipt.batch.sourceName}.`,
       )
@@ -264,8 +270,8 @@ export function ImportPage() {
         <p className="text-sm font-medium text-primary">Private by default</p>
         <h1 className="text-3xl font-semibold tracking-tight">Import Credit Karma data</h1>
         <p className="max-w-2xl text-muted-foreground">
-          Preview transactions, net worth, or investment history before saving it in this browser.
-          File contents never become part of import history.
+          Preview transactions, wealth history, net worth breakdowns, or account snapshots before
+          saving them in this browser. File contents never become part of import history.
         </p>
       </header>
 
@@ -478,7 +484,7 @@ export function ImportPage() {
             {preview.kind !== "transactions" ? (
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium">
-                  When a date already has another value
+                  When the same dated snapshot already has another value
                 </legend>
                 <label className="mr-5 inline-flex items-center gap-2 text-sm">
                   <input

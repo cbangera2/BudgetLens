@@ -1,7 +1,10 @@
 export type IsoDate = string
 export type IsoDateTime = string
 export type WealthSeries = "netWorth" | "investment"
-export type ImportKind = "transactions" | WealthSeries
+export type WealthSection = "assets" | "debts"
+export type WealthSegment = "cash" | "investments" | "property" | "creditCards" | "loans"
+export type WealthAccountType = "cash" | "investments" | "property"
+export type ImportKind = "transactions" | "wealthBreakdown" | "wealthAccounts" | WealthSeries
 
 export interface Transaction {
   id: string
@@ -42,6 +45,40 @@ export interface WealthSnapshotDraft {
   valueMinor: number
 }
 
+export interface WealthBreakdownSnapshot {
+  id: string
+  date: IsoDate
+  section: WealthSection
+  segment: WealthSegment
+  valueMinor: number
+  descriptor: string | null
+  importBatchId: string
+  fingerprint: string
+  createdAt: IsoDateTime
+}
+
+export type WealthBreakdownSnapshotDraft = Omit<
+  WealthBreakdownSnapshot,
+  "id" | "importBatchId" | "fingerprint" | "createdAt"
+>
+
+export interface WealthAccountSnapshot {
+  id: string
+  date: IsoDate
+  accountType: WealthAccountType
+  sourceLabel: string
+  valueMinor: number
+  descriptor: string | null
+  importBatchId: string
+  fingerprint: string
+  createdAt: IsoDateTime
+}
+
+export type WealthAccountSnapshotDraft = Omit<
+  WealthAccountSnapshot,
+  "id" | "importBatchId" | "fingerprint" | "createdAt"
+>
+
 export interface ImportBatch {
   id: string
   kind: ImportKind
@@ -75,6 +112,11 @@ export interface TransactionFilters {
 
 export interface WealthFilters {
   series?: WealthSeries[]
+  startDate?: IsoDate
+  endDate?: IsoDate
+}
+
+export interface SnapshotDateFilters {
   startDate?: IsoDate
   endDate?: IsoDate
 }

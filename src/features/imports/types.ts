@@ -2,6 +2,8 @@ import type {
   ImportBatch,
   ImportKind,
   TransactionDraft,
+  WealthAccountSnapshotDraft,
+  WealthBreakdownSnapshotDraft,
   WealthSnapshotDraft,
 } from "@/domain/models"
 
@@ -34,6 +36,8 @@ export interface ParsedImport {
   rowCount: number
   transactions: TransactionDraft[]
   wealth: WealthSnapshotDraft[]
+  wealthBreakdown: WealthBreakdownSnapshotDraft[]
+  wealthAccounts: WealthAccountSnapshotDraft[]
   issues: ImportIssue[]
 }
 
@@ -50,6 +54,8 @@ export interface ImportDeletionReceipt {
   batch: ImportBatch
   deletedTransactionCount: number
   deletedWealthCount: number
+  deletedWealthBreakdownCount: number
+  deletedWealthAccountCount: number
 }
 
 export interface ImportReceipt {

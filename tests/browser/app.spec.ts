@@ -80,6 +80,21 @@ test("imports and visualizes net worth and investment history", async ({ page })
   ).toBeVisible()
 })
 
+test("imports and visualizes net worth breakdown and account snapshots", async ({ page }) => {
+  await importCsv(page, "net-worth-breakdown.csv", 10)
+  await importCsv(page, "wealth-accounts.csv", 4)
+
+  await page.getByRole("link", { name: "Net worth" }).click()
+  await expect(page.getByText("Latest assets")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "$15,700.00" })).toBeVisible()
+  await expect(page.getByText("Latest debts")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "$2,800.00" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Net worth breakdown history" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Latest account balances" })).toBeVisible()
+  await expect(page.getByRole("cell", { name: "Synthetic Checking", exact: true })).toBeVisible()
+  await expect(page.getByRole("cell", { name: "Example Property", exact: true })).toBeVisible()
+})
+
 test("keeps primary navigation usable at narrow widths", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible()

@@ -13,6 +13,8 @@ describe("BudgetLens backups", () => {
         clear: async () => undefined,
       },
       wealth: { list: async () => [buildWealthSnapshot()], clear: async () => undefined },
+      wealthBreakdown: { list: async () => [], clear: async () => undefined },
+      wealthAccounts: { list: async () => [], clear: async () => undefined },
       budgets: {
         list: async () => [],
         put: async (goal) => goal,
@@ -25,7 +27,7 @@ describe("BudgetLens backups", () => {
     const backup = await createBackup(repositories, "2026-07-22T12:00:00.000Z")
 
     expect(backup.format).toBe("budgetlens-backup")
-    expect(backup.version).toBe(1)
+    expect(backup.version).toBe(2)
     expect(backup.transactions).toHaveLength(1)
     expect(backup.wealth).toHaveLength(1)
     expect(JSON.stringify(backup)).not.toContain("rawContent")
