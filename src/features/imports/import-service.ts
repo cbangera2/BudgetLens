@@ -272,9 +272,9 @@ export class ImportService {
     files: ImportFileInput[],
     duplicatePolicy: DuplicatePolicy = "skip",
   ): Promise<ImportCollectionPreview> {
-    if (files.length === 0) throw new Error("Select at least one JSON file.")
+    if (files.length === 0) throw new Error("Select at least one CSV or JSON file.")
     if (files.length > DEFAULT_IMPORT_LIMITS.maxFiles) {
-      throw new Error(`Select at most ${DEFAULT_IMPORT_LIMITS.maxFiles} JSON files at once.`)
+      throw new Error(`Select at most ${DEFAULT_IMPORT_LIMITS.maxFiles} files at once.`)
     }
     const totalBytes = files.reduce(
       (sum, file) => sum + new TextEncoder().encode(file.content).byteLength,
@@ -288,8 +288,23 @@ export class ImportService {
 
     const previews: ImportPreview[] = []
     const failures: ImportCollectionPreview["failures"] = []
-    const knownFingerprints = new Set(
+    const knownTransactionFingerprints = new Set(
       await Promise.all((await this.db.transactions.toArray()).map(transactionFingerprint)),
+    )
+    const knownWealth = new Map(
+      (await this.db.wealth.toArray()).map((row) => [`${row.series}\0${row.date}`, row.valueMinor]),
+    )
+    const knownBreakdown = new Map(
+      (await this.db.wealthBreakdown.toArray()).map((row) => [
+        `${row.segment}\0${row.date}`,
+        row.valueMinor,
+      ]),
+    )
+    const knownAccounts = new Map(
+      (await this.db.wealthAccounts.toArray()).map((row) => [
+        `${row.accountType}\0${row.sourceLabel}\0${row.date}`,
+        row.valueMinor,
+      ]),
     )
     const knownFileHashes = new Set(
       (await this.db.imports.toArray()).map((batch) => batch.sourceHash),
@@ -301,29 +316,62 @@ export class ImportService {
         // Sequential work keeps the displayed duplicate counts deterministic across files.
         // oxlint-disable-next-line no-await-in-loop
         const preview = await this.preview(file.content, sourceName, "skip", duplicatePolicy)
-        if (preview.kind !== "transactions") {
-          throw new Error("Multi-file import currently supports transaction JSON files only.")
-        }
         let duplicateCount = 0
         let importableCount = 0
-        // oxlint-disable-next-line no-await-in-loop
-        const fingerprints = await Promise.all(preview.transactions.map(transactionFingerprint))
-        for (const fingerprint of fingerprints) {
-          if (knownFingerprints.has(fingerprint)) {
+
+        // oxlint-disable-next-line no-await-in-loop -- Preserve deterministic cross-file ordering.
+        const transactionFingerprints = await Promise.all(
+          preview.transactions.map(transactionFingerprint),
+        )
+        for (const fingerprint of transactionFingerprints) {
+          if (knownTransactionFingerprints.has(fingerprint)) {
             duplicateCount += 1
-            if (duplicatePolicy === "include") importableCount += 1
+            if (preview.duplicatePolicy === "include") importableCount += 1
           } else {
-            knownFingerprints.add(fingerprint)
+            knownTransactionFingerprints.add(fingerprint)
             importableCount += 1
           }
         }
+
+        for (const draft of preview.wealth) {
+          const key = `${draft.series}\0${draft.date}`
+          const prior = knownWealth.get(key)
+          if (prior !== undefined) duplicateCount += 1
+          else {
+            knownWealth.set(key, draft.valueMinor)
+            importableCount += 1
+          }
+        }
+
+        for (const draft of preview.wealthBreakdown) {
+          const key = `${draft.segment}\0${draft.date}`
+          const prior = knownBreakdown.get(key)
+          if (prior !== undefined) duplicateCount += 1
+          else {
+            knownBreakdown.set(key, draft.valueMinor)
+            importableCount += 1
+          }
+        }
+
+        for (const draft of preview.wealthAccounts) {
+          const key = `${draft.accountType}\0${draft.sourceLabel}\0${draft.date}`
+          const prior = knownAccounts.get(key)
+          if (prior !== undefined) duplicateCount += 1
+          else {
+            knownAccounts.set(key, draft.valueMinor)
+            importableCount += 1
+          }
+        }
+
         const duplicateFile = knownFileHashes.has(preview.sourceHash)
         knownFileHashes.add(preview.sourceHash)
         previews.push({
           ...preview,
           duplicateFile,
           duplicateCount,
-          importableCount: duplicateFile && duplicatePolicy === "skip" ? 0 : importableCount,
+          replacementCount: 0,
+          importableCount:
+            duplicateFile && preview.duplicatePolicy === "skip" ? 0 : importableCount,
         })
       } catch (error) {
         failures.push({

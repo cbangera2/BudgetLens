@@ -49,7 +49,7 @@ test("imports multiple JSON files and reports partial-invalid selections", async
       fixture("unsupported-transactions.json"),
     ])
 
-  await expect(page.getByRole("heading", { name: "JSON import preview" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Multi-file import preview" })).toBeVisible()
   await expect(page.getByText("transactions-page-one.json")).toBeVisible()
   await expect(page.getByText("unsupported-transactions.json")).toBeVisible()
   await expect(page.getByText("Unsupported JSON structure.")).toBeVisible()
@@ -62,6 +62,19 @@ test("imports multiple JSON files and reports partial-invalid selections", async
   await expect(page.getByRole("rowheader", { name: "Invented Corner Shop" })).toBeVisible()
   await expect(page.getByText("-$18.75")).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Imaginary Transit" })).toBeVisible()
+})
+
+test("imports mixed CSV and JSON selections together", async ({ page }) => {
+  await page.goto("/imports")
+  await page
+    .getByLabel("CSV or JSON files")
+    .setInputFiles([fixture("current-transactions.csv"), fixture("budgetlens-bundle.json")])
+
+  await expect(page.getByRole("heading", { name: "Multi-file import preview" })).toBeVisible()
+  await expect(page.getByText("current-transactions.csv")).toBeVisible()
+  await expect(page.getByText("budgetlens-bundle.json")).toBeVisible()
+  await page.getByRole("button", { name: "Import valid files" }).click()
+  await expect(page.getByText("Imported 7 rows from 2 files.")).toBeVisible()
 })
 
 test("imports and visualizes net worth and investment history", async ({ page }) => {

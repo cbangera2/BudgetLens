@@ -195,7 +195,9 @@ describe("ImportPage", () => {
 
     await user.upload(screen.getByLabelText("CSV or JSON files"), [valid, broken])
 
-    expect(await screen.findByRole("heading", { name: "JSON import preview" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Multi-file import preview" }),
+    ).toBeInTheDocument()
     expect(screen.getByText("page-one.json")).toBeInTheDocument()
     expect(screen.getByText("broken.json")).toBeInTheDocument()
     expect(screen.getByText("JSON parsing failed.")).toBeInTheDocument()
@@ -223,7 +225,9 @@ describe("ImportPage", () => {
 
     await user.upload(screen.getByLabelText("CSV or JSON files"), [valid, unreadable])
 
-    expect(await screen.findByRole("heading", { name: "JSON import preview" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Multi-file import preview" }),
+    ).toBeInTheDocument()
     expect(mocks.previewMany).toHaveBeenCalledWith(
       [{ content: "{}", sourceName: "readable.json" }],
       "skip",
@@ -233,22 +237,27 @@ describe("ImportPage", () => {
     expect(screen.getByRole("button", { name: "Import valid files" })).toBeEnabled()
   })
 
-  it("rejects mixed CSV and JSON selections with a predictable message", async () => {
+  it("previews mixed CSV and JSON selections together", async () => {
     const user = userEvent.setup()
     render(<ImportPage />)
+    const csv = new File(["Date,Amount"], "one.csv", { type: "text/csv" })
+    const json = new File(["{}"], "two.json", { type: "application/json" })
+    Object.defineProperty(csv, "text", { value: () => Promise.resolve("Date,Amount") })
+    Object.defineProperty(json, "text", { value: () => Promise.resolve("{}") })
 
-    await user.upload(screen.getByLabelText("CSV or JSON files"), [
-      new File(["Date,Amount"], "one.csv", { type: "text/csv" }),
-      new File(["{}"], "two.json", { type: "application/json" }),
-    ])
+    await user.upload(screen.getByLabelText("CSV or JSON files"), [csv, json])
 
     expect(
-      await screen.findByText(
-        "Import one CSV at a time, or select multiple JSON files. Do not mix formats.",
-      ),
+      await screen.findByRole("heading", { name: "Multi-file import preview" }),
     ).toBeInTheDocument()
-    expect(mocks.preview).not.toHaveBeenCalled()
-    expect(mocks.previewMany).not.toHaveBeenCalled()
+    expect(mocks.previewMany).toHaveBeenCalledWith(
+      [
+        { content: "Date,Amount", sourceName: "one.csv" },
+        { content: "{}", sourceName: "two.json" },
+      ],
+      "skip",
+    )
+    expect(screen.getByLabelText("CSV or JSON files")).toHaveAttribute("aria-invalid", "false")
   })
 
   it("can intentionally include duplicates and remove only a selected import batch", async () => {

@@ -15,7 +15,7 @@ _The screenshot contains invented demo data only._
 
 - Import a complete one-file BudgetLens JSON bundle, current or legacy transaction CSVs, or up to
   20 Credit Karma transaction JSON responses at once.
-- Preview every import, skip duplicate transactions by default, continue when one JSON file fails,
+- Preview every import, skip duplicate transactions by default, continue when one selected file fails,
   and remove the records associated with a completed import batch.
 - Import `Date,Net Worth` and `Date,Investment Value` histories independently.
 - Import dated net-worth breakdown and account-source snapshots from Credit Karma Extractor.
@@ -53,11 +53,10 @@ Transaction CSVs require `Date` and `Amount`. They may also include `Description
 `Transaction Type`, `Account Name`, `Account Type`, `Provider`, `Labels`, and `Notes`. Legacy
 `Store/Vendor` and `Type` headers remain supported.
 
-Select one BudgetLens bundle or CSV at a time, or up to 20 transaction JSON files from Credit Karma
-API/debug responses. The versioned BudgetLens bundle contains transactions, net-worth history,
-investment history, the current category breakdown, and current account sources in one JSON file.
-CSV and JSON files cannot be mixed in one selection. Invalid multi-file JSON responses are reported
-individually, while valid files remain available to import.
+Select up to 20 CSV and JSON files together. BudgetLens detects and validates each file independently,
+so one invalid file does not prevent other valid files from being imported. The versioned BudgetLens
+bundle contains transactions, net-worth history, investment history, the current category breakdown,
+and current account sources in one JSON file.
 
 Duplicate transaction rows are skipped by default. You can intentionally include them when needed.
 Each successful import is recorded as metadata, without retaining the original file contents, and
@@ -163,6 +162,8 @@ and which flows were manually tested.
 
 - Added atomic one-file BudgetLens bundle imports for transactions and every supported wealth data
   group.
+- Added mixed CSV/JSON multi-file previews with per-file failure isolation and cross-file duplicate
+  detection.
 - Added dated asset/debt breakdown and account-source imports, versioned local storage, backups,
   summary metrics, editable charts, accessible tables, and import-batch removal.
 

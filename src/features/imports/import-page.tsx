@@ -33,7 +33,7 @@ interface ReadableImportFile {
   text: () => Promise<string>
 }
 
-export async function readJsonFilesIndependently(
+export async function readFilesIndependently(
   files: readonly ReadableImportFile[],
   limits: ImportLimits = DEFAULT_IMPORT_LIMITS,
   onProgress?: (completed: number, total: number) => void,
@@ -100,6 +100,7 @@ export function ImportPage() {
   const [deletingBatch, setDeletingBatch] = useState<ImportBatch | null>(null)
   const [resultFailures, setResultFailures] = useState<ImportFileFailure[]>([])
   const [status, setStatus] = useState("")
+  const [importError, setImportError] = useState("")
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -111,22 +112,17 @@ export function ImportPage() {
     setCollection(null)
     setResultFailures([])
     setStatus("")
+    setImportError("")
     setSelectedFile(null)
     setSelectedFiles(files)
     if (files.length === 0) return
     const fileTypes = files.map((file) => importFileType(file.name))
     if (fileTypes.some((type) => type === null)) {
-      setStatus("Unsupported file type. Select .csv or .json files.")
-      return
-    }
-    const hasCsv = fileTypes.includes("csv")
-    const hasJson = fileTypes.includes("json")
-    if ((hasCsv && hasJson) || (hasCsv && files.length > 1)) {
-      setStatus("Import one CSV at a time, or select multiple JSON files. Do not mix formats.")
+      setImportError("Unsupported file type. Select .csv or .json files.")
       return
     }
     if (files.length > DEFAULT_IMPORT_LIMITS.maxFiles) {
-      setStatus(`Select at most ${DEFAULT_IMPORT_LIMITS.maxFiles} JSON files at once.`)
+      setImportError(`Select at most ${DEFAULT_IMPORT_LIMITS.maxFiles} files at once.`)
       return
     }
     setBusy(true)
@@ -134,7 +130,7 @@ export function ImportPage() {
       if (files.length === 1) {
         const file = files[0]!
         if (file.size > DEFAULT_IMPORT_LIMITS.maxFileBytes) {
-          setStatus("The selected file exceeds the 10 MB per-file limit.")
+          setImportError("The selected file exceeds the 10 MB per-file limit.")
           return
         }
         setStatus("Reading and validating the selected file…")
@@ -147,11 +143,11 @@ export function ImportPage() {
             : "Preview ready. Review the counts before importing.",
         )
       } else {
-        setStatus(`Reading JSON file 0 of ${files.length.toLocaleString()}…`)
-        const read = await readJsonFilesIndependently(files, DEFAULT_IMPORT_LIMITS, (done, total) =>
-          setStatus(`Reading JSON file ${done.toLocaleString()} of ${total.toLocaleString()}…`),
+        setStatus(`Reading file 0 of ${files.length.toLocaleString()}…`)
+        const read = await readFilesIndependently(files, DEFAULT_IMPORT_LIMITS, (done, total) =>
+          setStatus(`Reading file ${done.toLocaleString()} of ${total.toLocaleString()}…`),
         )
-        setStatus(`Parsing ${read.inputs.length.toLocaleString()} readable JSON file(s)…`)
+        setStatus(`Parsing ${read.inputs.length.toLocaleString()} readable file(s)…`)
         const parsed =
           read.inputs.length > 0
             ? await importService.previewMany(read.inputs, policy)
@@ -173,11 +169,11 @@ export function ImportPage() {
         setStatus(
           next.failures.length > 0
             ? `${next.previews.length.toLocaleString()} file(s) are ready; ${next.failures.length.toLocaleString()} file(s) are invalid and will not be imported.`
-            : "All selected JSON files are ready. Review each result before importing.",
+            : "All selected files are ready. Review each result before importing.",
         )
       }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "The file could not be read.")
+      setImportError(error instanceof Error ? error.message : "The file could not be read.")
     } finally {
       setBusy(false)
     }
@@ -287,7 +283,7 @@ export function ImportPage() {
         <CardHeader>
           <CardTitle>Select Credit Karma exports</CardTitle>
           <CardDescription>
-            Import one BudgetLens bundle, one CSV export, or a group of transaction JSON responses.
+            Import BudgetLens bundles, CSV exports, and transaction JSON responses together.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -321,14 +317,26 @@ export function ImportPage() {
               accept=".csv,.json,text/csv,application/json"
               multiple
               disabled={busy}
+              aria-invalid={Boolean(importError)}
+              aria-describedby={`${inputId}-help${importError ? ` ${inputId}-error` : ""}`}
               onChange={(event) => void selectFiles([...(event.currentTarget.files ?? [])])}
             />
-            <p className="text-xs text-muted-foreground">
-              One BudgetLens bundle or CSV at a time, or up to 20 transaction JSON files. Maximum 10
-              MB and 100,000 rows per file; 50 MB total. CSV and JSON cannot be mixed in one
-              selection.
+            <p id={`${inputId}-help`} className="text-xs text-muted-foreground">
+              Select up to 20 CSV and JSON files in any combination. Each file is detected,
+              validated, and imported independently. Maximum 10 MB and 100,000 rows per file; 50 MB
+              total.
             </p>
           </div>
+          {importError ? (
+            <div
+              id={`${inputId}-error`}
+              role="alert"
+              className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <p className="font-medium">Those files cannot be imported together</p>
+              <p className="mt-1">{importError}</p>
+            </div>
+          ) : null}
           <output aria-live="polite" className="block text-sm">
             {status || (busy ? "Reading and validating the file…" : "")}
           </output>
@@ -354,9 +362,9 @@ export function ImportPage() {
       ) : null}
 
       {collection ? (
-        <Card aria-labelledby="json-import-preview-title">
+        <Card aria-labelledby="collection-import-preview-title">
           <CardHeader>
-            <CardTitle id="json-import-preview-title">JSON import preview</CardTitle>
+            <CardTitle id="collection-import-preview-title">Multi-file import preview</CardTitle>
             <CardDescription>
               {collection.selectedCount.toLocaleString()} selected file(s). Invalid files remain
               excluded unless you fix and select them again. Duplicate rows are
@@ -390,7 +398,7 @@ export function ImportPage() {
             </dl>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <caption className="sr-only">JSON file preview results</caption>
+                <caption className="sr-only">Selected file preview results</caption>
                 <thead>
                   <tr className="border-b">
                     <th className="py-2 pr-4" scope="col">

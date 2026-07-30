@@ -304,6 +304,36 @@ describe("ImportService", () => {
     expect(await db.transactions.count()).toBe(3)
   })
 
+  it("previews and commits mixed CSV and bundle files independently", async () => {
+    const collection = await service.previewMany([
+      {
+        content: await fixture("current-transactions.csv"),
+        sourceName: "current-transactions.csv",
+      },
+      {
+        content: await fixture("budgetlens-bundle.json"),
+        sourceName: "budgetlens-bundle.json",
+      },
+    ])
+
+    expect(collection).toMatchObject({
+      selectedCount: 2,
+      rowCount: 7,
+      importableCount: 7,
+      duplicateCount: 0,
+      failures: [],
+    })
+    expect(collection.previews.map((preview) => preview.kind)).toEqual(["transactions", "bundle"])
+
+    const result = await service.commitMany(collection.previews)
+    expect(result.failures).toEqual([])
+    expect(result.receipts).toHaveLength(2)
+    expect(await db.transactions.count()).toBe(3)
+    expect(await db.wealth.count()).toBe(2)
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    expect(await db.wealthAccounts.count()).toBe(1)
+  })
+
   it("recognizes a legacy positive debit row as a duplicate after sign normalization", async () => {
     await db.transactions.add({
       id: "legacy-row",
