@@ -231,6 +231,39 @@ describe("ImportService", () => {
     expect(await db.wealthAccounts.count()).toBe(0)
   })
 
+  it("atomically imports and removes every row in a BudgetLens bundle", async () => {
+    const preview = await service.preview(
+      await fixture("budgetlens-bundle.json"),
+      "budgetlens-bundle.json",
+    )
+
+    expect(preview).toMatchObject({
+      kind: "bundle",
+      rowCount: 5,
+      importableCount: 5,
+      duplicateCount: 0,
+    })
+    const receipt = await service.commit(preview)
+
+    expect(receipt.batch).toMatchObject({ kind: "bundle", importedCount: 5 })
+    expect(await db.transactions.count()).toBe(1)
+    expect(await db.wealth.count()).toBe(2)
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    expect(await db.wealthAccounts.count()).toBe(1)
+
+    const deletion = await service.deleteBatch(receipt.batch.id)
+    expect(deletion).toMatchObject({
+      deletedTransactionCount: 1,
+      deletedWealthCount: 2,
+      deletedWealthBreakdownCount: 1,
+      deletedWealthAccountCount: 1,
+    })
+    expect(await db.transactions.count()).toBe(0)
+    expect(await db.wealth.count()).toBe(0)
+    expect(await db.wealthBreakdown.count()).toBe(0)
+    expect(await db.wealthAccounts.count()).toBe(0)
+  })
+
   it("rolls back every row when batch metadata cannot be saved", async () => {
     const preview = await service.preview(
       "Date,Description,Amount\n2026-01-01,Synthetic One,-1.00\n2026-01-02,Synthetic Two,-2.00",

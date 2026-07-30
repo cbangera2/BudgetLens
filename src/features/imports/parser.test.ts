@@ -198,6 +198,36 @@ describe("parseImportText", () => {
     })
   })
 
+  it("parses a versioned BudgetLens bundle with every supported data group", async () => {
+    const parsed = await parseImportContent(
+      await fixture("budgetlens-bundle.json"),
+      "budgetlens_2026-07-01_to_2026-07-30.json",
+    )
+
+    expect(parsed).toMatchObject({
+      kind: "bundle",
+      rowCount: 5,
+      issues: [],
+    })
+    expect(parsed.transactions[0]).toMatchObject({
+      amountMinor: -1234,
+      accountName: "Example Checking",
+      provider: "Example Bank",
+    })
+    expect(parsed.wealth).toEqual([
+      { series: "netWorth", date: "2026-07-01", valueMinor: 100_000 },
+      { series: "investment", date: "2026-07-01", valueMinor: 50_000 },
+    ])
+    expect(parsed.wealthBreakdown[0]).toMatchObject({
+      segment: "cash",
+      valueMinor: 50_000,
+    })
+    expect(parsed.wealthAccounts[0]).toMatchObject({
+      sourceLabel: "Example Checking",
+      valueMinor: 50_000,
+    })
+  })
+
   it("rejects malformed JSON and unsupported JSON shapes without echoing values", async () => {
     await expect(parseImportContent('{"data":{"prime":', "malformed.json")).rejects.toThrow(
       "JSON parsing failed",
@@ -205,5 +235,8 @@ describe("parseImportText", () => {
     await expect(
       parseImportContent('{"secret":"do-not-echo"}', "unsupported.json"),
     ).rejects.toThrow("Unsupported JSON structure")
+    await expect(
+      parseImportContent('{"format":"budgetlens","version":2}', "future-bundle.json"),
+    ).rejects.toThrow("unsupported BudgetLens bundle")
   })
 })

@@ -4,7 +4,12 @@ export type WealthSeries = "netWorth" | "investment"
 export type WealthSection = "assets" | "debts"
 export type WealthSegment = "cash" | "investments" | "property" | "creditCards" | "loans"
 export type WealthAccountType = "cash" | "investments" | "property"
-export type ImportKind = "transactions" | "wealthBreakdown" | "wealthAccounts" | WealthSeries
+export type ImportKind =
+  | "transactions"
+  | "bundle"
+  | "wealthBreakdown"
+  | "wealthAccounts"
+  | WealthSeries
 
 export interface Transaction {
   id: string

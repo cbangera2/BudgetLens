@@ -19,6 +19,7 @@ import {
 } from "@/features/imports/types"
 
 function kindLabel(kind: ImportBatch["kind"]): string {
+  if (kind === "bundle") return "BudgetLens bundle"
   if (kind === "netWorth") return "Net worth"
   if (kind === "investment") return "Investments"
   if (kind === "wealthBreakdown") return "Net worth breakdown"
@@ -130,13 +131,13 @@ export function ImportPage() {
     }
     setBusy(true)
     try {
-      if (hasCsv) {
+      if (files.length === 1) {
         const file = files[0]!
         if (file.size > DEFAULT_IMPORT_LIMITS.maxFileBytes) {
-          setStatus("The selected CSV exceeds the 10 MB per-file limit.")
+          setStatus("The selected file exceeds the 10 MB per-file limit.")
           return
         }
-        setStatus("Reading and validating the CSV file…")
+        setStatus("Reading and validating the selected file…")
         setSelectedFile(file)
         const next = await importService.preview(await file.text(), file.name, "skip", policy)
         setPreview(next)
@@ -212,7 +213,14 @@ export function ImportPage() {
     setBusy(true)
     try {
       if (!selectedFile) return
-      setPreview(await importService.preview(await selectedFile.text(), selectedFile.name, policy))
+      setPreview(
+        await importService.preview(
+          await selectedFile.text(),
+          selectedFile.name,
+          policy,
+          duplicatePolicy,
+        ),
+      )
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "The preview could not be updated.")
     } finally {
@@ -279,7 +287,7 @@ export function ImportPage() {
         <CardHeader>
           <CardTitle>Select Credit Karma exports</CardTitle>
           <CardDescription>
-            Import one CSV export or a group of transaction JSON responses.
+            Import one BudgetLens bundle, one CSV export, or a group of transaction JSON responses.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -316,8 +324,9 @@ export function ImportPage() {
               onChange={(event) => void selectFiles([...(event.currentTarget.files ?? [])])}
             />
             <p className="text-xs text-muted-foreground">
-              One CSV at a time, or up to 20 JSON files. Maximum 10 MB and 100,000 rows per file; 50
-              MB total. CSV and JSON cannot be mixed in one selection.
+              One BudgetLens bundle or CSV at a time, or up to 20 transaction JSON files. Maximum 10
+              MB and 100,000 rows per file; 50 MB total. CSV and JSON cannot be mixed in one
+              selection.
             </p>
           </div>
           <output aria-live="polite" className="block text-sm">
@@ -454,7 +463,7 @@ export function ImportPage() {
             <CardTitle id="import-preview-title">Import preview</CardTitle>
             <CardDescription>
               {kindLabel(preview.kind)} · {preview.sourceName}
-              {preview.kind === "transactions"
+              {preview.kind === "transactions" || preview.kind === "bundle"
                 ? ` · Duplicates ${preview.duplicatePolicy === "skip" ? "skipped" : "included"}`
                 : ""}
             </CardDescription>

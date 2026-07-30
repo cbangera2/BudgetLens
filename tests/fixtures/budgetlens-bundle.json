@@ -1,0 +1,53 @@
+{
+  "format": "budgetlens",
+  "version": 1,
+  "exportedAt": "2026-07-30T12:00:00.000Z",
+  "dateRange": {
+    "start": "2026-07-01",
+    "end": "2026-07-30"
+  },
+  "transactions": [
+    {
+      "date": "2026-07-01",
+      "description": "Synthetic Market",
+      "amount": -12.34,
+      "category": "Groceries",
+      "transactionType": "debit",
+      "accountName": "Example Checking",
+      "accountType": "CHECKING",
+      "provider": "Example Bank",
+      "labels": ["weekly"],
+      "notes": "Synthetic bundle row"
+    }
+  ],
+  "netWorthHistory": [
+    {
+      "date": "2026-07-01",
+      "value": 1000
+    }
+  ],
+  "investmentHistory": [
+    {
+      "date": "2026-07-01",
+      "value": 500
+    }
+  ],
+  "netWorthBreakdown": [
+    {
+      "asOf": "2026-07-30T12:00:00.000Z",
+      "section": "assets",
+      "segment": "cash",
+      "balance": 500,
+      "descriptor": "1 account"
+    }
+  ],
+  "wealthAccounts": [
+    {
+      "asOf": "2026-07-30T12:00:00.000Z",
+      "accountType": "cash",
+      "sourceLabel": "Example Checking",
+      "balance": 500,
+      "descriptor": "Connected"
+    }
+  ]
+}

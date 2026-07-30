@@ -48,6 +48,15 @@ const TRANSACTION_HEADERS = new Map<string, TransactionField>([
 
 const textRowSchema = z.record(z.string(), z.string())
 const unknownRecordSchema = z.record(z.string(), z.unknown())
+const budgetLensBundleSchema = z.object({
+  format: z.literal("budgetlens"),
+  version: z.literal(1),
+  transactions: z.array(z.unknown()),
+  netWorthHistory: z.array(z.unknown()),
+  investmentHistory: z.array(z.unknown()),
+  netWorthBreakdown: z.array(z.unknown()),
+  wealthAccounts: z.array(z.unknown()),
+})
 const dateSchema = z.string().transform((value, context) => {
   const trimmed = value.trim()
   let year: number
@@ -279,23 +288,135 @@ function parseJsonTransaction(value: unknown): TransactionDraft {
     amountMinor: normalizeTransactionAmountMinor(amount.data, transactionType),
     category,
     transactionType,
-    accountName: nullable(typeof accountObject?.name === "string" ? accountObject.name : undefined),
-    accountType: nullable(
-      typeof accountObject?.type === "string"
-        ? accountObject.type
-        : typeof accountObject?.accountType === "string"
-          ? accountObject.accountType
+    accountName: nullable(
+      typeof candidate.accountName === "string"
+        ? candidate.accountName
+        : typeof accountObject?.name === "string"
+          ? accountObject.name
           : undefined,
     ),
+    accountType: nullable(
+      typeof candidate.accountType === "string"
+        ? candidate.accountType
+        : typeof accountObject?.type === "string"
+          ? accountObject.type
+          : typeof accountObject?.accountType === "string"
+            ? accountObject.accountType
+            : undefined,
+    ),
     provider: nullable(
-      typeof accountObject?.providerName === "string"
-        ? accountObject.providerName
-        : typeof providerObject?.name === "string"
-          ? providerObject.name
-          : undefined,
+      typeof candidate.provider === "string"
+        ? candidate.provider
+        : typeof accountObject?.providerName === "string"
+          ? accountObject.providerName
+          : typeof providerObject?.name === "string"
+            ? providerObject.name
+            : undefined,
     ),
     labels,
     notes: nullable(typeof candidate.notes === "string" ? candidate.notes : undefined),
+  }
+}
+
+function parseBundleWealthPoint(value: unknown, series: WealthSeries): WealthSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("History point is not an object.")
+  const date = dateSchema.safeParse(jsonDate(candidate.date))
+  if (!date.success) throw new Error(`Invalid Date: ${describeZodError(date.error)}`)
+  const amount = moneySchema.safeParse(jsonMoney(candidate.value))
+  if (!amount.success) throw new Error(`Invalid value: ${describeZodError(amount.error)}`)
+  return { series, date: date.data, valueMinor: amount.data }
+}
+
+function parseBundleBreakdown(value: unknown): WealthBreakdownSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("Net worth category is not an object.")
+  return parseWealthBreakdown({
+    "as of": typeof candidate.asOf === "string" ? candidate.asOf : "",
+    section: typeof candidate.section === "string" ? candidate.section : "",
+    segment: typeof candidate.segment === "string" ? candidate.segment : "",
+    balance: jsonMoney(candidate.balance),
+    descriptor: typeof candidate.descriptor === "string" ? candidate.descriptor : "",
+  })
+}
+
+function parseBundleWealthAccount(value: unknown): WealthAccountSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("Wealth account is not an object.")
+  return parseWealthAccount({
+    "as of": typeof candidate.asOf === "string" ? candidate.asOf : "",
+    "account type": typeof candidate.accountType === "string" ? candidate.accountType : "",
+    "source label": typeof candidate.sourceLabel === "string" ? candidate.sourceLabel : "",
+    balance: jsonMoney(candidate.balance),
+    descriptor: typeof candidate.descriptor === "string" ? candidate.descriptor : "",
+  })
+}
+
+async function parseBudgetLensBundle(
+  value: unknown,
+  content: string,
+  sourceName: string,
+  limits: ImportLimits,
+): Promise<ParsedImport> {
+  const parsed = budgetLensBundleSchema.safeParse(value)
+  if (!parsed.success) {
+    throw new Error(
+      "Invalid or unsupported BudgetLens bundle. Expected format budgetlens version 1.",
+    )
+  }
+
+  const sections = [
+    parsed.data.transactions,
+    parsed.data.netWorthHistory,
+    parsed.data.investmentHistory,
+    parsed.data.netWorthBreakdown,
+    parsed.data.wealthAccounts,
+  ]
+  const rowCount = sections.reduce((sum, rows) => sum + rows.length, 0)
+  if (rowCount > limits.maxRows) {
+    throw new Error(`File exceeds the ${limits.maxRows.toLocaleString()} row limit.`)
+  }
+
+  const transactions: TransactionDraft[] = []
+  const wealth: WealthSnapshotDraft[] = []
+  const wealthBreakdown: WealthBreakdownSnapshotDraft[] = []
+  const wealthAccounts: WealthAccountSnapshotDraft[] = []
+  const issues: ImportIssue[] = []
+  let row = 0
+  const collect = <T>(values: unknown[], target: T[], parser: (candidate: unknown) => T) => {
+    for (const candidate of values) {
+      row += 1
+      try {
+        target.push(parser(candidate))
+      } catch (error) {
+        issues.push({
+          row,
+          message: error instanceof Error ? error.message : "Invalid bundle row.",
+        })
+      }
+    }
+  }
+
+  collect(parsed.data.transactions, transactions, parseJsonTransaction)
+  collect(parsed.data.netWorthHistory, wealth, (candidate) =>
+    parseBundleWealthPoint(candidate, "netWorth"),
+  )
+  collect(parsed.data.investmentHistory, wealth, (candidate) =>
+    parseBundleWealthPoint(candidate, "investment"),
+  )
+  collect(parsed.data.netWorthBreakdown, wealthBreakdown, parseBundleBreakdown)
+  collect(parsed.data.wealthAccounts, wealthAccounts, parseBundleWealthAccount)
+
+  return {
+    kind: "bundle",
+    sourceName: sanitizeImportSourceName(sourceName),
+    sourceHash: await sha256(content),
+    rowCount,
+    transactions,
+    wealth,
+    wealthBreakdown,
+    wealthAccounts,
+    issues,
   }
 }
 
@@ -314,6 +435,9 @@ export async function parseJsonImport(
     value = JSON.parse(content) as unknown
   } catch {
     throw new Error("JSON parsing failed. Check that the file contains complete, valid JSON.")
+  }
+  if (record(value)?.format === "budgetlens") {
+    return parseBudgetLensBundle(value, content, sourceName, limits)
   }
   const rows = jsonTransactionRows(value)
   if (!rows) {

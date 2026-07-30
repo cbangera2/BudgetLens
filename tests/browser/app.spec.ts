@@ -80,6 +80,23 @@ test("imports and visualizes net worth and investment history", async ({ page })
   ).toBeVisible()
 })
 
+test("imports a complete BudgetLens bundle in one step", async ({ page }) => {
+  await page.goto("/imports")
+  await page.getByLabel("CSV or JSON files").setInputFiles(fixture("budgetlens-bundle.json"))
+  await expect(page.getByRole("heading", { name: "Import preview" })).toBeVisible()
+  await expect(page.getByText("BudgetLens bundle · budgetlens-bundle.json")).toBeVisible()
+  await page.getByRole("button", { name: "Confirm import" }).click()
+  await expect(page.getByText("Imported 5 budgetlens bundle rows.")).toBeVisible()
+
+  await page.getByRole("link", { name: "Net worth" }).click()
+  await expect(page.getByText("Latest assets")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "$1,000.00" })).toBeVisible()
+  await expect(page.getByRole("cell", { name: "Example Checking", exact: true })).toBeVisible()
+
+  await page.getByRole("link", { name: "Transactions", exact: true }).click()
+  await expect(page.getByRole("rowheader", { name: "Synthetic Market" })).toBeVisible()
+})
+
 test("imports and visualizes net worth breakdown and account snapshots", async ({ page }) => {
   await importCsv(page, "net-worth-breakdown.csv", 10)
   await importCsv(page, "wealth-accounts.csv", 4)
