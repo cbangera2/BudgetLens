@@ -4,6 +4,9 @@ import type {
   Transaction,
   TransactionDraft,
   TransactionFilters,
+  SnapshotDateFilters,
+  WealthAccountSnapshot,
+  WealthBreakdownSnapshot,
   WealthFilters,
   WealthSnapshot,
 } from "@/domain/models"
@@ -18,6 +21,16 @@ export interface TransactionRepository {
 
 export interface WealthRepository {
   list(filters?: WealthFilters): Promise<WealthSnapshot[]>
+  clear(): Promise<void>
+}
+
+export interface WealthBreakdownRepository {
+  list(filters?: SnapshotDateFilters): Promise<WealthBreakdownSnapshot[]>
+  clear(): Promise<void>
+}
+
+export interface WealthAccountRepository {
+  list(filters?: SnapshotDateFilters): Promise<WealthAccountSnapshot[]>
   clear(): Promise<void>
 }
 
@@ -36,6 +49,8 @@ export interface BudgetRepository {
 export interface BudgetLensRepositories {
   transactions: TransactionRepository
   wealth: WealthRepository
+  wealthBreakdown: WealthBreakdownRepository
+  wealthAccounts: WealthAccountRepository
   imports: ImportRepository
   budgets: BudgetRepository
 }

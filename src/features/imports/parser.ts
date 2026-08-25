@@ -1,7 +1,16 @@
 import Papa from "papaparse"
 import { z } from "zod"
 
-import type { TransactionDraft, WealthSeries, WealthSnapshotDraft } from "@/domain/models"
+import type {
+  TransactionDraft,
+  WealthAccountSnapshotDraft,
+  WealthAccountType,
+  WealthBreakdownSnapshotDraft,
+  WealthSection,
+  WealthSegment,
+  WealthSeries,
+  WealthSnapshotDraft,
+} from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import {
   DEFAULT_IMPORT_LIMITS,
@@ -39,6 +48,15 @@ const TRANSACTION_HEADERS = new Map<string, TransactionField>([
 
 const textRowSchema = z.record(z.string(), z.string())
 const unknownRecordSchema = z.record(z.string(), z.unknown())
+const budgetLensBundleSchema = z.object({
+  format: z.literal("budgetlens"),
+  version: z.literal(1),
+  transactions: z.array(z.unknown()),
+  netWorthHistory: z.array(z.unknown()),
+  investmentHistory: z.array(z.unknown()),
+  netWorthBreakdown: z.array(z.unknown()),
+  wealthAccounts: z.array(z.unknown()),
+})
 const dateSchema = z.string().transform((value, context) => {
   const trimmed = value.trim()
   let year: number
@@ -106,7 +124,7 @@ function canonicalHeader(header: string): string {
   return header
     .replace(/^\uFEFF/, "")
     .trim()
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/\s+/g, " ")
 }
 
@@ -270,23 +288,135 @@ function parseJsonTransaction(value: unknown): TransactionDraft {
     amountMinor: normalizeTransactionAmountMinor(amount.data, transactionType),
     category,
     transactionType,
-    accountName: nullable(typeof accountObject?.name === "string" ? accountObject.name : undefined),
-    accountType: nullable(
-      typeof accountObject?.type === "string"
-        ? accountObject.type
-        : typeof accountObject?.accountType === "string"
-          ? accountObject.accountType
+    accountName: nullable(
+      typeof candidate.accountName === "string"
+        ? candidate.accountName
+        : typeof accountObject?.name === "string"
+          ? accountObject.name
           : undefined,
     ),
+    accountType: nullable(
+      typeof candidate.accountType === "string"
+        ? candidate.accountType
+        : typeof accountObject?.type === "string"
+          ? accountObject.type
+          : typeof accountObject?.accountType === "string"
+            ? accountObject.accountType
+            : undefined,
+    ),
     provider: nullable(
-      typeof accountObject?.providerName === "string"
-        ? accountObject.providerName
-        : typeof providerObject?.name === "string"
-          ? providerObject.name
-          : undefined,
+      typeof candidate.provider === "string"
+        ? candidate.provider
+        : typeof accountObject?.providerName === "string"
+          ? accountObject.providerName
+          : typeof providerObject?.name === "string"
+            ? providerObject.name
+            : undefined,
     ),
     labels,
     notes: nullable(typeof candidate.notes === "string" ? candidate.notes : undefined),
+  }
+}
+
+function parseBundleWealthPoint(value: unknown, series: WealthSeries): WealthSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("History point is not an object.")
+  const date = dateSchema.safeParse(jsonDate(candidate.date))
+  if (!date.success) throw new Error(`Invalid Date: ${describeZodError(date.error)}`)
+  const amount = moneySchema.safeParse(jsonMoney(candidate.value))
+  if (!amount.success) throw new Error(`Invalid value: ${describeZodError(amount.error)}`)
+  return { series, date: date.data, valueMinor: amount.data }
+}
+
+function parseBundleBreakdown(value: unknown): WealthBreakdownSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("Net worth category is not an object.")
+  return parseWealthBreakdown({
+    "as of": typeof candidate.asOf === "string" ? candidate.asOf : "",
+    section: typeof candidate.section === "string" ? candidate.section : "",
+    segment: typeof candidate.segment === "string" ? candidate.segment : "",
+    balance: jsonMoney(candidate.balance),
+    descriptor: typeof candidate.descriptor === "string" ? candidate.descriptor : "",
+  })
+}
+
+function parseBundleWealthAccount(value: unknown): WealthAccountSnapshotDraft {
+  const candidate = record(value)
+  if (!candidate) throw new Error("Wealth account is not an object.")
+  return parseWealthAccount({
+    "as of": typeof candidate.asOf === "string" ? candidate.asOf : "",
+    "account type": typeof candidate.accountType === "string" ? candidate.accountType : "",
+    "source label": typeof candidate.sourceLabel === "string" ? candidate.sourceLabel : "",
+    balance: jsonMoney(candidate.balance),
+    descriptor: typeof candidate.descriptor === "string" ? candidate.descriptor : "",
+  })
+}
+
+async function parseBudgetLensBundle(
+  value: unknown,
+  content: string,
+  sourceName: string,
+  limits: ImportLimits,
+): Promise<ParsedImport> {
+  const parsed = budgetLensBundleSchema.safeParse(value)
+  if (!parsed.success) {
+    throw new Error(
+      "Invalid or unsupported BudgetLens bundle. Expected format budgetlens version 1.",
+    )
+  }
+
+  const sections = [
+    parsed.data.transactions,
+    parsed.data.netWorthHistory,
+    parsed.data.investmentHistory,
+    parsed.data.netWorthBreakdown,
+    parsed.data.wealthAccounts,
+  ]
+  const rowCount = sections.reduce((sum, rows) => sum + rows.length, 0)
+  if (rowCount > limits.maxRows) {
+    throw new Error(`File exceeds the ${limits.maxRows.toLocaleString()} row limit.`)
+  }
+
+  const transactions: TransactionDraft[] = []
+  const wealth: WealthSnapshotDraft[] = []
+  const wealthBreakdown: WealthBreakdownSnapshotDraft[] = []
+  const wealthAccounts: WealthAccountSnapshotDraft[] = []
+  const issues: ImportIssue[] = []
+  let row = 0
+  const collect = <T>(values: unknown[], target: T[], parser: (candidate: unknown) => T) => {
+    for (const candidate of values) {
+      row += 1
+      try {
+        target.push(parser(candidate))
+      } catch (error) {
+        issues.push({
+          row,
+          message: error instanceof Error ? error.message : "Invalid bundle row.",
+        })
+      }
+    }
+  }
+
+  collect(parsed.data.transactions, transactions, parseJsonTransaction)
+  collect(parsed.data.netWorthHistory, wealth, (candidate) =>
+    parseBundleWealthPoint(candidate, "netWorth"),
+  )
+  collect(parsed.data.investmentHistory, wealth, (candidate) =>
+    parseBundleWealthPoint(candidate, "investment"),
+  )
+  collect(parsed.data.netWorthBreakdown, wealthBreakdown, parseBundleBreakdown)
+  collect(parsed.data.wealthAccounts, wealthAccounts, parseBundleWealthAccount)
+
+  return {
+    kind: "bundle",
+    sourceName: sanitizeImportSourceName(sourceName),
+    sourceHash: await sha256(content),
+    rowCount,
+    transactions,
+    wealth,
+    wealthBreakdown,
+    wealthAccounts,
+    issues,
   }
 }
 
@@ -305,6 +435,9 @@ export async function parseJsonImport(
     value = JSON.parse(content) as unknown
   } catch {
     throw new Error("JSON parsing failed. Check that the file contains complete, valid JSON.")
+  }
+  if (record(value)?.format === "budgetlens") {
+    return parseBudgetLensBundle(value, content, sourceName, limits)
   }
   const rows = jsonTransactionRows(value)
   if (!rows) {
@@ -335,6 +468,8 @@ export async function parseJsonImport(
     rowCount: rows.length,
     transactions,
     wealth: [],
+    wealthBreakdown: [],
+    wealthAccounts: [],
     issues,
   }
 }
@@ -367,6 +502,73 @@ function parseWealth(
   const value = moneySchema.safeParse(raw[valueHeader] ?? "")
   if (!value.success) throw new Error(`Invalid value: ${describeZodError(value.error)}`)
   return { series, date: date.data, valueMinor: value.data }
+}
+
+function parseSnapshotDate(value: string): string {
+  const date = dateSchema.safeParse(jsonDate(value))
+  if (!date.success) throw new Error(`Invalid As Of: ${describeZodError(date.error)}`)
+  return date.data
+}
+
+function parseWealthBreakdown(raw: Record<string, string>): WealthBreakdownSnapshotDraft {
+  const sectionValue = raw.section?.trim().toLowerCase()
+  if (sectionValue !== "assets" && sectionValue !== "debts") {
+    throw new Error("Section must be assets or debts.")
+  }
+  const segmentKey =
+    raw.segment
+      ?.trim()
+      .toLowerCase()
+      .replaceAll(/[\s_-]/g, "") ?? ""
+  const segments: Record<string, WealthSegment> = {
+    cash: "cash",
+    investments: "investments",
+    property: "property",
+    creditcards: "creditCards",
+    loans: "loans",
+  }
+  const segment = segments[segmentKey]
+  if (!segment) {
+    throw new Error("Segment must be cash, investments, property, creditCards, or loans.")
+  }
+  const expectedSection: WealthSection =
+    segment === "creditCards" || segment === "loans" ? "debts" : "assets"
+  if (sectionValue !== expectedSection) {
+    throw new Error(`${segment} must use the ${expectedSection} section.`)
+  }
+  const value = moneySchema.safeParse(raw.balance ?? "")
+  if (!value.success) throw new Error(`Invalid Balance: ${describeZodError(value.error)}`)
+
+  return {
+    date: parseSnapshotDate(raw["as of"] ?? ""),
+    section: sectionValue,
+    segment,
+    valueMinor: value.data,
+    descriptor: nullable(raw.descriptor),
+  }
+}
+
+function isWealthAccountType(value: string): value is WealthAccountType {
+  return value === "cash" || value === "investments" || value === "property"
+}
+
+function parseWealthAccount(raw: Record<string, string>): WealthAccountSnapshotDraft {
+  const accountTypeValue = raw["account type"]?.trim().toLowerCase() ?? ""
+  if (!isWealthAccountType(accountTypeValue)) {
+    throw new Error("Account Type must be cash, investments, or property.")
+  }
+  const sourceLabel = raw["source label"]?.trim()
+  if (!sourceLabel) throw new Error("Source Label is required.")
+  const value = moneySchema.safeParse(raw.balance ?? "")
+  if (!value.success) throw new Error(`Invalid Balance: ${describeZodError(value.error)}`)
+
+  return {
+    date: parseSnapshotDate(raw["as of"] ?? ""),
+    accountType: accountTypeValue,
+    sourceLabel,
+    valueMinor: value.data,
+    descriptor: nullable(raw.descriptor),
+  }
 }
 
 export async function parseImportText(
@@ -404,7 +606,17 @@ export async function parseImportText(
   const fieldSet = new Set(fields)
   let kind: ParsedImport["kind"]
   let wealthHeader: string | null = null
-  if (fieldSet.has("date") && fieldSet.has("net worth") && fields.length === 2) {
+  const isBreakdown = ["as of", "section", "segment", "balance", "descriptor"].every((field) =>
+    fieldSet.has(field),
+  )
+  const isWealthAccounts = ["as of", "account type", "source label", "balance", "descriptor"].every(
+    (field) => fieldSet.has(field),
+  )
+  if (isBreakdown && fields.length === 5) {
+    kind = "wealthBreakdown"
+  } else if (isWealthAccounts && fields.length === 5) {
+    kind = "wealthAccounts"
+  } else if (fieldSet.has("date") && fieldSet.has("net worth") && fields.length === 2) {
     kind = "netWorth"
     wealthHeader = "net worth"
   } else if (fieldSet.has("date") && fieldSet.has("investment value") && fields.length === 2) {
@@ -414,7 +626,7 @@ export async function parseImportText(
     kind = "transactions"
   } else {
     throw new Error(
-      "Unsupported headers. Expected Date and Amount, Date and Net Worth, or Date and Investment Value.",
+      "Unsupported headers. Expected a transaction, wealth history, net worth breakdown, or wealth accounts CSV.",
     )
   }
 
@@ -433,6 +645,8 @@ export async function parseImportText(
 
   const transactions: TransactionDraft[] = []
   const wealth: WealthSnapshotDraft[] = []
+  const wealthBreakdown: WealthBreakdownSnapshotDraft[] = []
+  const wealthAccounts: WealthAccountSnapshotDraft[] = []
   const issues: ImportIssue[] = []
 
   parsed.data.forEach((candidate, index) => {
@@ -444,7 +658,13 @@ export async function parseImportText(
     }
     try {
       if (kind === "transactions") transactions.push(parseTransaction(rawResult.data, mapping))
-      else wealth.push(parseWealth(rawResult.data, wealthHeader!, kind))
+      else if (kind === "wealthBreakdown") {
+        wealthBreakdown.push(parseWealthBreakdown(rawResult.data))
+      } else if (kind === "wealthAccounts") {
+        wealthAccounts.push(parseWealthAccount(rawResult.data))
+      } else {
+        wealth.push(parseWealth(rawResult.data, wealthHeader!, kind))
+      }
     } catch (error) {
       issues.push({ row, message: error instanceof Error ? error.message : "Invalid row." })
     }
@@ -457,6 +677,8 @@ export async function parseImportText(
     rowCount: parsed.data.length,
     transactions,
     wealth,
+    wealthBreakdown,
+    wealthAccounts,
     issues,
   }
 }

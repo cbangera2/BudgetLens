@@ -56,6 +56,77 @@ describe("parseImportText", () => {
     expect(parsed.issues).toEqual([])
   })
 
+  it("parses dated net worth breakdown snapshots", async () => {
+    const parsed = await parseImportText(
+      [
+        "As Of,Section,Segment,Balance,Descriptor",
+        '2026-07-29T12:00:00.000Z,assets,cash,1200.50,"2 accounts"',
+        '2026-07-29T12:00:00.000Z,debts,creditCards,500.25,"3 accounts"',
+      ].join("\n"),
+      "net_worth_breakdown_2026-07-29.csv",
+    )
+
+    expect(parsed.kind).toBe("wealthBreakdown")
+    expect(parsed.wealthBreakdown).toEqual([
+      {
+        date: "2026-07-29",
+        section: "assets",
+        segment: "cash",
+        valueMinor: 120_050,
+        descriptor: "2 accounts",
+      },
+      {
+        date: "2026-07-29",
+        section: "debts",
+        segment: "creditCards",
+        valueMinor: 50_025,
+        descriptor: "3 accounts",
+      },
+    ])
+    expect(parsed.issues).toEqual([])
+  })
+
+  it("parses dated detailed wealth account snapshots", async () => {
+    const parsed = await parseImportText(
+      [
+        "As Of,Account Type,Source Label,Balance,Descriptor",
+        '2026-07-29T12:00:00.000Z,investments,"Synthetic Brokerage",8000.00,Connected',
+        '2026-07-29T12:00:00.000Z,property,"Example Property",10000.00,Manual',
+      ].join("\n"),
+      "wealth_accounts_2026-07-29.csv",
+    )
+
+    expect(parsed.kind).toBe("wealthAccounts")
+    expect(parsed.wealthAccounts).toEqual([
+      {
+        date: "2026-07-29",
+        accountType: "investments",
+        sourceLabel: "Synthetic Brokerage",
+        valueMinor: 800_000,
+        descriptor: "Connected",
+      },
+      {
+        date: "2026-07-29",
+        accountType: "property",
+        sourceLabel: "Example Property",
+        valueMinor: 1_000_000,
+        descriptor: "Manual",
+      },
+    ])
+    expect(parsed.issues).toEqual([])
+  })
+
+  it("rejects mismatched net worth sections without echoing balances", async () => {
+    const parsed = await parseImportText(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,loans,1234.56,Example",
+      "invalid-breakdown.csv",
+    )
+
+    expect(parsed.wealthBreakdown).toEqual([])
+    expect(parsed.issues[0]?.message).toContain("loans must use the debts section")
+    expect(parsed.issues[0]?.message).not.toContain("1234.56")
+  })
+
   it("reports invalid rows without including their raw values", async () => {
     const parsed = await parseImportText(
       "Date,Amount\nnot-a-date,10\n2026-01-01,not-money\n",
@@ -127,6 +198,36 @@ describe("parseImportText", () => {
     })
   })
 
+  it("parses a versioned BudgetLens bundle with every supported data group", async () => {
+    const parsed = await parseImportContent(
+      await fixture("budgetlens-bundle.json"),
+      "budgetlens_2026-07-01_to_2026-07-30.json",
+    )
+
+    expect(parsed).toMatchObject({
+      kind: "bundle",
+      rowCount: 5,
+      issues: [],
+    })
+    expect(parsed.transactions[0]).toMatchObject({
+      amountMinor: -1234,
+      accountName: "Example Checking",
+      provider: "Example Bank",
+    })
+    expect(parsed.wealth).toEqual([
+      { series: "netWorth", date: "2026-07-01", valueMinor: 100_000 },
+      { series: "investment", date: "2026-07-01", valueMinor: 50_000 },
+    ])
+    expect(parsed.wealthBreakdown[0]).toMatchObject({
+      segment: "cash",
+      valueMinor: 50_000,
+    })
+    expect(parsed.wealthAccounts[0]).toMatchObject({
+      sourceLabel: "Example Checking",
+      valueMinor: 50_000,
+    })
+  })
+
   it("rejects malformed JSON and unsupported JSON shapes without echoing values", async () => {
     await expect(parseImportContent('{"data":{"prime":', "malformed.json")).rejects.toThrow(
       "JSON parsing failed",
@@ -134,5 +235,8 @@ describe("parseImportText", () => {
     await expect(
       parseImportContent('{"secret":"do-not-echo"}', "unsupported.json"),
     ).rejects.toThrow("Unsupported JSON structure")
+    await expect(
+      parseImportContent('{"format":"budgetlens","version":2}', "future-bundle.json"),
+    ).rejects.toThrow("unsupported BudgetLens bundle")
   })
 })

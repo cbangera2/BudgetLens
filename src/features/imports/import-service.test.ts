@@ -190,6 +190,80 @@ describe("ImportService", () => {
     expect(await db.wealth.where("series").equals("netWorth").count()).toBe(0)
   })
 
+  it("imports, replaces, and removes net worth breakdown snapshots by batch", async () => {
+    const original = await service.preview(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,cash,1000.00,2 accounts",
+      "breakdown.csv",
+    )
+    const first = await service.commit(original)
+
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    const replacement = await service.preview(
+      "As Of,Section,Segment,Balance,Descriptor\n2026-07-29,assets,cash,1100.00,2 accounts",
+      "breakdown-updated.csv",
+      "replace",
+    )
+    expect(replacement).toMatchObject({ replacementCount: 1, importableCount: 1 })
+    const second = await service.commit(replacement)
+    expect((await db.wealthBreakdown.toArray())[0]?.valueMinor).toBe(110_000)
+
+    const deletion = await service.deleteBatch(second.batch.id)
+    expect(deletion.deletedWealthBreakdownCount).toBe(1)
+    expect(await db.wealthBreakdown.count()).toBe(0)
+    expect(await db.imports.get(first.batch.id)).toBeDefined()
+  })
+
+  it("imports multiple source balances for the same account type and date", async () => {
+    const preview = await service.preview(
+      [
+        "As Of,Account Type,Source Label,Balance,Descriptor",
+        "2026-07-29,cash,Synthetic Checking,100.00,Connected",
+        "2026-07-29,cash,Synthetic Savings,200.00,Connected",
+      ].join("\n"),
+      "wealth-accounts.csv",
+    )
+    const receipt = await service.commit(preview)
+
+    expect(receipt.batch).toMatchObject({ kind: "wealthAccounts", importedCount: 2 })
+    expect(await db.wealthAccounts.count()).toBe(2)
+    const deletion = await service.deleteBatch(receipt.batch.id)
+    expect(deletion.deletedWealthAccountCount).toBe(2)
+    expect(await db.wealthAccounts.count()).toBe(0)
+  })
+
+  it("atomically imports and removes every row in a BudgetLens bundle", async () => {
+    const preview = await service.preview(
+      await fixture("budgetlens-bundle.json"),
+      "budgetlens-bundle.json",
+    )
+
+    expect(preview).toMatchObject({
+      kind: "bundle",
+      rowCount: 5,
+      importableCount: 5,
+      duplicateCount: 0,
+    })
+    const receipt = await service.commit(preview)
+
+    expect(receipt.batch).toMatchObject({ kind: "bundle", importedCount: 5 })
+    expect(await db.transactions.count()).toBe(1)
+    expect(await db.wealth.count()).toBe(2)
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    expect(await db.wealthAccounts.count()).toBe(1)
+
+    const deletion = await service.deleteBatch(receipt.batch.id)
+    expect(deletion).toMatchObject({
+      deletedTransactionCount: 1,
+      deletedWealthCount: 2,
+      deletedWealthBreakdownCount: 1,
+      deletedWealthAccountCount: 1,
+    })
+    expect(await db.transactions.count()).toBe(0)
+    expect(await db.wealth.count()).toBe(0)
+    expect(await db.wealthBreakdown.count()).toBe(0)
+    expect(await db.wealthAccounts.count()).toBe(0)
+  })
+
   it("rolls back every row when batch metadata cannot be saved", async () => {
     const preview = await service.preview(
       "Date,Description,Amount\n2026-01-01,Synthetic One,-1.00\n2026-01-02,Synthetic Two,-2.00",
@@ -228,6 +302,36 @@ describe("ImportService", () => {
     expect(result.receipts).toHaveLength(2)
     expect(result.receipts.reduce((sum, receipt) => sum + receipt.batch.importedCount, 0)).toBe(3)
     expect(await db.transactions.count()).toBe(3)
+  })
+
+  it("previews and commits mixed CSV and bundle files independently", async () => {
+    const collection = await service.previewMany([
+      {
+        content: await fixture("current-transactions.csv"),
+        sourceName: "current-transactions.csv",
+      },
+      {
+        content: await fixture("budgetlens-bundle.json"),
+        sourceName: "budgetlens-bundle.json",
+      },
+    ])
+
+    expect(collection).toMatchObject({
+      selectedCount: 2,
+      rowCount: 7,
+      importableCount: 7,
+      duplicateCount: 0,
+      failures: [],
+    })
+    expect(collection.previews.map((preview) => preview.kind)).toEqual(["transactions", "bundle"])
+
+    const result = await service.commitMany(collection.previews)
+    expect(result.failures).toEqual([])
+    expect(result.receipts).toHaveLength(2)
+    expect(await db.transactions.count()).toBe(3)
+    expect(await db.wealth.count()).toBe(2)
+    expect(await db.wealthBreakdown.count()).toBe(1)
+    expect(await db.wealthAccounts.count()).toBe(1)
   })
 
   it("recognizes a legacy positive debit row as a duplicate after sign normalization", async () => {

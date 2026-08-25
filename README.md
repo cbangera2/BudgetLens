@@ -13,12 +13,14 @@ _The screenshot contains invented demo data only._
 
 ## What you can do
 
-- Import current or legacy transaction CSVs, or select up to 20 Credit Karma transaction JSON
-  responses at once.
-- Preview every import, skip duplicate transactions by default, continue when one JSON file fails,
+- Import a complete one-file BudgetLens JSON bundle, current or legacy transaction CSVs, or up to
+  20 Credit Karma transaction JSON responses at once.
+- Preview every import, skip duplicate transactions by default, continue when one selected file fails,
   and remove the records associated with a completed import batch.
 - Import `Date,Net Worth` and `Date,Investment Value` histories independently.
-- Compare net worth and investments over 1M, 3M, 6M, YTD, 1Y, or all available history.
+- Import dated net-worth breakdown and account-source snapshots from Credit Karma Extractor.
+- Compare net worth, investments, assets, debts, five breakdown segments, and available account
+  sources over 1M, 3M, 6M, YTD, 1Y, or all available history.
 - Search, filter, sort, add, edit, and delete transactions.
 - Track monthly or yearly category budgets.
 - Rearrange, hide, and restore overview modules.
@@ -51,9 +53,10 @@ Transaction CSVs require `Date` and `Amount`. They may also include `Description
 `Transaction Type`, `Account Name`, `Account Type`, `Provider`, `Labels`, and `Notes`. Legacy
 `Store/Vendor` and `Type` headers remain supported.
 
-Select one CSV at a time, or up to 20 transaction JSON files from Credit Karma API/debug responses.
-CSV and JSON files cannot be mixed in one selection. Invalid JSON files are reported individually,
-while valid files remain available to import.
+Select up to 20 CSV and JSON files together. BudgetLens detects and validates each file independently,
+so one invalid file does not prevent other valid files from being imported. The versioned BudgetLens
+bundle contains transactions, net-worth history, investment history, the current category breakdown,
+and current account sources in one JSON file.
 
 Duplicate transaction rows are skipped by default. You can intentionally include them when needed.
 Each successful import is recorded as metadata, without retaining the original file contents, and
@@ -74,6 +77,22 @@ Date,Investment Value
 ```
 
 Review the detected type, duplicate policy, conflicts, and row counts before confirming an import.
+
+Current snapshot exports from Credit Karma Extractor use these additional shapes:
+
+```csv
+As Of,Section,Segment,Balance,Descriptor
+2026-07-29T12:00:00.000Z,assets,cash,1200.50,2 accounts
+2026-07-29T12:00:00.000Z,debts,creditCards,500.25,3 accounts
+```
+
+```csv
+As Of,Account Type,Source Label,Balance,Descriptor
+2026-07-29T12:00:00.000Z,investments,Synthetic Brokerage,8000.00,Connected
+```
+
+Import snapshots from different dates to build segment and account histories. Same-date conflicts
+can be kept or replaced explicitly, and removing an import removes only its associated rows.
 
 ## Privacy and backups
 
@@ -138,6 +157,15 @@ checks above, and use synthetic fixtures only. Pull requests should state which 
 and which flows were manually tested.
 
 ## Changelog
+
+### Unreleased
+
+- Added atomic one-file BudgetLens bundle imports for transactions and every supported wealth data
+  group.
+- Added mixed CSV/JSON multi-file previews with per-file failure isolation and cross-file duplicate
+  detection.
+- Added dated asset/debt breakdown and account-source imports, versioned local storage, backups,
+  summary metrics, editable charts, accessible tables, and import-batch removal.
 
 ### 1.0.0 — July 2026
 

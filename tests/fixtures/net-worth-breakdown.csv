@@ -1,0 +1,11 @@
+As Of,Section,Segment,Balance,Descriptor
+2026-06-30T12:00:00.000Z,assets,cash,1000.00,2 accounts
+2026-06-30T12:00:00.000Z,assets,investments,4000.00,1 account
+2026-06-30T12:00:00.000Z,assets,property,10000.00,1 asset
+2026-06-30T12:00:00.000Z,debts,creditCards,500.00,3 accounts
+2026-06-30T12:00:00.000Z,debts,loans,2500.00,2 from your report
+2026-07-20T12:00:00.000Z,assets,cash,1200.00,2 accounts
+2026-07-20T12:00:00.000Z,assets,investments,4500.00,1 account
+2026-07-20T12:00:00.000Z,assets,property,10000.00,1 asset
+2026-07-20T12:00:00.000Z,debts,creditCards,400.00,3 accounts
+2026-07-20T12:00:00.000Z,debts,loans,2400.00,2 from your report

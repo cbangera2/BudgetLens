@@ -5,8 +5,10 @@ import { NetWorthDashboard } from "@/features/net-worth/net-worth-dashboard"
 
 export function NetWorthPage() {
   const snapshots = useLiveQuery(() => repositories.wealth.list(), [])
+  const breakdown = useLiveQuery(() => repositories.wealthBreakdown.list(), [])
+  const accounts = useLiveQuery(() => repositories.wealthAccounts.list(), [])
 
-  if (snapshots === undefined) {
+  if (snapshots === undefined || breakdown === undefined || accounts === undefined) {
     return (
       <section aria-labelledby="net-worth-loading" className="space-y-4">
         <h1 id="net-worth-loading" className="text-3xl font-semibold tracking-tight">
@@ -20,5 +22,5 @@ export function NetWorthPage() {
     )
   }
 
-  return <NetWorthDashboard snapshots={snapshots} />
+  return <NetWorthDashboard snapshots={snapshots} breakdown={breakdown} accounts={accounts} />
 }

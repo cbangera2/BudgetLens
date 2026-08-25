@@ -4,6 +4,9 @@ import type {
   Transaction,
   TransactionDraft,
   TransactionFilters,
+  SnapshotDateFilters,
+  WealthAccountSnapshot,
+  WealthBreakdownSnapshot,
   WealthFilters,
   WealthSnapshot,
 } from "@/domain/models"
@@ -21,6 +24,12 @@ async function digest(value: string): Promise<string> {
 
 function includes(value: string | null, choices: string[] | undefined): boolean {
   return !choices?.length || (value !== null && choices.includes(value))
+}
+
+function withinSnapshotDates(snapshot: { date: string }, filters: SnapshotDateFilters): boolean {
+  if (filters.startDate && snapshot.date < filters.startDate) return false
+  if (filters.endDate && snapshot.date > filters.endDate) return false
+  return true
 }
 
 function matchesTransaction(transaction: Transaction, filters: TransactionFilters): boolean {
@@ -130,6 +139,34 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
       },
       async clear() {
         await db.wealth.clear()
+      },
+    },
+    wealthBreakdown: {
+      async list(filters = {}) {
+        return (await db.wealthBreakdown.toArray())
+          .filter((snapshot: WealthBreakdownSnapshot) => withinSnapshotDates(snapshot, filters))
+          .toSorted((left, right) =>
+            left.date === right.date
+              ? left.segment.localeCompare(right.segment)
+              : left.date.localeCompare(right.date),
+          )
+      },
+      async clear() {
+        await db.wealthBreakdown.clear()
+      },
+    },
+    wealthAccounts: {
+      async list(filters = {}) {
+        return (await db.wealthAccounts.toArray())
+          .filter((snapshot: WealthAccountSnapshot) => withinSnapshotDates(snapshot, filters))
+          .toSorted((left, right) =>
+            left.date === right.date
+              ? left.sourceLabel.localeCompare(right.sourceLabel)
+              : left.date.localeCompare(right.date),
+          )
+      },
+      async clear() {
+        await db.wealthAccounts.clear()
       },
     },
     imports: {

@@ -1,0 +1,5 @@
+As Of,Account Type,Source Label,Balance,Descriptor
+2026-07-20T12:00:00.000Z,cash,Synthetic Checking,500.00,Connected
+2026-07-20T12:00:00.000Z,cash,Synthetic Savings,700.00,Connected
+2026-07-20T12:00:00.000Z,investments,Synthetic Brokerage,4500.00,Manual
+2026-07-20T12:00:00.000Z,property,Example Property,10000.00,Manual
