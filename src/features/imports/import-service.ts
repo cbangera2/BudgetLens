@@ -29,6 +29,10 @@ function identifier(): string {
   return globalThis.crypto.randomUUID()
 }
 
+function snapshotSignature(valueMinor: number, descriptor: string | null): string {
+  return `${valueMinor}\0${descriptor ?? ""}`
+}
+
 async function digest(value: string): Promise<string> {
   const result = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
   return [...new Uint8Array(result)].map((byte) => byte.toString(16).padStart(2, "0")).join("")
@@ -134,21 +138,21 @@ export class ImportService {
       const existingBreakdown = new Map(
         (await this.db.wealthBreakdown.toArray()).map((row) => [
           `${row.segment}\0${row.date}`,
-          row.valueMinor,
+          snapshotSignature(row.valueMinor, row.descriptor),
         ]),
       )
       for (const draft of parsed.wealthBreakdown) {
         const key = `${draft.segment}\0${draft.date}`
         const prior = existingBreakdown.get(key)
-        if (prior === draft.valueMinor) duplicateCount += 1
+        if (prior === snapshotSignature(draft.valueMinor, draft.descriptor)) duplicateCount += 1
         else if (prior !== undefined) {
           if (wealthPolicy === "replace") {
             replacementCount += 1
             importableCount += 1
-            existingBreakdown.set(key, draft.valueMinor)
+            existingBreakdown.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           } else duplicateCount += 1
         } else {
-          existingBreakdown.set(key, draft.valueMinor)
+          existingBreakdown.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           importableCount += 1
         }
       }
@@ -156,21 +160,21 @@ export class ImportService {
       const existingAccounts = new Map(
         (await this.db.wealthAccounts.toArray()).map((row) => [
           `${row.accountType}\0${row.sourceLabel}\0${row.date}`,
-          row.valueMinor,
+          snapshotSignature(row.valueMinor, row.descriptor),
         ]),
       )
       for (const draft of parsed.wealthAccounts) {
         const key = `${draft.accountType}\0${draft.sourceLabel}\0${draft.date}`
         const prior = existingAccounts.get(key)
-        if (prior === draft.valueMinor) duplicateCount += 1
+        if (prior === snapshotSignature(draft.valueMinor, draft.descriptor)) duplicateCount += 1
         else if (prior !== undefined) {
           if (wealthPolicy === "replace") {
             replacementCount += 1
             importableCount += 1
-            existingAccounts.set(key, draft.valueMinor)
+            existingAccounts.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           } else duplicateCount += 1
         } else {
-          existingAccounts.set(key, draft.valueMinor)
+          existingAccounts.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           importableCount += 1
         }
       }
@@ -213,21 +217,21 @@ export class ImportService {
       const existing = new Map(
         (await this.db.wealthBreakdown.toArray()).map((row) => [
           `${row.segment}\0${row.date}`,
-          row.valueMinor,
+          snapshotSignature(row.valueMinor, row.descriptor),
         ]),
       )
       for (const draft of parsed.wealthBreakdown) {
         const key = `${draft.segment}\0${draft.date}`
         const prior = existing.get(key)
-        if (prior === draft.valueMinor) duplicateCount += 1
+        if (prior === snapshotSignature(draft.valueMinor, draft.descriptor)) duplicateCount += 1
         else if (prior !== undefined) {
           if (wealthPolicy === "replace") {
             replacementCount += 1
             importableCount += 1
-            existing.set(key, draft.valueMinor)
+            existing.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           } else duplicateCount += 1
         } else {
-          existing.set(key, draft.valueMinor)
+          existing.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           importableCount += 1
         }
       }
@@ -235,21 +239,21 @@ export class ImportService {
       const existing = new Map(
         (await this.db.wealthAccounts.toArray()).map((row) => [
           `${row.accountType}\0${row.sourceLabel}\0${row.date}`,
-          row.valueMinor,
+          snapshotSignature(row.valueMinor, row.descriptor),
         ]),
       )
       for (const draft of parsed.wealthAccounts) {
         const key = `${draft.accountType}\0${draft.sourceLabel}\0${draft.date}`
         const prior = existing.get(key)
-        if (prior === draft.valueMinor) duplicateCount += 1
+        if (prior === snapshotSignature(draft.valueMinor, draft.descriptor)) duplicateCount += 1
         else if (prior !== undefined) {
           if (wealthPolicy === "replace") {
             replacementCount += 1
             importableCount += 1
-            existing.set(key, draft.valueMinor)
+            existing.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           } else duplicateCount += 1
         } else {
-          existing.set(key, draft.valueMinor)
+          existing.set(key, snapshotSignature(draft.valueMinor, draft.descriptor))
           importableCount += 1
         }
       }
@@ -536,7 +540,10 @@ export class ImportService {
               .where("[segment+date]")
               .equals([draft.segment, draft.date])
               .first()
-            if (existing?.valueMinor === draft.valueMinor) {
+            if (
+              existing?.valueMinor === draft.valueMinor &&
+              existing.descriptor === draft.descriptor
+            ) {
               duplicateCount += 1
               continue
             }
@@ -564,7 +571,10 @@ export class ImportService {
               .where("[accountType+sourceLabel+date]")
               .equals([draft.accountType, draft.sourceLabel, draft.date])
               .first()
-            if (existing?.valueMinor === draft.valueMinor) {
+            if (
+              existing?.valueMinor === draft.valueMinor &&
+              existing.descriptor === draft.descriptor
+            ) {
               duplicateCount += 1
               continue
             }

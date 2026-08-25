@@ -124,7 +124,7 @@ function canonicalHeader(header: string): string {
   return header
     .replace(/^\uFEFF/, "")
     .trim()
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/\s+/g, " ")
 }
 
@@ -511,14 +511,14 @@ function parseSnapshotDate(value: string): string {
 }
 
 function parseWealthBreakdown(raw: Record<string, string>): WealthBreakdownSnapshotDraft {
-  const sectionValue = raw.section?.trim().toLocaleLowerCase()
+  const sectionValue = raw.section?.trim().toLowerCase()
   if (sectionValue !== "assets" && sectionValue !== "debts") {
     throw new Error("Section must be assets or debts.")
   }
   const segmentKey =
     raw.segment
       ?.trim()
-      .toLocaleLowerCase()
+      .toLowerCase()
       .replaceAll(/[\s_-]/g, "") ?? ""
   const segments: Record<string, WealthSegment> = {
     cash: "cash",
@@ -553,7 +553,7 @@ function isWealthAccountType(value: string): value is WealthAccountType {
 }
 
 function parseWealthAccount(raw: Record<string, string>): WealthAccountSnapshotDraft {
-  const accountTypeValue = raw["account type"]?.trim().toLocaleLowerCase() ?? ""
+  const accountTypeValue = raw["account type"]?.trim().toLowerCase() ?? ""
   if (!isWealthAccountType(accountTypeValue)) {
     throw new Error("Account Type must be cash, investments, or property.")
   }
