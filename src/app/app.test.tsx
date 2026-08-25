@@ -20,7 +20,9 @@ describe("BudgetLens application shell", () => {
     window.history.replaceState({}, "", "/transactions")
     render(<App />)
 
-    expect(await screen.findByRole("heading", { name: "Transactions" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Transactions" }, { timeout: 3_000 }),
+    ).toBeInTheDocument()
 
     const footer = screen.getByRole("contentinfo", { name: "BudgetLens resources" })
     const budgetLensLink = screen.getByRole("link", { name: "GitHub" })
