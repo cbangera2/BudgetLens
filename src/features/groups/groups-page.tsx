@@ -27,7 +27,22 @@ export function GroupsPageContent() {
   const [showArchived, setShowArchived] = useState(false)
 
   async function save(draft: TransactionGroupInput) {
-    await repositories.transactionGroups.put(draft)
+    const isNew = !draft.id
+    const group = await repositories.transactionGroups.put(draft)
+    if (isNew && group.startDate && group.endDate) {
+      const transactionsInRange = (await repositories.transactions.list()).filter(
+        (transaction) =>
+          transaction.groupId === null &&
+          transaction.date >= group.startDate! &&
+          transaction.date <= group.endDate!,
+      )
+      if (transactionsInRange.length) {
+        await repositories.transactions.updateMany(
+          transactionsInRange.map((transaction) => transaction.id),
+          { groupId: group.id },
+        )
+      }
+    }
     setEditing(null)
   }
 

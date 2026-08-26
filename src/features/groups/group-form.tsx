@@ -2,11 +2,13 @@ import { useId, useState, type FormEvent } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { TransactionGroup } from "@/domain/models"
 import { GROUP_COLORS } from "@/domain/models"
 import type { TransactionGroupInput } from "@/domain/repositories"
+import { cn } from "@/lib/cn"
 
 import { groupFormValues } from "./calculations"
 
@@ -111,40 +113,45 @@ export function GroupEditorCard({
               onChange={(event) => setBudget(event.target.value)}
             />
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`${id}-color`}>Color</Label>
-            <select
-              id={`${id}-color`}
-              className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={color}
-              onChange={(event) => {
-                const next = GROUP_COLORS.find((option) => option === event.target.value)
-                if (next) setColor(next)
-              }}
-            >
-              {GROUP_COLORS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </div>
+          <fieldset className="grid gap-1.5">
+            <legend className="text-sm leading-none font-medium">Color</legend>
+            <div className="flex flex-wrap gap-2">
+              {GROUP_COLORS.map((option) => {
+                const selected = option === color
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-label={option}
+                    aria-pressed={selected}
+                    title={option}
+                    onClick={() => setColor(option)}
+                    className={cn(
+                      "size-9 rounded-full border-2 border-background shadow-[0_0_0_1px_var(--border)] transition-transform outline-none hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      selected && "shadow-[0_0_0_2px_var(--ring)]",
+                    )}
+                    style={{ backgroundColor: colorSwatch[option] }}
+                  />
+                )
+              })}
+            </div>
+          </fieldset>
           <div className="grid gap-1.5">
             <Label htmlFor={`${id}-start`}>Start date (optional)</Label>
-            <Input
+            <DatePicker
               id={`${id}-start`}
-              type="date"
               value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
+              onChange={setStartDate}
+              placeholder="Pick a start date"
             />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor={`${id}-end`}>End date (optional)</Label>
-            <Input
+            <DatePicker
               id={`${id}-end`}
-              type="date"
               value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
+              onChange={setEndDate}
+              placeholder="Pick an end date"
             />
           </div>
           <div className="grid gap-1.5">

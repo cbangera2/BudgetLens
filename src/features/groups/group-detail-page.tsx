@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { DatePicker } from "@/components/ui/date-picker"
 import { Label } from "@/components/ui/label"
 import { repositories } from "@/db/repositories"
 import type { TransactionGroupInput } from "@/domain/repositories"
@@ -264,20 +264,20 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="range-start">From</Label>
-              <Input
+              <DatePicker
                 id="range-start"
-                type="date"
                 value={rangeStart}
-                onChange={(event) => setRangeStart(event.target.value)}
+                onChange={setRangeStart}
+                placeholder="Pick start"
               />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="range-end">To</Label>
-              <Input
+              <DatePicker
                 id="range-end"
-                type="date"
                 value={rangeEnd}
-                onChange={(event) => setRangeEnd(event.target.value)}
+                onChange={setRangeEnd}
+                placeholder="Pick end"
               />
             </div>
           </div>
