@@ -435,7 +435,11 @@ export function TransactionsPageContent() {
                           </span>
                         </td>
                         <td className="hidden p-3 md:table-cell">
-                          <span className="block">{transaction.provider ?? "—"}</span>
+                          {transaction.provider ? (
+                            <span className="block">{transaction.provider}</span>
+                          ) : transaction.transactionType ? null : (
+                            <span className="block text-muted-foreground">—</span>
+                          )}
                           {transaction.transactionType && (
                             <Badge variant="outline">{transaction.transactionType}</Badge>
                           )}
