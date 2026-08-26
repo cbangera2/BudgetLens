@@ -53,7 +53,6 @@ export function TransactionsPageContent() {
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
-  const [bulkSplit, setBulkSplit] = useState(String(DEFAULT_SHARE_COUNT))
 
   useEffect(() => {
     const query = serializeTransactionFilters(filters)
@@ -265,71 +264,79 @@ export function TransactionsPageContent() {
 
       {selected.size > 0 && (
         <Card aria-label="Bulk actions">
-          <CardContent className="flex flex-wrap items-end gap-3 p-4">
-            <p className="flex items-center gap-2 text-sm font-medium">
+          <CardContent className="flex flex-wrap items-center gap-3 p-3">
+            <span className="flex items-center gap-2 text-sm font-medium">
               <Users className="size-4 text-muted-foreground" aria-hidden="true" />
               {selected.size} selected
-            </p>
-            <div className="grid gap-1.5">
-              <Label htmlFor="bulk-group">Add to group</Label>
+            </span>
+            <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <Label htmlFor="bulk-group" className="sr-only">
+                Add to group
+              </Label>
               <select
                 id="bulk-group"
-                className={`${selectClass} w-44`}
+                aria-label="Add to group"
+                className={`${selectClass} h-9 w-44 py-0`}
                 value=""
                 onChange={(event) => {
                   if (event.target.value) void bulkApply({ groupId: event.target.value })
                 }}
               >
-                <option value="">Choose group…</option>
+                <option value="">Add to group…</option>
                 {groups.map((group) => (
                   <option key={group.id} value={group.id}>
                     {group.name}
                   </option>
                 ))}
               </select>
-            </div>
-            <Button variant="outline" onClick={() => void bulkApply({ groupId: null })}>
-              Remove from group
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void bulkApply({ shared: true, shareCount: DEFAULT_SHARE_COUNT })}
-            >
-              Mark shared ÷2
-            </Button>
-            <div className="flex items-end gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="bulk-split">Split</Label>
-                <Input
-                  id="bulk-split"
-                  type="number"
-                  min={2}
-                  max={10}
-                  step={1}
-                  className="w-20"
-                  value={bulkSplit}
-                  onChange={(event) => setBulkSplit(event.target.value)}
-                />
-              </div>
               <Button
-                variant="outline"
-                onClick={() => {
-                  const parsed = Number(bulkSplit)
-                  if (!Number.isInteger(parsed) || parsed < 2 || parsed > 10) return
-                  void bulkApply({ shared: true, shareCount: parsed })
-                }}
+                variant="ghost"
+                size="sm"
+                onClick={() => void bulkApply({ groupId: null })}
+                aria-label="Remove from group"
               >
-                Apply split
+                Remove
               </Button>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => void bulkApply({ shared: false, shareCount: DEFAULT_SHARE_COUNT })}
-            >
-              Unmark shared
-            </Button>
+            <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <Label htmlFor="bulk-share" className="sr-only">
+                Sharing
+              </Label>
+              <select
+                id="bulk-share"
+                aria-label="Sharing"
+                className={`${selectClass} h-9 w-36 py-0`}
+                defaultValue=""
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (!value) return
+                  if (value === "off") {
+                    void bulkApply({ shared: false, shareCount: DEFAULT_SHARE_COUNT })
+                  } else {
+                    const split = Number(value)
+                    if (Number.isInteger(split) && split >= 2 && split <= 10) {
+                      void bulkApply({ shared: true, shareCount: split })
+                    }
+                  }
+                  event.target.value = ""
+                }}
+              >
+                <option value="">Sharing…</option>
+                <option value="off">Not shared</option>
+                <option value="2">Shared ÷2</option>
+                <option value="3">Shared ÷3</option>
+                <option value="4">Shared ÷4</option>
+                <option value="5">Shared ÷5</option>
+                <option value="6">Shared ÷6</option>
+                <option value="10">Shared ÷10</option>
+              </select>
+            </div>
             <Button
               variant="ghost"
+              size="sm"
+              className="ml-auto"
               aria-label="Clear selection"
               onClick={() => setSelected(new Set())}
             >
