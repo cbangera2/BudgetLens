@@ -6,9 +6,12 @@ import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DatePicker } from "@/components/ui/date-picker"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { repositories } from "@/db/repositories"
 import type { TransactionGroupInput } from "@/domain/repositories"
+import { ChartWorkspace } from "@/features/charts/chart-workspace"
 import {
   EditableChartRenderer,
   type ChartDataRow,
@@ -81,11 +84,52 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
   const [editing, setEditing] = useState(false)
   const [rangeStart, setRangeStart] = useState("")
   const [rangeEnd, setRangeEnd] = useState("")
+  const [query, setQuery] = useState("")
+  const [filterCategory, setFilterCategory] = useState("")
+  const [filterType, setFilterType] = useState("")
+
+  const filteredMembers = useMemo(() => {
+    if (!data) return []
+    const q = query.trim().toLocaleLowerCase()
+    return data.members.filter(
+      (transaction) =>
+        (!filterCategory || transaction.category === filterCategory) &&
+        (!filterType || transaction.transactionType === filterType) &&
+        (!q ||
+          [
+            transaction.description,
+            transaction.category,
+            transaction.accountName,
+            transaction.provider,
+          ]
+            .filter((value): value is string => typeof value === "string")
+            .some((value) => value.toLocaleLowerCase().includes(q))),
+    )
+  }, [data, query, filterCategory, filterType])
+
+  const availableCategories = useMemo(() => {
+    if (!data) return []
+    return [
+      ...new Set(
+        data.members.map((m) => m.category).filter((value): value is string => Boolean(value)),
+      ),
+    ].toSorted()
+  }, [data])
+  const availableTypes = useMemo(() => {
+    if (!data) return []
+    return [
+      ...new Set(
+        data.members
+          .map((m) => m.transactionType)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ].toSorted()
+  }, [data])
 
   const summary = useMemo(() => {
     if (!data?.group) return null
-    return calculateGroupSummary(data.group, data.members)
-  }, [data])
+    return calculateGroupSummary(data.group, filteredMembers)
+  }, [data, filteredMembers])
 
   const unassignedInRange = useMemo(() => {
     if (!data || !rangeStart || !rangeEnd || rangeStart > rangeEnd) return []
@@ -231,6 +275,73 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
         </Card>
       )}
 
+      <Card aria-labelledby="group-filter-title">
+        <CardHeader className="sr-only">
+          <CardTitle id="group-filter-title">Filter group</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-2 p-3">
+          <div className="min-w-0 basis-full sm:min-w-56 sm:flex-[2_1_16rem]">
+            <Label className="sr-only" htmlFor="group-filter-search">
+              Search members
+            </Label>
+            <Input
+              id="group-filter-search"
+              type="search"
+              className="h-8"
+              placeholder="Search description, category, account…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <div className="min-w-0 flex-1 basis-[9rem]">
+            <Label className="sr-only" htmlFor="group-filter-category">
+              Category
+            </Label>
+            <Select
+              id="group-filter-category"
+              className="h-8"
+              aria-label="Category"
+              value={filterCategory || "__all__"}
+              onValueChange={(value) => setFilterCategory(value === "__all__" ? "" : value)}
+              options={[
+                { value: "__all__", label: "All categories" },
+                ...availableCategories.map((category) => ({ value: category, label: category })),
+              ]}
+            />
+          </div>
+          <div className="min-w-0 flex-1 basis-[10rem]">
+            <Label className="sr-only" htmlFor="group-filter-type">
+              Transaction type
+            </Label>
+            <Select
+              id="group-filter-type"
+              className="h-8"
+              aria-label="Transaction type"
+              value={filterType || "__all__"}
+              onValueChange={(value) => setFilterType(value === "__all__" ? "" : value)}
+              options={[
+                { value: "__all__", label: "All types" },
+                ...availableTypes.map((type) => ({ value: type, label: type })),
+              ]}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            disabled={!query && !filterCategory && !filterType}
+            onClick={() => {
+              setQuery("")
+              setFilterCategory("")
+              setFilterType("")
+            }}
+          >
+            Reset
+          </Button>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <EditableChartRenderer
           storageKey={`budgetlens.chart.group-${group.id}-categories.v1`}
@@ -251,6 +362,8 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
           initialSettings={dailyChartSettings}
         />
       </div>
+
+      <ChartWorkspace transactions={filteredMembers} wealth={[]} />
 
       <Card>
         <CardHeader>
@@ -306,17 +419,22 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
         <CardHeader>
           <CardTitle>Members</CardTitle>
           <CardDescription aria-live="polite">
-            {members.length} {members.length === 1 ? "transaction" : "transactions"} ·{" "}
-            {summary?.sharedCount ?? 0} shared. Shared rows count at ÷N of their amount.
+            Showing {filteredMembers.length} of {members.length}{" "}
+            {members.length === 1 ? "transaction" : "transactions"} · {summary?.sharedCount ?? 0}{" "}
+            shared.
+            {filteredMembers.length !== members.length && " (filtered)"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {members.length === 0 ? (
+          {filteredMembers.length === 0 ? (
             <div className="rounded-xl border border-dashed p-8 text-center">
-              <p className="font-medium">No transactions in this group yet</p>
+              <p className="font-medium">
+                {members.length === 0 ? "No transactions in this group yet" : "No matching members"}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Use the date range above, or select rows on the Transactions page and choose this
-                group.
+                {members.length === 0
+                  ? "Use the date range above, or select rows on the Transactions page and choose this group."
+                  : "Adjust the filters above to see more transactions."}
               </p>
             </div>
           ) : (
@@ -336,7 +454,7 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {members.map((member) => {
+                  {filteredMembers.map((member) => {
                     const rawShare = groupContributionMinor(member)
                     return (
                       <tr key={member.id}>
@@ -356,41 +474,37 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
                           {formatMoney(rawShare)}
                         </td>
                         <td className="p-2 md:p-3">
-                          <label className="flex items-center gap-2 text-xs">
-                            <input
-                              type="checkbox"
-                              checked={member.shared}
-                              aria-label={`Mark ${member.description} shared`}
-                              onChange={(event) => {
+                          <select
+                            value={member.shared ? String(member.shareCount) : "off"}
+                            aria-label={`Sharing for ${member.description}`}
+                            onChange={(event) => {
+                              const value = event.target.value
+                              if (value === "off") {
                                 void repositories.transactions.update(member.id, {
-                                  shared: event.target.checked,
-                                  ...(event.target.checked
-                                    ? { shareCount: member.shareCount }
-                                    : {}),
+                                  shared: false,
                                 })
-                              }}
-                            />
-                            {member.shared && <>÷{member.shareCount}</>}
-                          </label>
-                          {member.shared && (
-                            <input
-                              type="number"
-                              min={2}
-                              max={10}
-                              step={1}
-                              className="mt-1 h-7 w-16 rounded border bg-background px-2 text-xs tabular-nums"
-                              aria-label={`${member.description} split count`}
-                              defaultValue={member.shareCount}
-                              onChange={(event) => {
-                                const parsed = Number(event.target.value)
+                              } else {
+                                const parsed = Number(value)
                                 if (!Number.isInteger(parsed) || parsed < 2 || parsed > 10) return
                                 void repositories.transactions.update(member.id, {
                                   shared: true,
                                   shareCount: parsed,
                                 })
-                              }}
-                            />
-                          )}
+                              }
+                            }}
+                            className="h-8 w-28 rounded-lg border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            <option value="off">Not shared</option>
+                            <option value="2">Shared ÷2</option>
+                            <option value="3">Shared ÷3</option>
+                            <option value="4">Shared ÷4</option>
+                            <option value="5">Shared ÷5</option>
+                            <option value="6">Shared ÷6</option>
+                            <option value="7">Shared ÷7</option>
+                            <option value="8">Shared ÷8</option>
+                            <option value="9">Shared ÷9</option>
+                            <option value="10">Shared ÷10</option>
+                          </select>
                         </td>
                         <td className="p-1 md:p-3">
                           <div className="flex justify-end">

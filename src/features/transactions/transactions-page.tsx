@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks"
 import { Pencil, Plus, Trash2, Users, X } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -53,6 +53,8 @@ export function TransactionsPageContent() {
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [lastSplit, setLastSplit] = useState(DEFAULT_SHARE_COUNT)
+  const lastSelectedRef = useRef<string | null>(null)
 
   useEffect(() => {
     const query = serializeTransactionFilters(filters)
@@ -87,17 +89,48 @@ export function TransactionsPageContent() {
 
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups])
 
-  function toggleRow(id: string, checked: boolean) {
+  function toggleRow(
+    id: string,
+    checked: boolean,
+    event?: React.MouseEvent | React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const shift = Boolean(
+      event &&
+      "shiftKey" in event &&
+      (event as { shiftKey: boolean }).shiftKey &&
+      lastSelectedRef.current,
+    )
+    if (shift) {
+      const lastId = lastSelectedRef.current!
+      const lastIndex = visible.findIndex((row) => row.id === lastId)
+      const currentIndex = visible.findIndex((row) => row.id === id)
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const [start, end] = [Math.min(lastIndex, currentIndex), Math.max(lastIndex, currentIndex)]
+        const rangeIds = visible.slice(start, end + 1).map((row) => row.id)
+        setSelected((current) => {
+          const next = new Set(current)
+          for (const rangeId of rangeIds) {
+            if (checked) next.add(rangeId)
+            else next.delete(rangeId)
+          }
+          return next
+        })
+        lastSelectedRef.current = id
+        return
+      }
+    }
     setSelected((current) => {
       const next = new Set(current)
       if (checked) next.add(id)
       else next.delete(id)
       return next
     })
+    lastSelectedRef.current = id
   }
 
   const pageSelection = pageRows.filter((row) => selected.has(row.id))
   const allPageSelected = pageRows.length > 0 && pageSelection.length === pageRows.length
+  const allVisibleSelected = visible.length > 0 && selected.size === visible.length
   function toggleSelectAll(checked: boolean) {
     setSelected((current) => {
       const next = new Set(current)
@@ -107,11 +140,39 @@ export function TransactionsPageContent() {
       }
       return next
     })
+    if (checked && pageRows[0]) lastSelectedRef.current = pageRows[0].id
+  }
+
+  function toggleSelectAllMatching(checked: boolean) {
+    if (checked) setSelected(new Set(visible.map((row) => row.id)))
+    else setSelected(new Set())
+    if (checked && visible[0]) lastSelectedRef.current = visible[0].id
+  }
+
+  function handleRowClick(event: React.MouseEvent, id: string) {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button, a, input, select, label")
+    )
+      return
+    const checked = !selected.has(id)
+    toggleRow(id, checked, event)
   }
 
   async function bulkApply(changes: Partial<TransactionDraft>) {
     await repositories.transactions.updateMany([...selected], changes)
+    if (changes.shareCount && Number.isInteger(changes.shareCount)) {
+      setLastSplit(changes.shareCount)
+    }
     setSelected(new Set())
+  }
+
+  async function toggleSharedSingle(transaction: Transaction, checked: boolean) {
+    await repositories.transactions.update(transaction.id, {
+      shared: checked,
+      shareCount: checked ? (transaction.shareCount ?? lastSplit) : DEFAULT_SHARE_COUNT,
+    })
+    if (checked) setLastSplit(transaction.shareCount ?? lastSplit)
   }
 
   async function save(draft: TransactionDraft) {
@@ -267,7 +328,7 @@ export function TransactionsPageContent() {
           <CardContent className="flex flex-wrap items-center gap-3 p-3">
             <span className="flex items-center gap-2 text-sm font-medium">
               <Users className="size-4 text-muted-foreground" aria-hidden="true" />
-              {selected.size} selected
+              {selected.size} of {visible.length} selected
             </span>
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2">
@@ -317,6 +378,7 @@ export function TransactionsPageContent() {
                   } else {
                     const split = Number(value)
                     if (Number.isInteger(split) && split >= 2 && split <= 10) {
+                      setLastSplit(split)
                       void bulkApply({ shared: true, shareCount: split })
                     }
                   }
@@ -325,12 +387,12 @@ export function TransactionsPageContent() {
               >
                 <option value="">Sharing…</option>
                 <option value="off">Not shared</option>
-                <option value="2">Shared ÷2</option>
-                <option value="3">Shared ÷3</option>
-                <option value="4">Shared ÷4</option>
-                <option value="5">Shared ÷5</option>
-                <option value="6">Shared ÷6</option>
-                <option value="10">Shared ÷10</option>
+                <option value="2">Shared ÷2 {lastSplit === 2 ? "•" : ""}</option>
+                <option value="3">Shared ÷3 {lastSplit === 3 ? "•" : ""}</option>
+                <option value="4">Shared ÷4 {lastSplit === 4 ? "•" : ""}</option>
+                <option value="5">Shared ÷5 {lastSplit === 5 ? "•" : ""}</option>
+                <option value="6">Shared ÷6 {lastSplit === 6 ? "•" : ""}</option>
+                <option value="10">Shared ÷10 {lastSplit === 10 ? "•" : ""}</option>
               </select>
             </div>
             <Button
@@ -351,6 +413,24 @@ export function TransactionsPageContent() {
           <CardTitle>Activity</CardTitle>
           <CardDescription aria-live="polite">
             Showing {pageRows.length} of {visible.length} matching transactions.
+            {selected.size > 0 && !allVisibleSelected && visible.length > pageSize && (
+              <button
+                type="button"
+                className="ml-2 text-primary underline"
+                onClick={() => toggleSelectAllMatching(true)}
+              >
+                Select all {visible.length} matching
+              </button>
+            )}
+            {allVisibleSelected && visible.length > pageSize && (
+              <button
+                type="button"
+                className="ml-2 text-primary underline"
+                onClick={() => toggleSelectAllMatching(false)}
+              >
+                Clear selection
+              </button>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -380,6 +460,7 @@ export function TransactionsPageContent() {
                     <th className="hidden p-3 md:table-cell">Account</th>
                     <th className="hidden p-3 md:table-cell">Provider / type</th>
                     <th className="p-2 text-right md:p-3">Amount</th>
+                    <th className="p-2 text-center md:p-3">Shared</th>
                     <th className="p-2 md:p-3">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -402,14 +483,21 @@ export function TransactionsPageContent() {
                     return (
                       <tr
                         key={transaction.id}
-                        className={selected.has(transaction.id) ? "bg-accent" : undefined}
+                        className={
+                          (selected.has(transaction.id) ? "bg-accent " : "") +
+                          "cursor-pointer hover:bg-muted/50"
+                        }
+                        onClick={(event) => handleRowClick(event, transaction.id)}
                       >
                         <td className="p-1 sm:p-2 md:p-3">
                           <input
                             type="checkbox"
                             aria-label={`Select ${transaction.description}`}
                             checked={selected.has(transaction.id)}
-                            onChange={(event) => toggleRow(transaction.id, event.target.checked)}
+                            onChange={(event) =>
+                              toggleRow(transaction.id, event.target.checked, event)
+                            }
+                            onClick={(event) => event.stopPropagation()}
                           />
                         </td>
                         <td className="p-2 text-xs whitespace-nowrap md:p-3 md:text-sm">
@@ -458,6 +546,18 @@ export function TransactionsPageContent() {
                               your share {formatMoney(effective)}
                             </span>
                           )}
+                        </td>
+                        <td className="p-2 text-center md:p-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Mark ${transaction.description} shared`}
+                            checked={transaction.shared}
+                            onChange={(event) => {
+                              event.stopPropagation()
+                              void toggleSharedSingle(transaction, event.target.checked)
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                          />
                         </td>
                         <td className="p-1 md:p-3">
                           <div className="flex justify-end gap-1">
