@@ -1,4 +1,4 @@
-import type { WealthAccountType, WealthSection, WealthSegment } from "@/domain/models"
+import type { GroupColor, WealthAccountType, WealthSection, WealthSegment } from "@/domain/models"
 
 export const DEMO_SOURCE_NAME = "budgetlens-demo.json"
 
@@ -18,6 +18,9 @@ interface DemoBundleTransaction {
 const RANGE_START = "2026-01-01"
 const RANGE_END = "2026-08-25"
 const AS_OF = RANGE_END
+
+/** Label used to tag transactions that belong to the demo trip group. */
+export const DEMO_TRIP_LABEL = "trip"
 
 function isoDate(year: number, month: number, day: number): string {
   return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day
@@ -262,7 +265,7 @@ function buildTransactions(): DemoBundleTransaction[] {
       category: "Travel",
       transactionType: "debit",
       ...checking,
-      labels: ["trip"],
+      labels: [DEMO_TRIP_LABEL],
       notes: "Summer trip to the coast",
     })
   }
@@ -393,4 +396,35 @@ export const GOLDEN_DEMO_BUDGETS: DemoBudgetSeed[] = [
   { category: "Dining Out", amountMinor: 16_000, period: "monthly" },
   { category: "Transportation", amountMinor: 18_000, period: "monthly" },
   { category: "Travel", amountMinor: 120_000, period: "yearly" },
+]
+
+export interface DemoGroupSeed {
+  name: string
+  description: string | null
+  color: GroupColor
+  startDate: string | null
+  endDate: string | null
+  budgetMinor: number | null
+  archived: boolean
+}
+
+export const GOLDEN_DEMO_GROUPS: DemoGroupSeed[] = [
+  {
+    name: "Coastal Summer Trip",
+    description: "Shared costs from the July coast trip, split two ways.",
+    color: "emerald",
+    startDate: "2026-07-08",
+    endDate: "2026-07-12",
+    budgetMinor: 150_000,
+    archived: false,
+  },
+  {
+    name: "Ski Weekend 2025",
+    description: "Last winter's trip, kept for reference.",
+    color: "cyan",
+    startDate: "2025-02-14",
+    endDate: "2025-02-17",
+    budgetMinor: 90_000,
+    archived: true,
+  },
 ]

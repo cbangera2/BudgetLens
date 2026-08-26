@@ -33,6 +33,18 @@ describe("demo data seeding", () => {
     expect(budgets.map((budget) => budget.category)).toContain("Groceries")
     expect(batches).toHaveLength(1)
     expect(batches[0]?.sourceName).toBe(DEMO_SOURCE_NAME)
+
+    const groups = await db.transactionGroups.toArray()
+    expect(groups.map((group) => group.name)).toContain("Coastal Summer Trip")
+    expect(groups.filter((group) => group.archived)).toHaveLength(1)
+
+    const tripGroup = groups.find((group) => group.name === "Coastal Summer Trip")
+    const sharedTrips = transactions.filter((transaction) => transaction.groupId === tripGroup?.id)
+    expect(sharedTrips.length).toBeGreaterThan(0)
+    for (const trip of sharedTrips) {
+      expect(trip.shared).toBe(true)
+      expect(trip.shareCount).toBe(2)
+    }
   })
 
   it("produces internally consistent net worth numbers", async () => {
@@ -64,6 +76,7 @@ describe("demo data seeding", () => {
 
     expect(seededAgain).toBe(false)
     expect(await db.imports.count()).toBe(1)
+    expect(await db.transactionGroups.count()).toBe(2)
   })
 })
 

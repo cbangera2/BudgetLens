@@ -3,7 +3,13 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { database } from "@/db/database"
 import { ImportService } from "@/features/imports/import-service"
 
-import { DEMO_SOURCE_NAME, GOLDEN_DEMO_BUDGETS, GOLDEN_DEMO_BUNDLE_JSON } from "./golden-bundle"
+import {
+  DEMO_TRIP_LABEL,
+  DEMO_SOURCE_NAME,
+  GOLDEN_DEMO_BUDGETS,
+  GOLDEN_DEMO_BUNDLE_JSON,
+  GOLDEN_DEMO_GROUPS,
+} from "./golden-bundle"
 
 let inFlight: Promise<boolean> | null = null
 
@@ -31,6 +37,30 @@ export async function seedDemoDataIfEmpty(db: typeof database = database): Promi
       updatedAt: now,
     })),
   )
+
+  const groupSeeds = GOLDEN_DEMO_GROUPS.map((group) => {
+    const id = crypto.randomUUID()
+    return { id, name: group.name, row: { ...group, id, createdAt: now, updatedAt: now } }
+  })
+  await db.transactionGroups.bulkPut(groupSeeds.map((seed) => seed.row))
+  const groupIds = new Map(groupSeeds.map((seed) => [seed.name, seed.id]))
+
+  // Link the tagged trip expenses to the trip group as a shared two-way split.
+  const tripGroupId = groupIds.get("Coastal Summer Trip")
+  if (tripGroupId) {
+    const trips = await db.transactions
+      .filter((transaction) => transaction.labels.includes(DEMO_TRIP_LABEL))
+      .toArray()
+    await db.transactions.bulkPut(
+      trips.map((transaction) => ({
+        ...transaction,
+        groupId: tripGroupId,
+        shared: true,
+        shareCount: 2,
+        updatedAt: now,
+      })),
+    )
+  }
   return true
 }
 
