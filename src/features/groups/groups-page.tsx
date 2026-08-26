@@ -110,102 +110,116 @@ export function GroupsPageContent() {
                 ? Math.min((summary.netCostMinor / budget) * 100, 100)
                 : null
             return (
-              <Card key={group.id} className={group.archived ? "opacity-70" : undefined}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <CardTitle className="flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="inline-block size-3 shrink-0 rounded-full"
-                          style={{ backgroundColor: groupColorHex(group.color) }}
-                        />
-                        <Link
-                          to="/groups/$groupId"
-                          params={{ groupId: group.id }}
-                          className="hover:underline"
-                        >
+              <Link
+                key={group.id}
+                to="/groups/$groupId"
+                params={{ groupId: group.id }}
+                className="block rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+              >
+                <Card
+                  className={
+                    (group.archived ? "opacity-70 " : "") +
+                    "h-full cursor-pointer transition-shadow hover:shadow-md"
+                  }
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <CardTitle className="flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className="inline-block size-3 shrink-0 rounded-full"
+                            style={{ backgroundColor: groupColorHex(group.color) }}
+                          />
                           {group.name}
-                        </Link>
-                      </CardTitle>
-                      <CardDescription>
-                        {group.startDate ?? "—"} → {group.endDate ?? "—"} · {summary.memberCount}{" "}
-                        {summary.memberCount === 1 ? "transaction" : "transactions"}
-                      </CardDescription>
+                        </CardTitle>
+                        <CardDescription>
+                          {group.startDate ?? "—"} → {group.endDate ?? "—"} · {summary.memberCount}{" "}
+                          {summary.memberCount === 1 ? "transaction" : "transactions"}
+                        </CardDescription>
+                      </div>
+                      {group.archived && <Badge variant="outline">archived</Badge>}
                     </div>
-                    {group.archived && <Badge variant="outline">archived</Badge>}
-                  </div>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Your cost</p>
-                      <p className="font-semibold tabular-nums">
-                        {formatMoney(summary.netCostMinor)}
-                      </p>
+                  </CardHeader>
+                  <CardContent className="grid gap-3">
+                    <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Your cost</p>
+                        <p className="font-semibold tabular-nums">
+                          {formatMoney(summary.netCostMinor)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gross spend</p>
+                        <p className="tabular-nums">{formatMoney(summary.grossExpenseMinor)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Saved by sharing</p>
+                        <p className="tabular-nums">{formatMoney(summary.savedBySharingMinor)}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Gross spend</p>
-                      <p className="tabular-nums">{formatMoney(summary.grossExpenseMinor)}</p>
+                    {budgetProgress !== null && (
+                      <div className="grid gap-1">
+                        <progress
+                          aria-label={`${group.name} budget used`}
+                          className="h-3 w-full accent-primary"
+                          max={100}
+                          value={budgetProgress}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {formatMoney(summary.netCostMinor)} of{" "}
+                          {budget !== null ? formatMoney(budget) : "—"} budget
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`${group.archived ? "Restore" : "Archive"} ${group.name}`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          void repositories.transactionGroups.put({
+                            ...group,
+                            archived: !group.archived,
+                          })
+                        }}
+                      >
+                        {group.archived ? (
+                          <ArchiveRestore className="size-4" />
+                        ) : (
+                          <Archive className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Edit ${group.name}`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          setEditing(group)
+                        }}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Delete ${group.name}`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          void repositories.transactionGroups.remove(group.id)
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Saved by sharing</p>
-                      <p className="tabular-nums">{formatMoney(summary.savedBySharingMinor)}</p>
-                    </div>
-                  </div>
-                  {budgetProgress !== null && (
-                    <div className="grid gap-1">
-                      <progress
-                        aria-label={`${group.name} budget used`}
-                        className="h-3 w-full accent-primary"
-                        max={100}
-                        value={budgetProgress}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {formatMoney(summary.netCostMinor)} of{" "}
-                        {budget !== null ? formatMoney(budget) : "—"} budget
-                      </p>
-                    </div>
-                  )}
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={`${group.archived ? "Restore" : "Archive"} ${group.name}`}
-                      onClick={() => {
-                        void repositories.transactionGroups.put({
-                          ...group,
-                          archived: !group.archived,
-                        })
-                      }}
-                    >
-                      {group.archived ? (
-                        <ArchiveRestore className="size-4" />
-                      ) : (
-                        <Archive className="size-4" />
-                      )}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={`Edit ${group.name}`}
-                      onClick={() => setEditing(group)}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={`Delete ${group.name}`}
-                      onClick={() => {
-                        void repositories.transactionGroups.remove(group.id)
-                      }}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Link>
             )
           })}
         </section>
