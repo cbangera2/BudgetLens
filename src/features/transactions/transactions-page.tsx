@@ -13,6 +13,7 @@ import type { Transaction, TransactionDraft } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
+import { cn } from "@/lib/cn"
 
 import {
   defaultTransactionFilters,
@@ -85,6 +86,58 @@ export function TransactionsPageContent() {
   const pageRows = visible.slice((page - 1) * pageSize, page * pageSize)
   const patchFilter = (patch: Partial<TransactionViewFilters>) =>
     setFilters((current) => ({ ...current, ...patch }))
+
+  const categoryClickTimeoutRef = useRef<number | null>(null)
+
+  function handleCategoryClick(category: string) {
+    if (categoryClickTimeoutRef.current) window.clearTimeout(categoryClickTimeoutRef.current)
+    categoryClickTimeoutRef.current = window.setTimeout(() => {
+      setFilters((current) => {
+        const isIncluded = current.categories.includes(category)
+        const isExcluded = current.excludedCategories.includes(category)
+        if (isIncluded) {
+          // Included → move to excluded (cycle)
+          return {
+            ...current,
+            categories: current.categories.filter((value) => value !== category),
+            excludedCategories: [...current.excludedCategories, category],
+          }
+        }
+        if (isExcluded) {
+          // Excluded → clear
+          return {
+            ...current,
+            excludedCategories: current.excludedCategories.filter((value) => value !== category),
+          }
+        }
+        // Not selected → include
+        return { ...current, categories: [...current.categories, category] }
+      })
+    }, 320)
+  }
+
+  function handleCategoryDoubleClick(category: string, event: React.MouseEvent) {
+    event.preventDefault()
+    if (categoryClickTimeoutRef.current) window.clearTimeout(categoryClickTimeoutRef.current)
+    setFilters((current) => {
+      const isExcluded = current.excludedCategories.includes(category)
+      const isIncluded = current.categories.includes(category)
+      if (isExcluded) {
+        return {
+          ...current,
+          excludedCategories: current.excludedCategories.filter((value) => value !== category),
+        }
+      }
+      if (isIncluded) {
+        return {
+          ...current,
+          categories: current.categories.filter((value) => value !== category),
+          excludedCategories: [...current.excludedCategories, category],
+        }
+      }
+      return { ...current, excludedCategories: [...current.excludedCategories, category] }
+    })
+  }
 
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups])
 
@@ -269,9 +322,42 @@ export function TransactionsPageContent() {
               onChange={(event) => patchFilter({ search: event.target.value })}
             />
           </div>
+          <div className="grid gap-1.5 sm:col-span-2 xl:col-span-3">
+            <Label>Category</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {unique(transactions, "category").map((category) => {
+                const isIncluded = filters.categories.includes(category)
+                const isExcluded = filters.excludedCategories.includes(category)
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                      isExcluded
+                        ? "border-transparent bg-secondary text-secondary-foreground line-through opacity-60"
+                        : isIncluded
+                          ? "border-transparent bg-primary text-primary-foreground"
+                          : "text-foreground",
+                      "cursor-pointer select-none",
+                    )}
+                    onClick={() => handleCategoryClick(category)}
+                    onDoubleClick={(event) => handleCategoryDoubleClick(category, event)}
+                  >
+                    {category}
+                  </button>
+                )
+              })}
+              {unique(transactions, "category").length === 0 && (
+                <span className="text-xs text-muted-foreground">No categories</span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Click to cycle: include → exclude → clear. Double-click to exclude directly.
+            </p>
+          </div>
           {(
             [
-              ["category", "Category", unique(transactions, "category")],
               ["account", "Account", unique(transactions, "accountName")],
               ["provider", "Provider", unique(transactions, "provider")],
               ["transactionType", "Transaction type", unique(transactions, "transactionType")],

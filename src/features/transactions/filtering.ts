@@ -11,6 +11,8 @@ export type TransactionSort =
 export interface TransactionViewFilters {
   search: string
   category: string
+  categories: string[]
+  excludedCategories: string[]
   account: string
   provider: string
   transactionType: string
@@ -21,6 +23,8 @@ export interface TransactionViewFilters {
 export const defaultTransactionFilters: TransactionViewFilters = {
   search: "",
   category: "",
+  categories: [],
+  excludedCategories: [],
   account: "",
   provider: "",
   transactionType: "",
@@ -38,12 +42,23 @@ export function isTransactionSort(value: unknown): value is TransactionSort {
   )
 }
 
+function parseList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((value) => value.trim().slice(0, 100))
+    .filter(Boolean)
+}
+
 export function parseTransactionFilters(search: string): TransactionViewFilters {
   const params = new URLSearchParams(search)
   const sort = params.get("sort")
+  const rawCategories = params.get("categories") ?? params.get("category") ?? ""
+  const rawExcluded = params.get("excludedCategories") ?? params.get("excludeCategory") ?? ""
   return {
     search: params.get("q")?.slice(0, 200) ?? "",
     category: params.get("category")?.slice(0, 100) ?? "",
+    categories: parseList(rawCategories),
+    excludedCategories: parseList(rawExcluded),
     account: params.get("account")?.slice(0, 100) ?? "",
     provider: params.get("provider")?.slice(0, 100) ?? "",
     transactionType: params.get("type")?.slice(0, 100) ?? "",
@@ -55,7 +70,11 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
 export function serializeTransactionFilters(filters: TransactionViewFilters): string {
   const params = new URLSearchParams()
   if (filters.search) params.set("q", filters.search)
-  if (filters.category) params.set("category", filters.category)
+  // Legacy single category for backward compat, plus new multi-value params
+  if (filters.categories.length) params.set("categories", filters.categories.join(","))
+  else if (filters.category) params.set("category", filters.category)
+  if (filters.excludedCategories.length)
+    params.set("excludedCategories", filters.excludedCategories.join(","))
   if (filters.account) params.set("account", filters.account)
   if (filters.provider) params.set("provider", filters.provider)
   if (filters.transactionType) params.set("type", filters.transactionType)
@@ -79,9 +98,16 @@ export function filterAndSortTransactions(
         transaction.provider,
         transaction.notes,
       ].some((value) => value?.toLocaleLowerCase().includes(query))
+    const categoryValue = transaction.category ?? ""
+    const matchesCategory = (() => {
+      if (filters.excludedCategories.includes(categoryValue)) return false
+      if (filters.categories.length) return filters.categories.includes(categoryValue)
+      if (filters.category) return categoryValue === filters.category
+      return true
+    })()
     return (
       matchesSearch &&
-      (!filters.category || transaction.category === filters.category) &&
+      matchesCategory &&
       (!filters.account || transaction.accountName === filters.account) &&
       (!filters.provider || transaction.provider === filters.provider) &&
       (!filters.transactionType || transaction.transactionType === filters.transactionType) &&
