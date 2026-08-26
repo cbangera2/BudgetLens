@@ -59,7 +59,7 @@ describe("TransactionForm", () => {
     await user.type(screen.getByLabelText("Amount"), "-18.50")
     await user.click(screen.getByLabelText("Category"))
     await user.click(await screen.findByRole("option", { name: "— Add new —" }))
-    await user.type(screen.getByLabelText("Category custom value"), "Dining")
+    await user.type(await screen.findByLabelText("Category custom value"), "Dining")
     await user.click(screen.getByRole("button", { name: "Add transaction" }))
 
     expect(onSubmit).toHaveBeenCalledWith(
