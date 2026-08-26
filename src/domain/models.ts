@@ -23,6 +23,9 @@ export interface Transaction {
   provider: string | null
   labels: string[]
   notes: string | null
+  groupId: string | null
+  shared: boolean
+  shareCount: number
   importBatchId: string
   fingerprint: string
   createdAt: IsoDateTime
@@ -31,8 +34,70 @@ export interface Transaction {
 
 export type TransactionDraft = Omit<
   Transaction,
-  "id" | "importBatchId" | "fingerprint" | "createdAt" | "updatedAt"
->
+  | "id"
+  | "importBatchId"
+  | "fingerprint"
+  | "createdAt"
+  | "updatedAt"
+  | "groupId"
+  | "shared"
+  | "shareCount"
+> & {
+  /** Group membership and shared-cost fields default when omitted. */
+  groupId?: string | null
+  shared?: boolean
+  shareCount?: number
+}
+
+export const DEFAULT_SHARE_COUNT = 2
+
+export function effectiveTransactionAmountMinor(
+  amountMinor: number,
+  shared: boolean,
+  shareCount: number,
+): number {
+  return shared && shareCount > 1 ? Math.round(amountMinor / shareCount) : amountMinor
+}
+
+export interface TransactionGroup {
+  id: string
+  name: string
+  description: string | null
+  color: GroupColor
+  startDate: IsoDate | null
+  endDate: IsoDate | null
+  budgetMinor: number | null
+  archived: boolean
+  createdAt: IsoDateTime
+  updatedAt: IsoDateTime
+}
+
+export type GroupColor =
+  | "violet"
+  | "blue"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "cyan"
+  | "orange"
+  | "pink"
+
+export const GROUP_COLORS: readonly GroupColor[] = [
+  "violet",
+  "blue",
+  "emerald",
+  "amber",
+  "rose",
+  "cyan",
+  "orange",
+  "pink",
+]
+
+export type TransactionGroupDraft = Omit<TransactionGroup, "id" | "createdAt" | "updatedAt">
+
+export interface TransactionGroupFilters {
+  includeArchived?: boolean
+}
 
 export interface WealthSnapshot {
   id: string

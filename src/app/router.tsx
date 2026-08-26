@@ -27,6 +27,16 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/groups",
+    component: lazyRouteComponent(() => import("@/routes/groups"), "GroupsPage"),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/groups/$groupId",
+    component: lazyRouteComponent(() => import("@/routes/group-detail"), "GroupDetailPage"),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/budgets",
     component: lazyRouteComponent(() => import("@/routes/budgets"), "BudgetsPage"),
   }),

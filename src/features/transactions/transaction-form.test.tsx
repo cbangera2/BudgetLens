@@ -17,6 +17,9 @@ describe("transaction form validation", () => {
     accountType: "Credit",
     provider: "Bank",
     notes: "",
+    groupId: "",
+    shared: false,
+    shareCount: 2,
   }
   it("normalizes values and rounds to integer minor units", () => {
     expect(valuesToDraft(valid)).toMatchObject({

@@ -3,20 +3,27 @@ import { useId, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { Transaction, TransactionDraft } from "@/domain/models"
+import type { Transaction, TransactionDraft, TransactionGroup } from "@/domain/models"
+import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 
-export type TransactionFormValues = Pick<
-  TransactionDraft,
-  | "date"
-  | "description"
-  | "category"
-  | "transactionType"
-  | "accountName"
-  | "accountType"
-  | "provider"
-  | "notes"
-> & { amount: string }
+const selectClass =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+export interface TransactionFormValues {
+  date: string
+  description: string
+  amount: string
+  category: string
+  transactionType: string
+  accountName: string
+  accountType: string
+  provider: string
+  notes: string
+  groupId: string
+  shared: boolean
+  shareCount: number
+}
 
 function initialValues(transaction?: Transaction): TransactionFormValues {
   return {
@@ -34,9 +41,11 @@ function initialValues(transaction?: Transaction): TransactionFormValues {
     accountType: transaction?.accountType ?? "",
     provider: transaction?.provider ?? "",
     notes: transaction?.notes ?? "",
+    groupId: transaction?.groupId ?? "",
+    shared: transaction?.shared ?? false,
+    shareCount: transaction?.shareCount ?? DEFAULT_SHARE_COUNT,
   }
 }
-
 export function valuesToDraft(values: TransactionFormValues): TransactionDraft | null {
   const amount = Number(values.amount)
   if (
@@ -46,6 +55,12 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
     amount === 0
   )
     return null
+
+  const shareCount =
+    Number.isInteger(values.shareCount) && values.shareCount >= 2 && values.shareCount <= 10
+      ? values.shareCount
+      : DEFAULT_SHARE_COUNT
+
   return {
     date: values.date,
     description: values.description.trim(),
@@ -57,15 +72,20 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
     provider: values.provider?.trim() || null,
     labels: [],
     notes: values.notes?.trim() || null,
+    groupId: values.groupId || null,
+    shared: values.shared,
+    shareCount: values.shared ? shareCount : DEFAULT_SHARE_COUNT,
   }
 }
 
 export function TransactionForm({
   transaction,
+  groups = [],
   onSubmit,
   onCancel,
 }: {
   transaction?: Transaction
+  groups?: readonly TransactionGroup[]
   onSubmit: (draft: TransactionDraft) => Promise<void>
   onCancel: () => void
 }) {
@@ -73,8 +93,29 @@ export function TransactionForm({
   const [values, setValues] = useState(() => initialValues(transaction))
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
-  const set = (key: keyof TransactionFormValues, value: string) =>
+  const set = <K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }))
+
+  function updateShared(shared: boolean) {
+    setValues((current) => ({
+      ...current,
+      shared,
+      shareCount:
+        current.shareCount >= 2 && current.shareCount <= 10
+          ? current.shareCount
+          : DEFAULT_SHARE_COUNT,
+    }))
+  }
+
+  const amountNumber = Number(values.amount)
+  const previewAmount =
+    Number.isFinite(amountNumber) && amountNumber !== 0
+      ? effectiveTransactionAmountMinor(
+          Math.sign(amountNumber) * Math.round(Math.abs(amountNumber) * 100),
+          values.shared,
+          values.shareCount,
+        )
+      : null
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -164,6 +205,61 @@ export function TransactionForm({
             </div>
           ),
         )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-1.5 sm:col-span-2">
+          <Label htmlFor={`${id}-group`}>Group (optional)</Label>
+          <select
+            id={`${id}-group`}
+            className={selectClass}
+            value={values.groupId}
+            onChange={(event) => set("groupId", event.target.value)}
+          >
+            <option value="">No group</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid content-end gap-2">
+          <label className="flex items-center gap-2 text-sm font-medium" htmlFor={`${id}-shared`}>
+            <input
+              id={`${id}-shared`}
+              type="checkbox"
+              checked={values.shared}
+              onChange={(event) => updateShared(event.target.checked)}
+            />
+            Shared (split cost)
+          </label>
+          {values.shared && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor={`${id}-share-count`} className="text-xs text-muted-foreground">
+                Divide by
+              </Label>
+              <Input
+                id={`${id}-share-count`}
+                type="number"
+                min={2}
+                max={10}
+                step={1}
+                className="h-9 w-20"
+                value={values.shareCount}
+                onChange={(event) => set("shareCount", Number(event.target.value))}
+              />
+            </div>
+          )}
+          {previewAmount !== null && (
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Counts as{" "}
+              {new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
+                previewAmount / 100,
+              )}{" "}
+              in group analytics.
+            </p>
+          )}
+        </div>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-notes`}>Notes</Label>

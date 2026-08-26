@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks"
-import { Pencil, Plus, Trash2, X } from "lucide-react"
+import { Pencil, Plus, Trash2, Users, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { repositories } from "@/db/repositories"
 import type { Transaction, TransactionDraft } from "@/domain/models"
+import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
 
@@ -37,11 +38,22 @@ function unique(transactions: readonly Transaction[], field: keyof Transaction):
 }
 
 export function TransactionsPageContent() {
-  const transactions = useLiveQuery(() => repositories.transactions.list(), [])
+  const data = useLiveQuery(
+    async () =>
+      Promise.all([
+        repositories.transactions.list(),
+        repositories.transactionGroups.list(),
+      ] as const),
+    [],
+  )
+  const transactions = data?.[0]
+  const groups = data?.[1] ?? []
   const [filters, setFilters] = useState(() => parseTransactionFilters(location.search))
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [bulkSplit, setBulkSplit] = useState(String(DEFAULT_SHARE_COUNT))
 
   useEffect(() => {
     const query = serializeTransactionFilters(filters)
@@ -73,6 +85,35 @@ export function TransactionsPageContent() {
   const pageRows = visible.slice((page - 1) * pageSize, page * pageSize)
   const patchFilter = (patch: Partial<TransactionViewFilters>) =>
     setFilters((current) => ({ ...current, ...patch }))
+
+  const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups])
+
+  function toggleRow(id: string, checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  const pageSelection = pageRows.filter((row) => selected.has(row.id))
+  const allPageSelected = pageRows.length > 0 && pageSelection.length === pageRows.length
+  function toggleSelectAll(checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const row of pageRows) {
+        if (checked) next.add(row.id)
+        else next.delete(row.id)
+      }
+      return next
+    })
+  }
+
+  async function bulkApply(changes: Partial<TransactionDraft>) {
+    await repositories.transactions.updateMany([...selected], changes)
+    setSelected(new Set())
+  }
 
   async function save(draft: TransactionDraft) {
     if (editing === "new") await repositories.transactions.add(draft)
@@ -132,6 +173,7 @@ export function TransactionsPageContent() {
                 <TransactionForm
                   key={editing === "new" ? "new" : editing.id}
                   {...(editing === "new" ? {} : { transaction: editing })}
+                  groups={groups}
                   onSubmit={save}
                   onCancel={() => setEditing(null)}
                 />
@@ -181,6 +223,22 @@ export function TransactionsPageContent() {
             </div>
           ))}
           <div className="grid gap-1.5">
+            <Label htmlFor="filter-group">Group</Label>
+            <select
+              id="filter-group"
+              className={selectClass}
+              value={filters.group}
+              onChange={(event) => patchFilter({ group: event.target.value })}
+            >
+              <option value="">All</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-1.5">
             <Label htmlFor="transaction-sort">Sort</Label>
             <select
               id="transaction-sort"
@@ -205,6 +263,82 @@ export function TransactionsPageContent() {
         </CardContent>
       </Card>
 
+      {selected.size > 0 && (
+        <Card aria-label="Bulk actions">
+          <CardContent className="flex flex-wrap items-end gap-3 p-4">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <Users className="size-4 text-muted-foreground" aria-hidden="true" />
+              {selected.size} selected
+            </p>
+            <div className="grid gap-1.5">
+              <Label htmlFor="bulk-group">Add to group</Label>
+              <select
+                id="bulk-group"
+                className={`${selectClass} w-44`}
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) void bulkApply({ groupId: event.target.value })
+                }}
+              >
+                <option value="">Choose group…</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button variant="outline" onClick={() => void bulkApply({ groupId: null })}>
+              Remove from group
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void bulkApply({ shared: true, shareCount: DEFAULT_SHARE_COUNT })}
+            >
+              Mark shared ÷2
+            </Button>
+            <div className="flex items-end gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="bulk-split">Split</Label>
+                <Input
+                  id="bulk-split"
+                  type="number"
+                  min={2}
+                  max={10}
+                  step={1}
+                  className="w-20"
+                  value={bulkSplit}
+                  onChange={(event) => setBulkSplit(event.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const parsed = Number(bulkSplit)
+                  if (!Number.isInteger(parsed) || parsed < 2 || parsed > 10) return
+                  void bulkApply({ shared: true, shareCount: parsed })
+                }}
+              >
+                Apply split
+              </Button>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => void bulkApply({ shared: false, shareCount: DEFAULT_SHARE_COUNT })}
+            >
+              Unmark shared
+            </Button>
+            <Button
+              variant="ghost"
+              aria-label="Clear selection"
+              onClick={() => setSelected(new Set())}
+            >
+              <X className="size-4" aria-hidden="true" /> Clear
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Activity</CardTitle>
@@ -225,6 +359,14 @@ export function TransactionsPageContent() {
               <table className="w-full text-left text-sm md:min-w-3xl">
                 <thead className="border-b text-xs text-muted-foreground">
                   <tr>
+                    <th className="p-2 md:p-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all on page"
+                        checked={allPageSelected}
+                        onChange={(event) => toggleSelectAll(event.target.checked)}
+                      />
+                    </th>
                     <th className="p-2 md:p-3">Date</th>
                     <th className="p-2 md:p-3">Description</th>
                     <th className="hidden p-3 sm:table-cell">Category</th>
@@ -237,61 +379,98 @@ export function TransactionsPageContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {pageRows.map((transaction) => (
-                    <tr key={transaction.id}>
-                      <td className="p-2 text-xs whitespace-nowrap md:p-3 md:text-sm">
-                        {transaction.date}
-                      </td>
-                      <th scope="row" className="p-2 font-medium md:p-3">
-                        {transaction.description}
-                      </th>
-                      <td className="hidden p-3 sm:table-cell">
-                        {transaction.category ?? (
-                          <span className="text-muted-foreground">Uncategorized</span>
-                        )}
-                      </td>
-                      <td className="hidden p-3 md:table-cell">
-                        <span className="block">{transaction.accountName ?? "—"}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {transaction.accountType}
-                        </span>
-                      </td>
-                      <td className="hidden p-3 md:table-cell">
-                        <span className="block">{transaction.provider ?? "—"}</span>
-                        {transaction.transactionType && (
-                          <Badge variant="outline">{transaction.transactionType}</Badge>
-                        )}
-                      </td>
-                      <td className="p-2 text-right text-xs font-medium tabular-nums md:p-3 md:text-sm">
-                        {formatMoney(
-                          normalizeTransactionAmountMinor(
-                            transaction.amountMinor,
-                            transaction.transactionType,
-                          ),
-                        )}
-                      </td>
-                      <td className="p-1 md:p-3">
-                        <div className="flex justify-end">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Edit ${transaction.description}`}
-                            onClick={() => setEditing(transaction)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label={`Delete ${transaction.description}`}
-                            onClick={() => setDeleting(transaction)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {pageRows.map((transaction) => {
+                    const group = transaction.groupId
+                      ? groupsById.get(transaction.groupId)
+                      : undefined
+                    const normalized = normalizeTransactionAmountMinor(
+                      transaction.amountMinor,
+                      transaction.transactionType,
+                    )
+                    const effective = effectiveTransactionAmountMinor(
+                      normalized,
+                      transaction.shared,
+                      transaction.shareCount,
+                    )
+                    return (
+                      <tr
+                        key={transaction.id}
+                        className={selected.has(transaction.id) ? "bg-accent" : undefined}
+                      >
+                        <td className="p-2 md:p-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${transaction.description}`}
+                            checked={selected.has(transaction.id)}
+                            onChange={(event) => toggleRow(transaction.id, event.target.checked)}
+                          />
+                        </td>
+                        <td className="p-2 text-xs whitespace-nowrap md:p-3 md:text-sm">
+                          {transaction.date}
+                        </td>
+                        <th scope="row" className="p-2 font-medium md:p-3">
+                          {transaction.description}
+                          {(group || transaction.shared) && (
+                            <span className="mt-1 flex flex-wrap items-center gap-1">
+                              {group && (
+                                <Badge variant="outline" className="max-w-40 truncate">
+                                  {group.name}
+                                </Badge>
+                              )}
+                              {transaction.shared && (
+                                <Badge variant="secondary">shared ÷{transaction.shareCount}</Badge>
+                              )}
+                            </span>
+                          )}
+                        </th>
+                        <td className="hidden p-3 sm:table-cell">
+                          {transaction.category ?? (
+                            <span className="text-muted-foreground">Uncategorized</span>
+                          )}
+                        </td>
+                        <td className="hidden p-3 md:table-cell">
+                          <span className="block">{transaction.accountName ?? "—"}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {transaction.accountType}
+                          </span>
+                        </td>
+                        <td className="hidden p-3 md:table-cell">
+                          <span className="block">{transaction.provider ?? "—"}</span>
+                          {transaction.transactionType && (
+                            <Badge variant="outline">{transaction.transactionType}</Badge>
+                          )}
+                        </td>
+                        <td className="p-2 text-right text-xs font-medium tabular-nums md:p-3 md:text-sm">
+                          {formatMoney(normalized)}
+                          {effective !== normalized && (
+                            <span className="block text-[11px] text-muted-foreground">
+                              your share {formatMoney(effective)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-1 md:p-3">
+                          <div className="flex justify-end">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`Edit ${transaction.description}`}
+                              onClick={() => setEditing(transaction)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`Delete ${transaction.description}`}
+                              onClick={() => setDeleting(transaction)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

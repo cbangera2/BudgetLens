@@ -1,7 +1,17 @@
 # Transaction Groups & Shared Costs — Implementation Plan
 
-Status: draft for discussion
+Status: implemented (see PR); decisions below are final
 Branch: `feat/transaction-groups`
+
+## Resolved decisions (from review discussion)
+
+1. "Excluding" a transaction means removing it from the group — no separate excluded state.
+2. A transaction belongs to **at most one group**.
+3. Shared split: ÷2 default, editable 2–10 per transaction.
+4. Group detail offers date-range bulk assignment with preview; transactions page offers
+   multi-select bulk actions.
+5. Refunds/credits inside a group **net against** the group cost and show as their own stat.
+6. Shared splits affect **group views only** — dashboard and budget math stay raw.
 
 ## Problem
 
@@ -165,10 +175,7 @@ Single PR if review stays manageable; otherwise phase-per-PR onto this branch se
 
 ## Open questions
 
-1. One group per transaction (proposed) — ever need overlapping memberships?
-2. Fixed ÷2 default OK? Cap at ÷10?
-3. Should shared splits ever affect global dashboard numbers, or group-only (proposed)?
-4. Name: "Groups" vs "Collections" vs "Projects"?
+Resolved — see top of document.
 
 ## Acceptance criteria
 

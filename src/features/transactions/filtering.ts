@@ -14,6 +14,7 @@ export interface TransactionViewFilters {
   account: string
   provider: string
   transactionType: string
+  group: string
   sort: TransactionSort
 }
 
@@ -23,6 +24,7 @@ export const defaultTransactionFilters: TransactionViewFilters = {
   account: "",
   provider: "",
   transactionType: "",
+  group: "",
   sort: "date-desc",
 }
 
@@ -45,6 +47,7 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
     account: params.get("account")?.slice(0, 100) ?? "",
     provider: params.get("provider")?.slice(0, 100) ?? "",
     transactionType: params.get("type")?.slice(0, 100) ?? "",
+    group: params.get("group")?.slice(0, 64) ?? "",
     sort: isTransactionSort(sort) ? sort : "date-desc",
   }
 }
@@ -56,6 +59,7 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
   if (filters.account) params.set("account", filters.account)
   if (filters.provider) params.set("provider", filters.provider)
   if (filters.transactionType) params.set("type", filters.transactionType)
+  if (filters.group) params.set("group", filters.group)
   if (filters.sort !== "date-desc") params.set("sort", filters.sort)
   return params.toString()
 }
@@ -80,7 +84,8 @@ export function filterAndSortTransactions(
       (!filters.category || transaction.category === filters.category) &&
       (!filters.account || transaction.accountName === filters.account) &&
       (!filters.provider || transaction.provider === filters.provider) &&
-      (!filters.transactionType || transaction.transactionType === filters.transactionType)
+      (!filters.transactionType || transaction.transactionType === filters.transactionType) &&
+      (!filters.group || transaction.groupId === filters.group)
     )
   })
 
