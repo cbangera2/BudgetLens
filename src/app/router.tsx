@@ -44,7 +44,12 @@ const routes = [
 
 const routeTree = rootRoute.addChildren(routes)
 
-export const router = createRouter({ routeTree })
+// Keep router base in sync with Vite `base` (import.meta.env.BASE_URL).
+// "/BudgetLens/" -> "/BudgetLens", "/" -> "/"
+const rawBase = import.meta.env.BASE_URL as string
+const basepath = rawBase.replace(/\/$/, "") || "/"
+
+export const router = createRouter({ routeTree, basepath })
 
 declare module "@tanstack/react-router" {
   interface Register {

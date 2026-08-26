@@ -7,7 +7,14 @@ import { defineConfig } from "vitest/config"
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
 
+// GitHub Pages serves project sites at https://<user>.github.io/<repo>/.
+// Use "/BudgetLens/" when built in GitHub Actions; "/" elsewhere (local dev, previews, custom domains).
+// Allow override via VITE_BASE e.g. VITE_BASE=/ pnpm build for custom domain.
+const base =
+  process.env.VITE_BASE ?? (process.env.GITHUB_ACTIONS ? "/BudgetLens/" : "/")
+
 export default defineConfig({
+  base,
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
