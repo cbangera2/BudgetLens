@@ -91,7 +91,7 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
     if (!data || !rangeStart || !rangeEnd || rangeStart > rangeEnd) return []
     return data.transactions.filter(
       (transaction) =>
-        transaction.groupId === null &&
+        transaction.groupId == null &&
         transaction.date >= rangeStart &&
         transaction.date <= rangeEnd,
     )

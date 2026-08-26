@@ -27,12 +27,11 @@ export function GroupsPageContent() {
   const [showArchived, setShowArchived] = useState(false)
 
   async function save(draft: TransactionGroupInput) {
-    const isNew = !draft.id
     const group = await repositories.transactionGroups.put(draft)
-    if (isNew && group.startDate && group.endDate) {
+    if (group.startDate && group.endDate) {
       const transactionsInRange = (await repositories.transactions.list()).filter(
         (transaction) =>
-          transaction.groupId === null &&
+          transaction.groupId == null &&
           transaction.date >= group.startDate! &&
           transaction.date <= group.endDate!,
       )
