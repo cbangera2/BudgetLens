@@ -257,7 +257,11 @@ function parseJsonTransaction(value: unknown): TransactionDraft {
   if (!amount.success) throw new Error(`Invalid Amount: ${describeZodError(amount.error)}`)
 
   const category = nullable(
-    typeof categoryObject?.name === "string" ? categoryObject.name : undefined,
+    typeof candidate.category === "string"
+      ? candidate.category
+      : typeof categoryObject?.name === "string"
+        ? categoryObject.name
+        : undefined,
   )
   const categoryType = typeof categoryObject?.type === "string" ? categoryObject.type : null
   const explicitType =
