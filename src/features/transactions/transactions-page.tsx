@@ -356,10 +356,10 @@ export function TransactionsPageContent() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-max text-left text-sm md:min-w-3xl">
+              <table className="w-full text-left text-sm md:min-w-3xl">
                 <thead className="border-b text-xs text-muted-foreground">
                   <tr>
-                    <th className="p-2 md:p-3">
+                    <th className="p-1 sm:p-2 md:p-3">
                       <input
                         type="checkbox"
                         aria-label="Select all on page"
@@ -397,7 +397,7 @@ export function TransactionsPageContent() {
                         key={transaction.id}
                         className={selected.has(transaction.id) ? "bg-accent" : undefined}
                       >
-                        <td className="p-2 md:p-3">
+                        <td className="p-1 sm:p-2 md:p-3">
                           <input
                             type="checkbox"
                             aria-label={`Select ${transaction.description}`}
@@ -448,12 +448,11 @@ export function TransactionsPageContent() {
                             </span>
                           )}
                         </td>
-                        <td className="p-1 whitespace-nowrap md:p-3">
+                        <td className="p-1 md:p-3">
                           <div className="flex justify-end gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="shrink-0"
                               aria-label={`Edit ${transaction.description}`}
                               onClick={() => setEditing(transaction)}
                             >
@@ -462,7 +461,6 @@ export function TransactionsPageContent() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="shrink-0"
                               aria-label={`Delete ${transaction.description}`}
                               onClick={() => setDeleting(transaction)}
                             >

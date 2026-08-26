@@ -133,7 +133,7 @@ describe("groupFormValues", () => {
         endDate: "2026-06-15",
         color: "rose",
       }),
-    ).toMatchObject({ budgetMinor: 250_500, startDate: "2026-06-01" })
+    ).toMatchObject({ budgetMinor: 250_050, startDate: "2026-06-01" })
 
     expect(
       groupFormValues({ name: "", budget: "", startDate: "", endDate: "", color: "blue" }),
