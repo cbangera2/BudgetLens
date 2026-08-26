@@ -234,6 +234,13 @@ export function TransactionsPageContent() {
                   key={editing === "new" ? "new" : editing.id}
                   {...(editing === "new" ? {} : { transaction: editing })}
                   groups={groups}
+                  fieldOptions={{
+                    category: unique(transactions, "category"),
+                    transactionType: unique(transactions, "transactionType"),
+                    accountName: unique(transactions, "accountName"),
+                    accountType: unique(transactions, "accountType"),
+                    provider: unique(transactions, "provider"),
+                  }}
                   onSubmit={save}
                   onCancel={() => setEditing(null)}
                 />

@@ -3,6 +3,7 @@ import { useId, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import type { Transaction, TransactionDraft, TransactionGroup } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
@@ -11,6 +12,7 @@ const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 const NO_GROUPS: readonly TransactionGroup[] = []
+const NEW_VALUE = "__new__"
 
 export interface TransactionFormValues {
   date: string
@@ -83,11 +85,18 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
 export function TransactionForm({
   transaction,
   groups = NO_GROUPS,
+  fieldOptions,
   onSubmit,
   onCancel,
 }: {
   transaction?: Transaction
   groups?: readonly TransactionGroup[]
+  fieldOptions?: Partial<
+    Record<
+      "category" | "transactionType" | "accountName" | "accountType" | "provider",
+      readonly string[]
+    >
+  >
   onSubmit: (draft: TransactionDraft) => Promise<void>
   onCancel: () => void
 }) {
@@ -184,29 +193,49 @@ export function TransactionForm({
             Use a negative amount for an expense.
           </p>
         </div>
-        {(["category", "transactionType", "accountName", "accountType", "provider"] as const).map(
-          (key) => (
+        {(
+          [
+            ["category", "Category"],
+            ["transactionType", "Transaction type"],
+            ["accountName", "Account name"],
+            ["accountType", "Account type"],
+            ["provider", "Provider"],
+          ] as const
+        ).map(([key, label]) => {
+          const options = [...(fieldOptions?.[key] ?? [])].toSorted()
+          const current = values[key] ?? ""
+          const isCustom = current !== "" && !options.includes(current)
+          const selectValue = isCustom ? NEW_VALUE : current
+          return (
             <div className="grid gap-1.5" key={key}>
-              <Label htmlFor={`${id}-${key}`}>
-                {
-                  {
-                    category: "Category",
-                    transactionType: "Transaction type",
-                    accountName: "Account name",
-                    accountType: "Account type",
-                    provider: "Provider",
-                  }[key]
-                }
-              </Label>
-              <Input
+              <Label htmlFor={`${id}-${key}`}>{label}</Label>
+              <Select
                 id={`${id}-${key}`}
-                maxLength={100}
-                value={values[key] ?? ""}
-                onChange={(e) => set(key, e.target.value)}
+                value={selectValue}
+                placeholder="Select or add new"
+                aria-label={label}
+                onValueChange={(next) => {
+                  if (next === NEW_VALUE) set(key, "")
+                  else set(key, next)
+                }}
+                options={[
+                  { value: NEW_VALUE, label: "— Add new —" },
+                  ...options.map((option) => ({ value: option, label: option })),
+                ]}
               />
+              {(selectValue === NEW_VALUE || isCustom) && (
+                <Input
+                  id={`${id}-${key}-custom`}
+                  aria-label={`${label} custom value`}
+                  placeholder={`Enter ${label.toLowerCase()}`}
+                  maxLength={100}
+                  value={current}
+                  onChange={(event) => set(key, event.target.value)}
+                />
+              )}
             </div>
-          ),
-        )}
+          )
+        })}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="grid gap-1.5 sm:col-span-2">
