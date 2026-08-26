@@ -1,7 +1,6 @@
 import type { Transaction, TransactionGroup } from "@/domain/models"
 import { effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
-import { formatMoney } from "@/features/dashboard/format"
 
 export interface GroupCategorySlice {
   category: string
@@ -50,8 +49,27 @@ function windowBounds(group: TransactionGroup, members: readonly Transaction[]) 
   if (group.startDate && group.endDate && group.startDate <= group.endDate) {
     return { start: group.startDate, end: group.endDate }
   }
-  const dates = members.map((member) => member.date)
-  return dates.length ? { start: dates.toSorted()[0], end: dates.toSorted().at(-1) } : null
+  const dates = members.map((member) => member.date).toSorted()
+  const start = dates[0]
+  const end = dates.at(-1)
+  return start && end ? { start, end } : null
+}
+
+const DAY_MS = 86_400_000
+
+/** Enumerate ISO dates from start to end inclusive using index math (no mutation). */
+function isoDateRange(startIso: string, endIso: string): string[] {
+  const startMs = Date.parse(`${startIso}T00:00:00Z`)
+  const endMs = Date.parse(`${endIso}T00:00:00Z`)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return []
+  const dayCount = Math.floor((endMs - startMs) / DAY_MS)
+  return Array.from({ length: dayCount + 1 }, (_, index) =>
+    new Date(startMs + index * DAY_MS).toISOString().slice(0, 10),
+  )
+}
+
+function isIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
 
 export function calculateGroupSummary(
@@ -89,13 +107,10 @@ export function calculateGroupSummary(
   const byDay: GroupDayPoint[] = []
   if (bounds) {
     let cumulative = 0
-    const cursor = new Date(`${bounds.start}T00:00:00Z`)
-    const end = new Date(`${bounds.end}T00:00:00Z`)
-    for (; cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
-      const date = cursor.toISOString().slice(0, 10)
-      cumulative += dailySpend.get(date) ?? 0
-      if (dailySpend.has(date))
-        byDay.push({ date, spendMinor: dailySpend.get(date) ?? 0, cumulativeMinor: cumulative })
+    for (const date of isoDateRange(bounds.start, bounds.end)) {
+      const spendMinor = dailySpend.get(date) ?? 0
+      cumulative += spendMinor
+      if (dailySpend.has(date)) byDay.push({ date, spendMinor, cumulativeMinor: cumulative })
     }
   }
 
@@ -133,26 +148,18 @@ export function calculateGroupSummary(
   }
 }
 
-/** One-line summary used on cards and badges. */
-export function summarizeGroupCost(summary: GroupSummary): string {
-  return `${formatMoney(summary.netCostMinor)} net`
-}
-
 export function groupFormValues(input: {
   name: string
   budget: string
   startDate: string
   endDate: string
-  color: string
+  color: TransactionGroup["color"]
 }): Pick<TransactionGroup, "name" | "budgetMinor" | "startDate" | "endDate" | "color"> | null {
   const name = input.name.trim()
   if (!name || name.length > 100) return null
 
-  const isoDate = (value: string): string | null =>
-    /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null
-
-  const startDate = input.startDate ? isoDate(input.startDate) : null
-  const endDate = input.endDate ? isoDate(input.endDate) : null
+  const startDate = input.startDate ? (isIsoDate(input.startDate) ? input.startDate : null) : null
+  const endDate = input.endDate ? (isIsoDate(input.endDate) ? input.endDate : null) : null
   if (input.startDate && !startDate) return null
   if (input.endDate && !endDate) return null
   if (startDate && endDate && startDate > endDate) return null
@@ -164,7 +171,7 @@ export function groupFormValues(input: {
     budgetMinor = Math.round(numeric * 100)
   }
 
-  return { name, budgetMinor, startDate, endDate, color: input.color as TransactionGroup["color"] }
+  return { name, budgetMinor, startDate, endDate, color: input.color }
 }
 
 export function parseShareCount(value: string): number | null {

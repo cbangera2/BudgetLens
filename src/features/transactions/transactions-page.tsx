@@ -47,7 +47,7 @@ export function TransactionsPageContent() {
     [],
   )
   const transactions = data?.[0]
-  const groups = data?.[1] ?? []
+  const groups = useMemo(() => data?.[1] ?? [], [data])
   const [filters, setFilters] = useState(() => parseTransactionFilters(location.search))
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
@@ -356,7 +356,7 @@ export function TransactionsPageContent() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm md:min-w-3xl">
+              <table className="w-full min-w-max text-left text-sm md:min-w-3xl">
                 <thead className="border-b text-xs text-muted-foreground">
                   <tr>
                     <th className="p-2 md:p-3">
@@ -448,11 +448,12 @@ export function TransactionsPageContent() {
                             </span>
                           )}
                         </td>
-                        <td className="p-1 md:p-3">
-                          <div className="flex justify-end">
+                        <td className="p-1 whitespace-nowrap md:p-3">
+                          <div className="flex justify-end gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
+                              className="shrink-0"
                               aria-label={`Edit ${transaction.description}`}
                               onClick={() => setEditing(transaction)}
                             >
@@ -461,6 +462,7 @@ export function TransactionsPageContent() {
                             <Button
                               size="icon"
                               variant="ghost"
+                              className="shrink-0"
                               aria-label={`Delete ${transaction.description}`}
                               onClick={() => setDeleting(transaction)}
                             >

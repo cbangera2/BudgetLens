@@ -1,4 +1,4 @@
-import { Link, useParams } from "@tanstack/react-router"
+import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Pencil, Trash2, UserPlus, X } from "lucide-react"
 import { useMemo, useState } from "react"

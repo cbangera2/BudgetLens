@@ -10,6 +10,8 @@ import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
+const NO_GROUPS: readonly TransactionGroup[] = []
+
 export interface TransactionFormValues {
   date: string
   description: string
@@ -80,7 +82,7 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
 
 export function TransactionForm({
   transaction,
-  groups = [],
+  groups = NO_GROUPS,
   onSubmit,
   onCancel,
 }: {

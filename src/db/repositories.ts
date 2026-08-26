@@ -155,7 +155,11 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
         return updated
       },
       async updateMany(ids, changes) {
-        for (const id of ids) await this.update(id, changes)
+        // Sequential updates preserve deterministic updatedAt ordering.
+        for (const id of ids) {
+          // oxlint-disable-next-line no-await-in-loop -- Same-row ordering matters.
+          await this.update(id, changes)
+        }
       },
       async remove(id) {
         await db.transactions.delete(id)

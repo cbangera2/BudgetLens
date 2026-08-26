@@ -117,7 +117,10 @@ export function GroupEditorCard({
               id={`${id}-color`}
               className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={color}
-              onChange={(event) => setColor(event.target.value as TransactionGroup["color"])}
+              onChange={(event) => {
+                const next = GROUP_COLORS.find((option) => option === event.target.value)
+                if (next) setColor(next)
+              }}
             >
               {GROUP_COLORS.map((option) => (
                 <option key={option} value={option}>

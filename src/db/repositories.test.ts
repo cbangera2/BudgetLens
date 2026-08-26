@@ -171,8 +171,11 @@ describe("Dexie repositories", () => {
       shareCount: 4,
     })
 
-    for (const id of [first.id, second.id]) {
-      expect((await repositories.transactions.get(id))?.shareCount).toBe(4)
-    }
+    const [firstRow, secondRow] = await Promise.all([
+      repositories.transactions.get(first.id),
+      repositories.transactions.get(second.id),
+    ])
+    expect(firstRow?.shareCount).toBe(4)
+    expect(secondRow?.shareCount).toBe(4)
   })
 })
