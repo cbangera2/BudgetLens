@@ -46,7 +46,7 @@ const routeTree = rootRoute.addChildren(routes)
 
 // Keep router base in sync with Vite `base` (import.meta.env.BASE_URL).
 // "/BudgetLens/" -> "/BudgetLens", "/" -> "/"
-const rawBase = import.meta.env.BASE_URL as string
+const rawBase = import.meta.env.BASE_URL
 const basepath = rawBase.replace(/\/$/, "") || "/"
 
 export const router = createRouter({ routeTree, basepath })
