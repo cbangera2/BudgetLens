@@ -17,6 +17,8 @@ import { useEffect, useState } from "react"
 import { AppFooter } from "@/app/app-footer"
 import { useTheme } from "@/app/theme-provider"
 import { Button } from "@/components/ui/button"
+import { DemoBanner } from "@/features/demo/demo-banner"
+import { ensureDemoData } from "@/features/demo/demo-seed"
 
 const navigation = [
   { to: "/", label: "Overview", icon: BarChart3 },
@@ -57,6 +59,10 @@ export function AppShell() {
     )
   }, [sidebarCollapsed])
 
+  useEffect(() => {
+    void ensureDemoData()
+  }, [])
+
   const sidebarToggleLabel = sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
 
   return (
@@ -80,6 +86,7 @@ export function AppShell() {
           </Button>
         </div>
       </header>
+      <DemoBanner />
       <div
         className={`mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 py-6 transition-[grid-template-columns] sm:px-6 ${
           sidebarCollapsed ? "lg:grid-cols-[3.5rem_1fr]" : "lg:grid-cols-[13rem_1fr]"
