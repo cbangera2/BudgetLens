@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { repositories } from "@/db/repositories"
 import type { Transaction, TransactionDraft } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
@@ -24,8 +25,6 @@ import {
 import { TransactionForm } from "./transaction-form"
 
 const pageSize = 50
-const selectClass =
-  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 function unique(transactions: readonly Transaction[], field: keyof Transaction): string[] {
   return [
@@ -276,51 +275,48 @@ export function TransactionsPageContent() {
           ).map(([key, label, options]) => (
             <div className="grid gap-1.5" key={key}>
               <Label htmlFor={`filter-${key}`}>{label}</Label>
-              <select
+              <Select
                 id={`filter-${key}`}
-                className={selectClass}
-                value={filters[key]}
-                onChange={(event) => patchFilter({ [key]: event.target.value })}
-              >
-                <option value="">All</option>
-                {options.map((option) => (
-                  <option key={option}>{option}</option>
-                ))}
-              </select>
+                aria-label={label}
+                value={filters[key] || "__all__"}
+                onValueChange={(value) => patchFilter({ [key]: value === "__all__" ? "" : value })}
+                options={[
+                  { value: "__all__", label: "All" },
+                  ...options.map((option) => ({ value: option, label: option })),
+                ]}
+              />
             </div>
           ))}
           <div className="grid gap-1.5">
             <Label htmlFor="filter-group">Group</Label>
-            <select
+            <Select
               id="filter-group"
-              className={selectClass}
-              value={filters.group}
-              onChange={(event) => patchFilter({ group: event.target.value })}
-            >
-              <option value="">All</option>
-              {groups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
+              aria-label="Group"
+              value={filters.group || "__all__"}
+              onValueChange={(value) => patchFilter({ group: value === "__all__" ? "" : value })}
+              options={[
+                { value: "__all__", label: "All" },
+                ...groups.map((group) => ({ value: group.id, label: group.name })),
+              ]}
+            />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="transaction-sort">Sort</Label>
-            <select
+            <Select
               id="transaction-sort"
-              className={selectClass}
+              aria-label="Sort"
               value={filters.sort}
-              onChange={(event) => {
-                if (isTransactionSort(event.target.value)) patchFilter({ sort: event.target.value })
+              onValueChange={(value) => {
+                if (isTransactionSort(value)) patchFilter({ sort: value })
               }}
-            >
-              <option value="date-desc">Newest first</option>
-              <option value="date-asc">Oldest first</option>
-              <option value="amount-desc">Amount: high to low</option>
-              <option value="amount-asc">Amount: low to high</option>
-              <option value="description">Description</option>
-            </select>
+              options={[
+                { value: "date-desc", label: "Newest first" },
+                { value: "date-asc", label: "Oldest first" },
+                { value: "amount-desc", label: "Amount: high to low" },
+                { value: "amount-asc", label: "Amount: low to high" },
+                { value: "description", label: "Description" },
+              ]}
+            />
           </div>
           <div className="flex items-end">
             <Button variant="ghost" onClick={() => setFilters(defaultTransactionFilters)}>
@@ -339,25 +335,20 @@ export function TransactionsPageContent() {
             </span>
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2">
-              <Label htmlFor="bulk-group" className="sr-only">
-                Add to group
-              </Label>
-              <select
+              <Select
                 id="bulk-group"
                 aria-label="Add to group"
-                className={`${selectClass} h-9 w-44 py-0`}
                 value=""
-                onChange={(event) => {
-                  if (event.target.value) void bulkApply({ groupId: event.target.value })
+                onValueChange={(value) => {
+                  if (value) void bulkApply({ groupId: value })
                 }}
-              >
-                <option value="">Add to group…</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "__placeholder__", label: "Add to group…", disabled: true },
+                  ...groups.map((group) => ({ value: group.id, label: group.name })),
+                ]}
+                placeholder="Add to group…"
+                className="h-9 w-44"
+              />
               <Button
                 variant="ghost"
                 size="sm"
@@ -369,17 +360,12 @@ export function TransactionsPageContent() {
             </div>
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2">
-              <Label htmlFor="bulk-share" className="sr-only">
-                Sharing
-              </Label>
-              <select
+              <Select
                 id="bulk-share"
                 aria-label="Sharing"
-                className={`${selectClass} h-9 w-36 py-0`}
-                defaultValue=""
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (!value) return
+                value=""
+                onValueChange={(value) => {
+                  if (!value || value === "__placeholder__") return
                   if (value === "off") {
                     void bulkApply({ shared: false, shareCount: DEFAULT_SHARE_COUNT })
                   } else {
@@ -389,18 +375,20 @@ export function TransactionsPageContent() {
                       void bulkApply({ shared: true, shareCount: split })
                     }
                   }
-                  event.target.value = ""
                 }}
-              >
-                <option value="">Sharing…</option>
-                <option value="off">Not shared</option>
-                <option value="2">Shared ÷2 {lastSplit === 2 ? "•" : ""}</option>
-                <option value="3">Shared ÷3 {lastSplit === 3 ? "•" : ""}</option>
-                <option value="4">Shared ÷4 {lastSplit === 4 ? "•" : ""}</option>
-                <option value="5">Shared ÷5 {lastSplit === 5 ? "•" : ""}</option>
-                <option value="6">Shared ÷6 {lastSplit === 6 ? "•" : ""}</option>
-                <option value="10">Shared ÷10 {lastSplit === 10 ? "•" : ""}</option>
-              </select>
+                options={[
+                  { value: "__placeholder__", label: "Sharing…", disabled: true },
+                  { value: "off", label: "Not shared" },
+                  { value: "2", label: `Shared ÷2${lastSplit === 2 ? " •" : ""}` },
+                  { value: "3", label: `Shared ÷3${lastSplit === 3 ? " •" : ""}` },
+                  { value: "4", label: `Shared ÷4${lastSplit === 4 ? " •" : ""}` },
+                  { value: "5", label: `Shared ÷5${lastSplit === 5 ? " •" : ""}` },
+                  { value: "6", label: `Shared ÷6${lastSplit === 6 ? " •" : ""}` },
+                  { value: "10", label: `Shared ÷10${lastSplit === 10 ? " •" : ""}` },
+                ]}
+                placeholder="Sharing…"
+                className="h-9 w-36"
+              />
             </div>
             <Button
               variant="ghost"
@@ -467,7 +455,7 @@ export function TransactionsPageContent() {
                     <th className="hidden p-3 md:table-cell">Account</th>
                     <th className="hidden p-3 md:table-cell">Provider / type</th>
                     <th className="p-2 text-right md:p-3">Amount</th>
-                    <th className="p-2 text-center md:p-3">Shared</th>
+                    <th className="hidden p-2 text-center sm:table-cell md:p-3">Shared</th>
                     <th className="p-2 md:p-3">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -554,7 +542,7 @@ export function TransactionsPageContent() {
                             </span>
                           )}
                         </td>
-                        <td className="p-2 text-center md:p-3">
+                        <td className="hidden p-2 text-center sm:table-cell md:p-3">
                           <input
                             type="checkbox"
                             aria-label={`Mark ${transaction.description} shared`}

@@ -102,6 +102,7 @@ export function TransactionForm({
 }) {
   const id = useId()
   const [values, setValues] = useState(() => initialValues(transaction))
+  const [customActive, setCustomActive] = useState<Record<string, boolean>>({})
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
   const set = <K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) =>
@@ -204,7 +205,8 @@ export function TransactionForm({
         ).map(([key, label]) => {
           const options = [...(fieldOptions?.[key] ?? [])].toSorted()
           const current = values[key] ?? ""
-          const isCustom = current !== "" && !options.includes(current)
+          const isCustom =
+            Boolean(customActive[key]) || (current !== "" && !options.includes(current))
           const selectValue = isCustom ? NEW_VALUE : current
           return (
             <div className="grid gap-1.5" key={key}>
@@ -215,22 +217,30 @@ export function TransactionForm({
                 placeholder="Select or add new"
                 aria-label={label}
                 onValueChange={(next) => {
-                  if (next === NEW_VALUE) set(key, "")
-                  else set(key, next)
+                  if (next === NEW_VALUE) {
+                    setCustomActive((prev) => ({ ...prev, [key]: true }))
+                    set(key, "")
+                  } else {
+                    setCustomActive((prev) => ({ ...prev, [key]: false }))
+                    set(key, next)
+                  }
                 }}
                 options={[
                   { value: NEW_VALUE, label: "— Add new —" },
                   ...options.map((option) => ({ value: option, label: option })),
                 ]}
               />
-              {(selectValue === NEW_VALUE || isCustom) && (
+              {isCustom && (
                 <Input
                   id={`${id}-${key}-custom`}
                   aria-label={`${label} custom value`}
                   placeholder={`Enter ${label.toLowerCase()}`}
                   maxLength={100}
                   value={current}
-                  onChange={(event) => set(key, event.target.value)}
+                  onChange={(event) => {
+                    setCustomActive((prev) => ({ ...prev, [key]: true }))
+                    set(key, event.target.value)
+                  }}
                 />
               )}
             </div>
