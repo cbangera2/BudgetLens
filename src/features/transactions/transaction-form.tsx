@@ -120,14 +120,18 @@ export function TransactionForm({
   }
 
   const amountNumber = Number(values.amount)
-  const previewAmount =
+  const rawMinor =
     Number.isFinite(amountNumber) && amountNumber !== 0
-      ? effectiveTransactionAmountMinor(
-          Math.sign(amountNumber) * Math.round(Math.abs(amountNumber) * 100),
-          values.shared,
-          values.shareCount,
-        )
+      ? Math.sign(amountNumber) * Math.round(Math.abs(amountNumber) * 100)
       : null
+  const normalizedPreviewMinor =
+    rawMinor === null
+      ? null
+      : normalizeTransactionAmountMinor(rawMinor, values.transactionType || null)
+  const previewAmount =
+    normalizedPreviewMinor === null
+      ? null
+      : effectiveTransactionAmountMinor(normalizedPreviewMinor, values.shared, values.shareCount)
 
   async function submit(event: FormEvent) {
     event.preventDefault()

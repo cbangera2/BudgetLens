@@ -270,8 +270,11 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
         // Deleting a group keeps its transactions; they just leave the group.
         await db.transaction("rw", [db.transactionGroups, db.transactions], async () => {
           const members = await db.transactions.where("groupId").equals(id).toArray()
+          const now = new Date().toISOString()
           await Promise.all(
-            members.map((member) => db.transactions.put({ ...member, groupId: null })),
+            members.map((member) =>
+              db.transactions.put({ ...member, groupId: null, updatedAt: now }),
+            ),
           )
           await db.transactionGroups.delete(id)
         })

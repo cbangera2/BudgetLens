@@ -110,7 +110,7 @@ export function calculateGroupSummary(
     for (const date of isoDateRange(bounds.start, bounds.end)) {
       const spendMinor = dailySpend.get(date) ?? 0
       cumulative += spendMinor
-      if (dailySpend.has(date)) byDay.push({ date, spendMinor, cumulativeMinor: cumulative })
+      byDay.push({ date, spendMinor, cumulativeMinor: cumulative })
     }
   }
 

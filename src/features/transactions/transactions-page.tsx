@@ -129,7 +129,11 @@ export function TransactionsPageContent() {
 
   const pageSelection = pageRows.filter((row) => selected.has(row.id))
   const allPageSelected = pageRows.length > 0 && pageSelection.length === pageRows.length
-  const allVisibleSelected = visible.length > 0 && selected.size === visible.length
+  const selectedVisibleCount = useMemo(
+    () => visible.filter((row) => selected.has(row.id)).length,
+    [visible, selected],
+  )
+  const allVisibleSelected = visible.length > 0 && selectedVisibleCount === visible.length
   function toggleSelectAll(checked: boolean) {
     setSelected((current) => {
       const next = new Set(current)
@@ -331,7 +335,8 @@ export function TransactionsPageContent() {
           <CardContent className="flex flex-wrap items-center gap-3 p-3">
             <span className="flex items-center gap-2 text-sm font-medium">
               <Users className="size-4 text-muted-foreground" aria-hidden="true" />
-              {selected.size} of {visible.length} selected
+              {selectedVisibleCount} of {visible.length} selected
+              {selected.size !== selectedVisibleCount ? ` (${selected.size} total)` : ""}
             </span>
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2">
