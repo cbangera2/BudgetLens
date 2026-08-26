@@ -12,6 +12,7 @@ import type {
   WealthBreakdownSnapshotDraft,
   WealthSnapshot,
 } from "@/domain/models"
+import { DEFAULT_SHARE_COUNT } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { parseImportContent, sanitizeImportSourceName } from "@/features/imports/parser"
 import {
@@ -491,6 +492,9 @@ export class ImportService {
             known.add(fingerprint)
             rows.push({
               ...draft,
+              groupId: draft.groupId ?? null,
+              shared: draft.shared ?? false,
+              shareCount: draft.shareCount ?? DEFAULT_SHARE_COUNT,
               id: identifier(),
               importBatchId: batchId,
               fingerprint,

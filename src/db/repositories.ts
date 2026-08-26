@@ -4,13 +4,16 @@ import type {
   Transaction,
   TransactionDraft,
   TransactionFilters,
+  TransactionGroup,
+  TransactionGroupFilters,
   SnapshotDateFilters,
   WealthAccountSnapshot,
   WealthBreakdownSnapshot,
   WealthFilters,
   WealthSnapshot,
 } from "@/domain/models"
-import type { BudgetLensRepositories } from "@/domain/repositories"
+import { DEFAULT_SHARE_COUNT } from "@/domain/models"
+import type { BudgetLensRepositories, TransactionGroupInput } from "@/domain/repositories"
 
 function identifier(): string {
   return globalThis.crypto.randomUUID()
@@ -72,6 +75,45 @@ function transactionFingerprint(draft: TransactionDraft): Promise<string> {
   )
 }
 
+function normalizeGroupFields(
+  draft: Pick<TransactionDraft, "groupId" | "shared" | "shareCount">,
+): Pick<Transaction, "groupId" | "shared" | "shareCount"> {
+  return {
+    groupId: draft.groupId ?? null,
+    shared: draft.shared ?? false,
+    shareCount: draft.shareCount ?? DEFAULT_SHARE_COUNT,
+  }
+}
+
+/**
+ * Merge partial changes onto an existing transaction. Group/shared fields use
+ * `in` checks so they can be explicitly cleared back to their empty values.
+ */
+function mergeTransactionChanges(
+  existing: Transaction,
+  changes: Partial<TransactionDraft>,
+): TransactionDraft {
+  const merged: TransactionDraft = {
+    date: changes.date ?? existing.date,
+    description: changes.description ?? existing.description,
+    amountMinor: changes.amountMinor ?? existing.amountMinor,
+    category: changes.category ?? existing.category,
+    transactionType: changes.transactionType ?? existing.transactionType,
+    accountName: changes.accountName ?? existing.accountName,
+    accountType: changes.accountType ?? existing.accountType,
+    provider: changes.provider ?? existing.provider,
+    labels: changes.labels ?? existing.labels,
+    notes: changes.notes ?? existing.notes,
+    ...normalizeGroupFields({
+      groupId: "groupId" in changes ? (changes.groupId ?? null) : existing.groupId,
+      shared: "shared" in changes ? (changes.shared ?? false) : existing.shared,
+      shareCount:
+        "shareCount" in changes ? (changes.shareCount ?? DEFAULT_SHARE_COUNT) : existing.shareCount,
+    }),
+  }
+  return merged
+}
+
 export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositories {
   return {
     transactions: {
@@ -81,10 +123,14 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
           .filter((transaction) => matchesTransaction(transaction, filters))
           .toSorted((left, right) => right.date.localeCompare(left.date))
       },
+      async get(id) {
+        return db.transactions.get(id)
+      },
       async add(draft) {
         const timestamp = new Date().toISOString()
         const transaction: Transaction = {
           ...draft,
+          ...normalizeGroupFields(draft),
           id: identifier(),
           importBatchId: "manual",
           fingerprint: await transactionFingerprint(draft),
@@ -98,18 +144,7 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
         const existing = await db.transactions.get(id)
         if (!existing) throw new Error("Transaction not found.")
 
-        const draft: TransactionDraft = {
-          date: changes.date ?? existing.date,
-          description: changes.description ?? existing.description,
-          amountMinor: changes.amountMinor ?? existing.amountMinor,
-          category: changes.category ?? existing.category,
-          transactionType: changes.transactionType ?? existing.transactionType,
-          accountName: changes.accountName ?? existing.accountName,
-          accountType: changes.accountType ?? existing.accountType,
-          provider: changes.provider ?? existing.provider,
-          labels: changes.labels ?? existing.labels,
-          notes: changes.notes ?? existing.notes,
-        }
+        const draft = mergeTransactionChanges(existing, changes)
         const updated: Transaction = {
           ...existing,
           ...draft,
@@ -118,6 +153,13 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
         }
         await db.transactions.put(updated)
         return updated
+      },
+      async updateMany(ids, changes) {
+        // Sequential updates preserve deterministic updatedAt ordering.
+        for (const id of ids) {
+          // oxlint-disable-next-line no-await-in-loop -- Same-row ordering matters.
+          await this.update(id, changes)
+        }
       },
       async remove(id) {
         await db.transactions.delete(id)
@@ -192,6 +234,58 @@ export function createRepositories(db: BudgetLensDatabase): BudgetLensRepositori
       },
       async clear() {
         await db.budgets.clear()
+      },
+    },
+    transactionGroups: {
+      async list(filters: TransactionGroupFilters = {}) {
+        const groups = await db.transactionGroups.toArray()
+        return groups
+          .filter((group) => filters.includeArchived || !group.archived)
+          .toSorted((left, right) =>
+            left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+          )
+      },
+      async get(id) {
+        return db.transactionGroups.get(id)
+      },
+      async put(input: TransactionGroupInput) {
+        const timestamp = new Date().toISOString()
+        const existing = input.id ? await db.transactionGroups.get(input.id) : undefined
+        const group: TransactionGroup = {
+          id: existing?.id ?? identifier(),
+          name: input.name,
+          description: input.description ?? existing?.description ?? null,
+          color: input.color ?? existing?.color ?? "violet",
+          startDate: input.startDate ?? existing?.startDate ?? null,
+          endDate: input.endDate ?? existing?.endDate ?? null,
+          budgetMinor: input.budgetMinor ?? existing?.budgetMinor ?? null,
+          archived: input.archived ?? existing?.archived ?? false,
+          createdAt: existing?.createdAt ?? timestamp,
+          updatedAt: timestamp,
+        }
+        await db.transactionGroups.put(group)
+        return group
+      },
+      async remove(id) {
+        // Deleting a group keeps its transactions; they just leave the group.
+        await db.transaction("rw", [db.transactionGroups, db.transactions], async () => {
+          const members = await db.transactions.where("groupId").equals(id).toArray()
+          const now = new Date().toISOString()
+          await Promise.all(
+            members.map((member) =>
+              db.transactions.put({ ...member, groupId: null, updatedAt: now }),
+            ),
+          )
+          await db.transactionGroups.delete(id)
+        })
+      },
+      async members(id) {
+        return (await db.transactions.where("groupId").equals(id).toArray()).toSorted(
+          (left, right) => right.date.localeCompare(left.date),
+        )
+      },
+      async clear() {
+        await db.transactionGroups.clear()
       },
     },
   }

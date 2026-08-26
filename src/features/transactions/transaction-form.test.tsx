@@ -17,6 +17,9 @@ describe("transaction form validation", () => {
     accountType: "Credit",
     provider: "Bank",
     notes: "",
+    groupId: "",
+    shared: false,
+    shareCount: 2,
   }
   it("normalizes values and rounds to integer minor units", () => {
     expect(valuesToDraft(valid)).toMatchObject({
@@ -54,7 +57,9 @@ describe("TransactionForm", () => {
     await user.type(screen.getByLabelText("Date"), "2026-07-22")
     await user.type(screen.getByLabelText("Description"), "Lunch")
     await user.type(screen.getByLabelText("Amount"), "-18.50")
-    await user.type(screen.getByLabelText("Category"), "Dining")
+    await user.click(screen.getByLabelText("Category"))
+    await user.click(await screen.findByRole("option", { name: "— Add new —" }))
+    await user.type(await screen.findByLabelText("Category custom value"), "Dining")
     await user.click(screen.getByRole("button", { name: "Add transaction" }))
 
     expect(onSubmit).toHaveBeenCalledWith(

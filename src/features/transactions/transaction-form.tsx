@@ -3,20 +3,31 @@ import { useId, useState, type FormEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { Transaction, TransactionDraft } from "@/domain/models"
+import { Select } from "@/components/ui/select"
+import type { Transaction, TransactionDraft, TransactionGroup } from "@/domain/models"
+import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 
-export type TransactionFormValues = Pick<
-  TransactionDraft,
-  | "date"
-  | "description"
-  | "category"
-  | "transactionType"
-  | "accountName"
-  | "accountType"
-  | "provider"
-  | "notes"
-> & { amount: string }
+const selectClass =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+const NO_GROUPS: readonly TransactionGroup[] = []
+const NEW_VALUE = "__new__"
+
+export interface TransactionFormValues {
+  date: string
+  description: string
+  amount: string
+  category: string
+  transactionType: string
+  accountName: string
+  accountType: string
+  provider: string
+  notes: string
+  groupId: string
+  shared: boolean
+  shareCount: number
+}
 
 function initialValues(transaction?: Transaction): TransactionFormValues {
   return {
@@ -34,9 +45,11 @@ function initialValues(transaction?: Transaction): TransactionFormValues {
     accountType: transaction?.accountType ?? "",
     provider: transaction?.provider ?? "",
     notes: transaction?.notes ?? "",
+    groupId: transaction?.groupId ?? "",
+    shared: transaction?.shared ?? false,
+    shareCount: transaction?.shareCount ?? DEFAULT_SHARE_COUNT,
   }
 }
-
 export function valuesToDraft(values: TransactionFormValues): TransactionDraft | null {
   const amount = Number(values.amount)
   if (
@@ -46,6 +59,12 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
     amount === 0
   )
     return null
+
+  const shareCount =
+    Number.isInteger(values.shareCount) && values.shareCount >= 2 && values.shareCount <= 10
+      ? values.shareCount
+      : DEFAULT_SHARE_COUNT
+
   return {
     date: values.date,
     description: values.description.trim(),
@@ -57,24 +76,62 @@ export function valuesToDraft(values: TransactionFormValues): TransactionDraft |
     provider: values.provider?.trim() || null,
     labels: [],
     notes: values.notes?.trim() || null,
+    groupId: values.groupId || null,
+    shared: values.shared,
+    shareCount: values.shared ? shareCount : DEFAULT_SHARE_COUNT,
   }
 }
 
 export function TransactionForm({
   transaction,
+  groups = NO_GROUPS,
+  fieldOptions,
   onSubmit,
   onCancel,
 }: {
   transaction?: Transaction
+  groups?: readonly TransactionGroup[]
+  fieldOptions?: Partial<
+    Record<
+      "category" | "transactionType" | "accountName" | "accountType" | "provider",
+      readonly string[]
+    >
+  >
   onSubmit: (draft: TransactionDraft) => Promise<void>
   onCancel: () => void
 }) {
   const id = useId()
   const [values, setValues] = useState(() => initialValues(transaction))
+  const [customActive, setCustomActive] = useState<Record<string, boolean>>({})
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
-  const set = (key: keyof TransactionFormValues, value: string) =>
+  const set = <K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) =>
     setValues((current) => ({ ...current, [key]: value }))
+
+  function updateShared(shared: boolean) {
+    setValues((current) => ({
+      ...current,
+      shared,
+      shareCount:
+        current.shareCount >= 2 && current.shareCount <= 10
+          ? current.shareCount
+          : DEFAULT_SHARE_COUNT,
+    }))
+  }
+
+  const amountNumber = Number(values.amount)
+  const rawMinor =
+    Number.isFinite(amountNumber) && amountNumber !== 0
+      ? Math.sign(amountNumber) * Math.round(Math.abs(amountNumber) * 100)
+      : null
+  const normalizedPreviewMinor =
+    rawMinor === null
+      ? null
+      : normalizeTransactionAmountMinor(rawMinor, values.transactionType || null)
+  const previewAmount =
+    normalizedPreviewMinor === null
+      ? null
+      : effectiveTransactionAmountMinor(normalizedPreviewMinor, values.shared, values.shareCount)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -141,29 +198,113 @@ export function TransactionForm({
             Use a negative amount for an expense.
           </p>
         </div>
-        {(["category", "transactionType", "accountName", "accountType", "provider"] as const).map(
-          (key) => (
+        {(
+          [
+            ["category", "Category"],
+            ["transactionType", "Transaction type"],
+            ["accountName", "Account name"],
+            ["accountType", "Account type"],
+            ["provider", "Provider"],
+          ] as const
+        ).map(([key, label]) => {
+          const options = [...(fieldOptions?.[key] ?? [])].toSorted()
+          const current = values[key] ?? ""
+          const isCustom =
+            Boolean(customActive[key]) || (current !== "" && !options.includes(current))
+          const selectValue = isCustom ? NEW_VALUE : current
+          return (
             <div className="grid gap-1.5" key={key}>
-              <Label htmlFor={`${id}-${key}`}>
-                {
-                  {
-                    category: "Category",
-                    transactionType: "Transaction type",
-                    accountName: "Account name",
-                    accountType: "Account type",
-                    provider: "Provider",
-                  }[key]
-                }
+              <Label htmlFor={`${id}-${key}`}>{label}</Label>
+              <Select
+                id={`${id}-${key}`}
+                value={selectValue}
+                placeholder="Select or add new"
+                aria-label={label}
+                onValueChange={(next) => {
+                  if (next === NEW_VALUE) {
+                    setCustomActive((prev) => ({ ...prev, [key]: true }))
+                    set(key, "")
+                  } else {
+                    setCustomActive((prev) => ({ ...prev, [key]: false }))
+                    set(key, next)
+                  }
+                }}
+                options={[
+                  { value: NEW_VALUE, label: "— Add new —" },
+                  ...options.map((option) => ({ value: option, label: option })),
+                ]}
+              />
+              {isCustom && (
+                <Input
+                  id={`${id}-${key}-custom`}
+                  aria-label={`${label} custom value`}
+                  placeholder={`Enter ${label.toLowerCase()}`}
+                  maxLength={100}
+                  value={current}
+                  onChange={(event) => {
+                    setCustomActive((prev) => ({ ...prev, [key]: true }))
+                    set(key, event.target.value)
+                  }}
+                />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-1.5 sm:col-span-2">
+          <Label htmlFor={`${id}-group`}>Group (optional)</Label>
+          <select
+            id={`${id}-group`}
+            className={selectClass}
+            value={values.groupId}
+            onChange={(event) => set("groupId", event.target.value)}
+          >
+            <option value="">No group</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid content-end gap-2">
+          <label className="flex items-center gap-2 text-sm font-medium" htmlFor={`${id}-shared`}>
+            <input
+              id={`${id}-shared`}
+              type="checkbox"
+              checked={values.shared}
+              onChange={(event) => updateShared(event.target.checked)}
+            />
+            Shared (split cost)
+          </label>
+          {values.shared && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor={`${id}-share-count`} className="text-xs text-muted-foreground">
+                Divide by
               </Label>
               <Input
-                id={`${id}-${key}`}
-                maxLength={100}
-                value={values[key] ?? ""}
-                onChange={(e) => set(key, e.target.value)}
+                id={`${id}-share-count`}
+                type="number"
+                min={2}
+                max={10}
+                step={1}
+                className="h-9 w-20"
+                value={values.shareCount}
+                onChange={(event) => set("shareCount", Number(event.target.value))}
               />
             </div>
-          ),
-        )}
+          )}
+          {previewAmount !== null && (
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              Counts as{" "}
+              {new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
+                previewAmount / 100,
+              )}{" "}
+              in group analytics.
+            </p>
+          )}
+        </div>
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-notes`}>Notes</Label>

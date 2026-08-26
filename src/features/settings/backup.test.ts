@@ -1,14 +1,21 @@
 import type { BudgetLensRepositories } from "@/domain/repositories"
 import { createBackup } from "@/features/settings/backup"
-import { buildImportBatch, buildTransaction, buildWealthSnapshot } from "@/test/factories"
+import {
+  buildImportBatch,
+  buildTransaction,
+  buildTransactionGroup,
+  buildWealthSnapshot,
+} from "@/test/factories"
 
 describe("BudgetLens backups", () => {
   it("creates a versioned backup without an embedded raw source file", async () => {
     const repositories: BudgetLensRepositories = {
       transactions: {
         list: async () => [buildTransaction()],
+        get: async () => buildTransaction(),
         add: async () => buildTransaction(),
         update: async () => buildTransaction(),
+        updateMany: async () => undefined,
         remove: async () => undefined,
         clear: async () => undefined,
       },
@@ -22,14 +29,34 @@ describe("BudgetLens backups", () => {
         clear: async () => undefined,
       },
       imports: { list: async () => [buildImportBatch()], clear: async () => undefined },
+      transactionGroups: {
+        list: async () => [buildTransactionGroup()],
+        get: async () => buildTransactionGroup(),
+        put: async (input) => ({
+          id: input.id ?? "group-1",
+          name: input.name,
+          description: input.description ?? null,
+          color: input.color ?? "violet",
+          startDate: input.startDate ?? null,
+          endDate: input.endDate ?? null,
+          budgetMinor: input.budgetMinor ?? null,
+          archived: input.archived ?? false,
+          createdAt: "2026-01-01T12:00:00.000Z",
+          updatedAt: "2026-01-01T12:00:00.000Z",
+        }),
+        remove: async () => undefined,
+        members: async () => [],
+        clear: async () => undefined,
+      },
     }
 
     const backup = await createBackup(repositories, "2026-07-22T12:00:00.000Z")
 
     expect(backup.format).toBe("budgetlens-backup")
-    expect(backup.version).toBe(2)
+    expect(backup.version).toBe(3)
     expect(backup.transactions).toHaveLength(1)
     expect(backup.wealth).toHaveLength(1)
+    expect(backup.transactionGroups).toHaveLength(1)
     expect(JSON.stringify(backup)).not.toContain("rawContent")
   })
 })

@@ -22,6 +22,11 @@ _The screenshot contains invented demo data only._
 - Compare net worth, investments, assets, debts, five breakdown segments, and available account
   sources over 1M, 3M, 6M, YTD, 1Y, or all available history.
 - Search, filter, sort, add, edit, and delete transactions.
+- Group transactions into named groups (a vacation, a project, an event) and see what each group
+  really cost, with per-category and running-cost analytics.
+- Mark transactions as shared so group analytics count your share (÷2 by default, up to ÷10) when
+  someone reimburses part of the cost.
+- Select multiple transactions at once to bulk-assign them to a group or toggle shared splits.
 - Track monthly or yearly category budgets.
 - Rearrange, hide, and restore overview modules.
 - Create and reorder saved charts with configurable metrics, filters, chart types, palettes, labels,

@@ -1,4 +1,4 @@
-import type { ImportBatch, Transaction, WealthSnapshot } from "@/domain/models"
+import type { ImportBatch, Transaction, TransactionGroup, WealthSnapshot } from "@/domain/models"
 
 export function buildTransaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -13,10 +13,29 @@ export function buildTransaction(overrides: Partial<Transaction> = {}): Transact
     provider: "Example Credit Union",
     labels: [],
     notes: null,
+    groupId: null,
+    shared: false,
+    shareCount: 2,
     importBatchId: "batch-1",
     fingerprint: "transaction-fingerprint-1",
     createdAt: "2026-01-16T12:00:00.000Z",
     updatedAt: "2026-01-16T12:00:00.000Z",
+    ...overrides,
+  }
+}
+
+export function buildTransactionGroup(overrides: Partial<TransactionGroup> = {}): TransactionGroup {
+  return {
+    id: "group-1",
+    name: "Vacation 2026",
+    description: null,
+    color: "violet",
+    startDate: null,
+    endDate: null,
+    budgetMinor: null,
+    archived: false,
+    createdAt: "2026-01-01T12:00:00.000Z",
+    updatedAt: "2026-01-01T12:00:00.000Z",
     ...overrides,
   }
 }
