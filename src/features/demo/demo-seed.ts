@@ -8,6 +8,9 @@ import { DEMO_SOURCE_NAME, GOLDEN_DEMO_BUDGETS, GOLDEN_DEMO_BUNDLE_JSON } from "
 let inFlight: Promise<boolean> | null = null
 
 export async function seedDemoDataIfEmpty(db: typeof database = database): Promise<boolean> {
+  // Browser tests seed their own fixture data and expect a clean database.
+  if (import.meta.env.VITE_DISABLE_DEMO_DATA === "true") return false
+
   const hasExistingData =
     (await db.imports.count()) > 0 ||
     (await db.transactions.count()) > 0 ||
