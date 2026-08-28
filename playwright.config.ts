@@ -20,5 +20,9 @@ export default defineConfig({
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      // Tests import their own fixtures and expect an empty database.
+      VITE_DISABLE_DEMO_DATA: "true",
+    },
   },
 })
