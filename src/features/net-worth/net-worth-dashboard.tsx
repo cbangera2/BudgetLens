@@ -159,6 +159,50 @@ function SummaryCard({
   )
 }
 
+function WealthHistoryTable({
+  points,
+  locale,
+}: {
+  points: ReturnType<typeof buildChartPoints>
+  locale: string | undefined
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Accessible wealth history</CardTitle>
+        <CardDescription>All observations in the selected range.</CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <caption className="sr-only">Net worth and investment values by observation date</caption>
+          <thead>
+            <tr className="border-b text-left">
+              <th className="p-3 font-medium">Date</th>
+              <th className="p-3 text-right font-medium">Net worth</th>
+              <th className="p-3 text-right font-medium">Investments</th>
+            </tr>
+          </thead>
+          <tbody>
+            {points.map((point) => (
+              <tr key={point.date} className="border-b last:border-0">
+                <th scope="row" className="p-3 text-left font-normal">
+                  {localeDate(point.date, locale)}
+                </th>
+                <td className="p-3 text-right tabular-nums">
+                  {point.netWorth === undefined ? "—" : currency(point.netWorth * 100, locale)}
+                </td>
+                <td className="p-3 text-right tabular-nums">
+                  {point.investment === undefined ? "—" : currency(point.investment * 100, locale)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </CardContent>
+    </Card>
+  )
+}
+
 export interface NetWorthDashboardProps {
   snapshots: readonly WealthSnapshot[]
   breakdown?: readonly WealthBreakdownSnapshot[]
@@ -382,46 +426,6 @@ export function NetWorthDashboard({
                 metrics={chartMetrics}
                 initialSettings={wealthChartSettings}
               />
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Accessible wealth history</CardTitle>
-                  <CardDescription>All observations in the selected range.</CardDescription>
-                </CardHeader>
-                <CardContent className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <caption className="sr-only">
-                      Net worth and investment values by observation date
-                    </caption>
-                    <thead>
-                      <tr className="border-b text-left">
-                        <th className="p-3 font-medium">Date</th>
-                        <th className="p-3 text-right font-medium">Net worth</th>
-                        <th className="p-3 text-right font-medium">Investments</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {chartPoints.map((point) => (
-                        <tr key={point.date} className="border-b last:border-0">
-                          <th scope="row" className="p-3 text-left font-normal">
-                            {localeDate(point.date, locale)}
-                          </th>
-                          <td className="p-3 text-right tabular-nums">
-                            {point.netWorth === undefined
-                              ? "—"
-                              : currency(point.netWorth * 100, locale)}
-                          </td>
-                          <td className="p-3 text-right tabular-nums">
-                            {point.investment === undefined
-                              ? "—"
-                              : currency(point.investment * 100, locale)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </CardContent>
-              </Card>
             </>
           ) : null}
 
@@ -560,6 +564,8 @@ export function NetWorthDashboard({
               </Card>
             </>
           ) : null}
+
+          {filtered.length > 0 && <WealthHistoryTable points={chartPoints} locale={locale} />}
         </>
       )}
     </section>
