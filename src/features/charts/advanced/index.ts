@@ -1,18 +1,27 @@
 export {
   CashFlowWaterfall,
   DailyHeatmap,
+  SavingsGauge,
   SpendingRadar,
+  SpendingTreemap,
   StackedCategoryBars,
+  TopCategoriesLollipop,
 } from "./advanced-charts"
 export {
   buildHeatmapCells,
+  buildLollipopRows,
   buildRadarProfile,
+  buildSavingsGauge,
   buildStackedCategoryRows,
+  buildTreemapRows,
   buildWaterfallNodes,
   HEATMAP_LEVELS,
   HEATMAP_WEEKDAYS,
+  type GaugeReading,
   type HeatmapCell,
+  type LollipopRow,
   type RadarPoint,
   type StackedCategoryRow,
+  type TreemapRow,
   type WaterfallNode,
 } from "./builders"

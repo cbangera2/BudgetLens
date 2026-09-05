@@ -31,6 +31,24 @@ export interface HeatmapCell {
   level: string
 }
 
+export interface GaugeReading {
+  rate: number
+  income: number
+  savings: number
+}
+
+export interface TreemapRow {
+  name: string
+  size: number
+}
+
+export interface LollipopRow {
+  id: string
+  category: string
+  amount: number
+  label: string
+}
+
 export const HEATMAP_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const
 
 export const HEATMAP_LEVELS = ["None", "Low", "Medium", "High", "Peak"] as const
@@ -199,4 +217,73 @@ export function buildHeatmapCells(transactions: readonly Transaction[]): {
     // Date order keeps the inferred week domain chronological.
     .toSorted((left, right) => left.day.localeCompare(right.day))
   return { cells, weeks: mondays.map((monday) => weekNames.get(monday) ?? monday) }
+}
+
+/** Savings-rate gauge reading, or null without income to measure against. */
+export function buildSavingsGauge(transactions: readonly Transaction[]): GaugeReading | null {
+  const totals = calculateMetrics(transactions)
+  if (totals.incomeMinor <= 0) return null
+  return {
+    rate: Math.max(0, Math.min(1, totals.savingsMinor / totals.incomeMinor)),
+    income: totals.incomeMinor / 100,
+    savings: totals.savingsMinor / 100,
+  }
+}
+
+/**
+ * Single-level spending hierarchy ("Spending/<category>") for the treemap.
+ * Ancestors are imputed by the mark; order is largest-first.
+ */
+export function buildTreemapRows(
+  transactions: readonly Transaction[],
+  topCount = 12,
+): { rows: TreemapRow[]; categories: string[] } {
+  const totals = new Map<string, number>()
+  for (const transaction of transactions) {
+    const amount = expenseMinor(transaction)
+    if (amount === 0) continue
+    const category = transaction.category?.trim() || "Uncategorized"
+    totals.set(category, (totals.get(category) ?? 0) + amount)
+  }
+  const ranked = [...totals.entries()]
+    .toSorted(([, left], [, right]) => right - left)
+    .slice(0, topCount)
+  return {
+    rows: ranked.map(([category, amountMinor]) => ({
+      name: `Spending/${category}`,
+      size: amountMinor / 100,
+    })),
+    categories: ranked.map(([category]) => category),
+  }
+}
+
+function moneyWhole(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+/** Top categories ranked for the lollipop chart, largest first. */
+export function buildLollipopRows(
+  transactions: readonly Transaction[],
+  topCount = 8,
+): LollipopRow[] {
+  const totals = new Map<string, number>()
+  for (const transaction of transactions) {
+    const amount = expenseMinor(transaction)
+    if (amount === 0) continue
+    const category = transaction.category?.trim() || "Uncategorized"
+    totals.set(category, (totals.get(category) ?? 0) + amount)
+  }
+  return [...totals.entries()]
+    .toSorted(([, left], [, right]) => right - left)
+    .slice(0, topCount)
+    .map(([category, amountMinor]) => ({
+      id: category,
+      category,
+      amount: amountMinor / 100,
+      label: moneyWhole(amountMinor / 100),
+    }))
 }

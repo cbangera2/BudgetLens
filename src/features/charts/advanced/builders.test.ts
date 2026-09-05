@@ -4,8 +4,11 @@ import { buildTransaction } from "@/test/factories"
 
 import {
   buildHeatmapCells,
+  buildLollipopRows,
   buildRadarProfile,
+  buildSavingsGauge,
   buildStackedCategoryRows,
+  buildTreemapRows,
   buildWaterfallNodes,
 } from "./builders"
 
@@ -109,5 +112,46 @@ describe("buildHeatmapCells", () => {
 
   it("returns no cells without expenses", () => {
     expect(buildHeatmapCells([]).cells).toEqual([])
+  })
+})
+
+describe("buildSavingsGauge", () => {
+  it("reports the clamped savings rate with totals", () => {
+    expect(
+      buildSavingsGauge([
+        income("a", "2026-01-01", 1000_00),
+        expense("b", "2026-01-02", 250_00, "Food"),
+      ]),
+    ).toEqual({ rate: 0.75, income: 1000, savings: 750 })
+  })
+
+  it("returns null without income", () => {
+    expect(buildSavingsGauge([expense("a", "2026-01-01", 100_00, "Food")])).toBeNull()
+  })
+})
+
+describe("buildTreemapRows", () => {
+  it("builds a largest-first Spending hierarchy", () => {
+    const { rows, categories } = buildTreemapRows([
+      expense("a", "2026-01-01", 300_00, "Housing"),
+      expense("b", "2026-01-02", 100_00, "Food"),
+    ])
+    expect(categories).toEqual(["Housing", "Food"])
+    expect(rows).toEqual([
+      { name: "Spending/Housing", size: 300 },
+      { name: "Spending/Food", size: 100 },
+    ])
+  })
+})
+
+describe("buildLollipopRows", () => {
+  it("ranks the top categories with formatted labels", () => {
+    const rows = buildLollipopRows([
+      expense("a", "2026-01-01", 50_00, "Food"),
+      expense("b", "2026-01-02", 400_00, "Housing"),
+    ])
+    expect(rows.map((row) => row.category)).toEqual(["Housing", "Food"])
+    expect(rows[0]).toMatchObject({ amount: 400 })
+    expect(rows[0]?.label).toContain("400")
   })
 })
