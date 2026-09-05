@@ -1,7 +1,6 @@
 import { Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { listMessages, listThreads, type ThreadRecord } from "@/features/assistant/thread-store"
 import { cn } from "@/lib/cn"
@@ -21,6 +20,8 @@ export function HistorySearch({ open, onClose, onSelect }: HistorySearchProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  // Restore focus to whatever opened the dialog.
+  const triggerRef = useRef<Element | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -75,18 +76,27 @@ export function HistorySearch({ open, onClose, onSelect }: HistorySearchProps) {
   }, [query])
 
   useEffect(() => {
-    if (open) inputRef.current?.focus()
+    if (open) {
+      triggerRef.current = document.activeElement
+      inputRef.current?.focus()
+    } else {
+      const trigger = triggerRef.current
+      if (trigger instanceof HTMLElement) trigger.focus()
+      triggerRef.current = null
+    }
   }, [open])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      // Opening via ⌘K lives in the panel; this listener only closes.
+      if (!open) return
       const isCmdK = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k"
       if (isCmdK) {
         event.preventDefault()
-        if (open) onClose()
+        onClose()
         return
       }
-      if (event.key === "Escape" && open) onClose()
+      if (event.key === "Escape") onClose()
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
@@ -140,8 +150,19 @@ export function HistorySearch({ open, onClose, onSelect }: HistorySearchProps) {
       : "No conversations yet."
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4">
-      <Card className="mt-16 w-full max-w-lg overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close search"
+        tabIndex={-1}
+        onClick={onClose}
+        className="absolute inset-0 cursor-default bg-black/40"
+      />
+      <dialog
+        open
+        aria-label="Search conversations"
+        className="relative mt-16 w-full max-w-lg overflow-hidden rounded-2xl border bg-card p-0 text-card-foreground shadow-2xl"
+      >
         <div className="flex items-center gap-2 border-b px-3">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <Input
@@ -210,7 +231,7 @@ export function HistorySearch({ open, onClose, onSelect }: HistorySearchProps) {
         <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
           ↑↓ to navigate · Enter to open · Esc to close
         </p>
-      </Card>
+      </dialog>
     </div>
   )
 }

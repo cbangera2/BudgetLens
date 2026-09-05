@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from "dexie"
+import Dexie, { type EntityTable, type Transaction } from "dexie"
 
 export interface ThreadRecord {
   id: string
@@ -31,6 +31,8 @@ export interface StoredMessage {
   trace?: Array<StoredTraceStep>
   citedText?: string
   cites?: Array<StoredCite>
+  /** Monotonic per-thread order; tie-breaks equal createdAt values. */
+  seq?: number
   createdAt: string
 }
 
@@ -63,6 +65,33 @@ class AssistantThreadDatabase extends Dexie {
       threads: "&id, updatedAt, pinned",
       messages: "&id, threadId, createdAt",
     })
+    // Version 2 backfills a monotonic per-thread sequence so messages with
+    // identical createdAt values keep a deterministic order. Indexes unchanged.
+    this.version(2)
+      .stores({
+        threads: "&id, updatedAt, pinned",
+        messages: "&id, threadId, createdAt",
+      })
+      .upgrade(async (transaction: Transaction) => {
+        const rawThreads: unknown = await transaction.table("threads").toArray()
+        if (!Array.isArray(rawThreads)) return
+        const backfills = rawThreads.map(async (entry) => {
+          if (!isRecord(entry) || typeof entry.id !== "string") return
+          const rawMessages: unknown = await transaction
+            .table("messages")
+            .where("threadId")
+            .equals(entry.id)
+            .sortBy("createdAt")
+          if (!Array.isArray(rawMessages)) return
+          const updates = rawMessages.map((message, index) => {
+            const id = isRecord(message) && typeof message.id === "string" ? message.id : null
+            if (!id) return Promise.resolve()
+            return transaction.table("messages").update(id, { seq: index + 1 })
+          })
+          await Promise.all(updates)
+        })
+        await Promise.all(backfills)
+      })
   }
 }
 
@@ -137,6 +166,7 @@ function cleanMessageRow(row: StoredMessage): StoredMessage {
     ...(cleanedTrace ? { trace: cleanedTrace } : {}),
     ...(typeof row.citedText === "string" && row.citedText ? { citedText: row.citedText } : {}),
     ...(cleanedCites ? { cites: cleanedCites } : {}),
+    ...(typeof row.seq === "number" && Number.isFinite(row.seq) ? { seq: row.seq } : {}),
     createdAt: row.createdAt,
   }
 }
@@ -201,7 +231,13 @@ export async function deleteThread(id: string): Promise<void> {
 export async function listMessages(threadId: string): Promise<Array<StoredMessage>> {
   try {
     const rows = await assistantDb.messages.where("threadId").equals(threadId).sortBy("createdAt")
-    return rows.slice(-MESSAGE_CAP).map(cleanMessageRow)
+    const ordered = rows.toSorted((left, right) => {
+      if (left.createdAt !== right.createdAt) {
+        return left.createdAt < right.createdAt ? -1 : 1
+      }
+      return (left.seq ?? 0) - (right.seq ?? 0)
+    })
+    return ordered.slice(-MESSAGE_CAP).map(cleanMessageRow)
   } catch {
     return []
   }
@@ -214,6 +250,17 @@ export async function appendMessage(
   const now = nowIso()
   const cleanedTrace = cleanTrace(input.trace)
   const cleanedCites = cleanCites(input.cites)
+  let seq = 1
+  try {
+    const existing = await assistantDb.messages.where("threadId").equals(threadId).toArray()
+    for (const row of existing) {
+      if (typeof row.seq === "number" && Number.isFinite(row.seq) && row.seq >= seq) {
+        seq = row.seq + 1
+      }
+    }
+  } catch {
+    // Fall through with seq 1; ordering still falls back to createdAt.
+  }
   const message: StoredMessage = {
     id: newId(),
     threadId,
@@ -224,6 +271,7 @@ export async function appendMessage(
       ? { citedText: input.citedText }
       : {}),
     ...(cleanedCites ? { cites: cleanedCites } : {}),
+    seq,
     createdAt: now,
   }
   try {
@@ -238,6 +286,19 @@ export async function appendMessage(
     // Ignore private-mode failures; caller still gets the in-memory message.
   }
   return message
+}
+
+export async function deleteMessages(threadId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  try {
+    await assistantDb.messages
+      .where("threadId")
+      .equals(threadId)
+      .filter((row) => ids.includes(row.id))
+      .delete()
+  } catch {
+    // Ignore private-mode failures; in-memory state is source of truth.
+  }
 }
 
 export async function clearThread(threadId: string): Promise<void> {

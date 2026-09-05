@@ -112,7 +112,23 @@ function renderBlocks(
   cites?: Cite[],
   navigate?: (href: string) => void,
 ): ReactNode[] {
-  const blocks = source.split(/\n{2,}/)
+  // Fences may contain blank lines, which would split them if we divided
+  // the source first — so pull complete fenced regions out up front.
+  const segments: Array<{ fence: true; block: string } | { fence: false; text: string }> = []
+  const fencePattern = /```[\w-]*\n[\s\S]*?(?:```|$)/g
+  let cursor = 0
+  let fenceMatch: RegExpExecArray | null
+  while ((fenceMatch = fencePattern.exec(source)) !== null) {
+    if (fenceMatch.index > cursor) {
+      segments.push({ fence: false, text: source.slice(cursor, fenceMatch.index) })
+    }
+    segments.push({ fence: true, block: fenceMatch[0] })
+    cursor = fenceMatch.index + fenceMatch[0].length
+  }
+  if (cursor < source.length) {
+    segments.push({ fence: false, text: source.slice(cursor) })
+  }
+
   const nodes: ReactNode[] = []
   let chain = keyPrefix
   let index = 0
@@ -127,37 +143,56 @@ function renderBlocks(
     )
   }
 
-  for (const raw of blocks) {
-    const block = raw.replace(/^\n+|\n+$/g, "")
-    if (!block) continue
+  for (const segment of segments) {
+    if (segment.fence) {
+      renderFence(segment.block)
+      continue
+    }
+    const blocks = segment.text.split(/\n{2,}/)
+    for (const raw of blocks) {
+      const block = raw.replace(/^\n+|\n+$/g, "")
+      if (!block) continue
+      renderTextBlock(block)
+    }
+  }
 
+  function renderFence(block: string): void {
     const fenced = block.match(/^```([\w-]*)\n([\s\S]*?)```$/)
-    if (fenced) {
-      const info = fenced[1] ?? ""
-      const code = fenced[2]?.replace(/\n$/, "") ?? ""
-      if (info === "budgetlens-chart") {
-        try {
-          const parsed: unknown = JSON.parse(code)
-          push(<ChartBlock spec={parsed} />, block)
-        } catch {
-          push(
-            <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
-              <code>{code}</code>
-            </pre>,
-            block,
-          )
-        }
-        continue
-      }
+    if (!fenced) {
+      // Unterminated fence: show as plain code rather than dropping content.
       push(
         <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
-          <code>{code}</code>
+          <code>{block.replace(/^```[\w-]*\n?/, "")}</code>
         </pre>,
         block,
       )
-      continue
+      return
     }
+    const info = fenced[1] ?? ""
+    const code = fenced[2]?.replace(/\n$/, "") ?? ""
+    if (info === "budgetlens-chart") {
+      try {
+        const parsed: unknown = JSON.parse(code)
+        push(<ChartBlock spec={parsed} />, block)
+      } catch {
+        push(
+          <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
+            <code>{code}</code>
+          </pre>,
+          block,
+        )
+      }
+      return
+    }
+    push(
+      <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
+        <code>{code}</code>
+      </pre>,
+      block,
+    )
+  }
 
+  function renderTextBlock(block: string): void {
     const heading = block.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       const level = heading[1]?.length ?? 1
@@ -166,7 +201,7 @@ function renderBlocks(
       if (level === 1) push(<h4 className={className}>{content}</h4>, block)
       else if (level === 2) push(<h5 className={className}>{content}</h5>, block)
       else push(<h6 className={className}>{content}</h6>, block)
-      continue
+      return
     }
 
     const lines = block.split("\n")
@@ -187,41 +222,48 @@ function renderBlocks(
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr>
-                  {header.map((cell) => (
-                    <th
-                      key={hashKey(`h${cell}`)}
-                      className="border-b px-2 py-1 text-left font-semibold"
-                    >
-                      {renderInline(cell, `${keyPrefix}-th`, cites, navigate)}
-                    </th>
-                  ))}
+                  {header.map((cell, cellIndex) => {
+                    const headerKey = `header-${cellIndex}-${hashKey(`h${cell}`)}`
+                    return (
+                      <th key={headerKey} className="border-b px-2 py-1 text-left font-semibold">
+                        {renderInline(cell, `${keyPrefix}-th`, cites, navigate)}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {body.map((row) => (
-                  <tr key={hashKey(`r${row.join("~")}`)} className="border-b last:border-0">
-                    {row.map((cell) => (
-                      <td key={hashKey(`c${cell}`)} className="px-2 py-1 align-top">
-                        {renderInline(cell, `${keyPrefix}-td`, cites, navigate)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {body.map((row, rowIndex) => {
+                  const rowKey = `row-${rowIndex}-${hashKey(`r${row.join("~")}`)}`
+                  return (
+                    <tr key={rowKey} className="border-b last:border-0">
+                      {row.map((cell, cellIndex) => {
+                        const cellKey = `cell-${cellIndex}-${hashKey(`c${cell}`)}`
+                        return (
+                          <td key={cellKey} className="px-2 py-1 align-top">
+                            {renderInline(cell, `${keyPrefix}-td`, cites, navigate)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>,
           block,
         )
-        continue
+        return
       }
     }
 
     if (lines.every((line) => /^\s*([-*•]|\d+[.)])\s+\S/.test(line))) {
       const ordered = /^\s*\d+[.)]/.test(lines[0] ?? "")
       const items = lines.map((line) => line.replace(/^\s*([-*•]|\d+[.)])\s+/, ""))
-      const list = items.map((item) => (
-        <li key={hashKey(`li${item}`)}>{renderInline(item, `${keyPrefix}-li`, cites, navigate)}</li>
-      ))
+      const list = items.map((item, itemIndex) => {
+        const itemKey = `item-${itemIndex}-${hashKey(`li${item}`)}`
+        return <li key={itemKey}>{renderInline(item, `${keyPrefix}-li`, cites, navigate)}</li>
+      })
       push(
         ordered ? (
           <ol className="list-decimal space-y-1 pl-5">{list}</ol>
@@ -230,7 +272,7 @@ function renderBlocks(
         ),
         block,
       )
-      continue
+      return
     }
 
     if (lines.every((line) => /^\s*>\s?/.test(line))) {
@@ -245,7 +287,7 @@ function renderBlocks(
         </blockquote>,
         block,
       )
-      continue
+      return
     }
 
     push(

@@ -220,9 +220,12 @@ describe("assistant data tools", () => {
   })
 
   it("builds a capped finance snapshot for the harness", async () => {
+    // Budget spend is scoped to the goal's current calendar period, so the
+    // fixture transaction uses today's date to land in-period.
+    const today = new Date().toISOString().slice(0, 10)
     const repos = stubRepositories({
       transactions: [
-        { date: "2026-08-01", description: "Store", amountMinor: -1000, category: "Groceries" },
+        { date: today, description: "Store", amountMinor: -1000, category: "Groceries" },
       ],
       budgets: [{ category: "Groceries", amountMinor: 50000, period: "monthly" }],
     })
@@ -234,6 +237,22 @@ describe("assistant data tools", () => {
     ])
     expect(snapshot.netWorth).toEqual([])
     expect(typeof snapshot.generatedAt).toBe("string")
+  })
+
+  it("scopes budget spend to expenses in the current period", async () => {
+    const month = new Date().toISOString().slice(0, 7)
+    const repos = stubRepositories({
+      transactions: [
+        { date: `${month}-05`, description: "Store", amountMinor: -1000, category: "Groceries" },
+        { date: `${month}-06`, description: "Refund", amountMinor: 4000, category: "Groceries" },
+        { date: "2020-01-05", description: "Old", amountMinor: -9000, category: "Groceries" },
+      ],
+      budgets: [{ category: "Groceries", amountMinor: 50000, period: "monthly" }],
+    })
+    const output: unknown = await executeAssistantTool(repos, "budget_status", {})
+    expect(output).toMatchObject({
+      goals: [{ category: "Groceries", spentMinor: 1000, over: false }],
+    })
   })
 })
 

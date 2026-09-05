@@ -1,5 +1,5 @@
-import { Pin, Plus, Trash2, X } from "lucide-react"
-import { useState } from "react"
+import { Pencil, Pin, Plus, Trash2, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -47,6 +47,11 @@ export function ThreadHistory({
 }: ThreadHistoryProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (editingId) renameInputRef.current?.focus()
+  }, [editingId])
 
   if (!open) return null
 
@@ -81,17 +86,10 @@ export function ThreadHistory({
           active ? "border-primary bg-accent" : "border-transparent hover:bg-accent/60",
         )}
       >
-        <button
-          type="button"
-          onClick={() => onSelect(thread.id)}
-          aria-label={`Open conversation ${thread.title}`}
-          className="min-w-0 flex-1 text-left"
-        >
+        <div className="min-w-0 flex-1">
           {editing ? (
             <Input
-              ref={(element) => {
-                element?.focus()
-              }}
+              ref={renameInputRef}
               value={draft}
               aria-label="Rename conversation"
               onChange={(event) => setDraft(event.target.value)}
@@ -104,23 +102,18 @@ export function ThreadHistory({
                   event.preventDefault()
                   cancelEdit()
                 }
-                event.stopPropagation()
               }}
-              onClick={(event) => event.stopPropagation()}
-              onDoubleClick={(event) => event.stopPropagation()}
               className="h-8 text-sm"
             />
           ) : (
-            <span
-              title="Double-click to rename"
-              onDoubleClick={(event) => {
-                event.stopPropagation()
-                startEdit(thread)
-              }}
-              className="block truncate text-sm font-medium"
+            <button
+              type="button"
+              onClick={() => onSelect(thread.id)}
+              aria-label={`Open conversation ${thread.title}`}
+              className="block w-full truncate text-left text-sm font-medium"
             >
               {thread.title}
-            </span>
+            </button>
           )}
           {thread.preview.length > 0 && (
             <span className="block truncate text-xs text-muted-foreground">{thread.preview}</span>
@@ -128,8 +121,19 @@ export function ThreadHistory({
           <span className="block text-[11px] text-muted-foreground">
             {formatThreadTime(thread.updatedAt)}
           </span>
-        </button>
+        </div>
         <span className="flex shrink-0 items-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Rename ${thread.title}`}
+            title="Rename"
+            onClick={() => startEdit(thread)}
+            className="size-7 text-muted-foreground"
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+          </Button>
           <Button
             type="button"
             variant="ghost"

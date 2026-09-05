@@ -66,6 +66,7 @@ import { ThreadHistory } from "@/features/assistant/thread-history"
 import {
   appendMessage,
   createThread,
+  deleteMessages,
   deleteThread,
   listMessages,
   listThreads,
@@ -338,7 +339,11 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     // Never persist API keys to clear-text storage: they stay in memory only
     // and must be re-entered each session.
     const persistedSettings: AssistantSettings = { ...settings, apiKey: "" }
-    window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
+    try {
+      window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
+    } catch {
+      // Private-mode or quota failures must not break the panel.
+    }
   }, [settings])
 
   useEffect(() => {
@@ -373,6 +378,22 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   }, [messages, busy])
 
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const isCmdK = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k"
+      if (!isCmdK) return
+      const target = event.target
+      const typing =
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      if (typing) return
+      event.preventDefault()
+      setShowSearch(true)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
 
   async function refreshThreads(): Promise<void> {
     setThreads(await listThreads())
@@ -559,7 +580,9 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setModelsError(null)
     try {
       const response = await fetch("/api/models")
-      const payload: unknown = (await response.json()) as unknown
+      // Non-JSON bodies (e.g. the static host's HTML 404) must fall through to
+      // the status-based error below, not throw a parser error.
+      const payload: unknown = (await response.json().catch(() => null)) as unknown
       if (!response.ok || !isRecord(payload) || !Array.isArray(payload.models)) {
         const detail = isRecord(payload) && typeof payload.error === "string" ? payload.error : null
         throw new Error(detail ?? `Model list responded ${response.status}.`)
@@ -619,7 +642,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
       }),
     })
-    const payload: unknown = (await response.json()) as unknown
+    const payload: unknown = (await response.json().catch(() => null)) as unknown
     if (!response.ok) {
       const detail = isRecord(payload) && typeof payload.error === "string" ? payload.error : null
       throw new Error(detail ?? `Harness endpoint ${response.status}. Run \`pnpm dev\` locally.`)
@@ -834,6 +857,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     const kept = messages.slice(0, messages.map((item) => item.role).lastIndexOf("user") + 1)
     const lastUser = kept[kept.length - 1]
     if (!lastUser || lastUser.role !== "user") return
+    // Drop the truncated tail from the thread store too, or it resurrects on reload.
+    const droppedIds = messages.slice(kept.length).map((item) => item.id)
+    if (activeThreadId) {
+      await deleteMessages(activeThreadId, droppedIds)
+      for (const id of droppedIds) storedIdsRef.current.delete(id)
+    }
     setMessages(kept)
     setError(null)
     setBusy(true)

@@ -140,16 +140,19 @@ function ChartDataTable({ spec }: { spec: BudgetLensChartSpec }) {
             </tr>
           </thead>
           <tbody>
-            {spec.data.map((row) => (
-              <tr className="border-b last:border-0" key={row.label}>
-                <th scope="row" className="p-2 text-left font-normal">
-                  {row.label}
-                </th>
-                <td className="p-2 text-right font-mono tabular-nums">
-                  {formatChartValue(row.value, spec.unit)}
-                </td>
-              </tr>
-            ))}
+            {spec.data.map((row, index) => {
+              const rowKey = `row-${index}-${row.label}`
+              return (
+                <tr className="border-b last:border-0" key={rowKey}>
+                  <th scope="row" className="p-2 text-left font-normal">
+                    {row.label}
+                  </th>
+                  <td className="p-2 text-right font-mono tabular-nums">
+                    {formatChartValue(row.value, spec.unit)}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -179,8 +182,9 @@ function BarChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
         const y = 6 + index * rowHeight
         const centerY = y + 11
         const shortLabel = row.label.length > 16 ? `${row.label.slice(0, 15)}…` : row.label
+        const barKey = `bar-${index}-${row.label}`
         return (
-          <g key={row.label}>
+          <g key={barKey}>
             <title>{`${row.label}: ${formatChartValue(row.value, spec.unit)}`}</title>
             <text x={0} y={centerY} fontSize={11} fill="currentColor" dominantBaseline="central">
               {shortLabel}
@@ -239,36 +243,42 @@ function DonutChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
           strokeWidth={7}
           stroke="var(--muted)"
         />
-        {slices.map((slice) => (
-          <circle
-            key={slice.label}
-            cx={21}
-            cy={21}
-            r={15.915}
-            fill="transparent"
-            strokeWidth={7}
-            stroke={slice.color}
-            strokeDasharray={`${slice.fraction * 100} ${100 - slice.fraction * 100}`}
-            strokeDashoffset={25 - slice.start * 100}
-          >
-            <title>{`${slice.label}: ${formatChartValue(slice.value, spec.unit)}`}</title>
-          </circle>
-        ))}
+        {slices.map((slice, index) => {
+          const circleKey = `circle-${index}-${slice.label}`
+          return (
+            <circle
+              key={circleKey}
+              cx={21}
+              cy={21}
+              r={15.915}
+              fill="transparent"
+              strokeWidth={7}
+              stroke={slice.color}
+              strokeDasharray={`${slice.fraction * 100} ${100 - slice.fraction * 100}`}
+              strokeDashoffset={25 - slice.start * 100}
+            >
+              <title>{`${slice.label}: ${formatChartValue(slice.value, spec.unit)}`}</title>
+            </circle>
+          )
+        })}
       </svg>
       <ul className="w-full space-y-1">
-        {slices.map((slice) => (
-          <li key={slice.label} className="flex items-center gap-2 text-xs">
-            <span
-              aria-hidden="true"
-              className="inline-block size-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: slice.color }}
-            />
-            <span className="min-w-0 flex-1 truncate">{slice.label}</span>
-            <span className="font-mono tabular-nums">
-              {formatChartValue(slice.value, spec.unit)}
-            </span>
-          </li>
-        ))}
+        {slices.map((slice, index) => {
+          const legendKey = `legend-${index}-${slice.label}`
+          return (
+            <li key={legendKey} className="flex items-center gap-2 text-xs">
+              <span
+                aria-hidden="true"
+                className="inline-block size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: slice.color }}
+              />
+              <span className="min-w-0 flex-1 truncate">{slice.label}</span>
+              <span className="font-mono tabular-nums">
+                {formatChartValue(slice.value, spec.unit)}
+              </span>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
