@@ -7,11 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:desktop": "tsc -b && vite build --base=/",
+    "build:ios": "tsc -b && VITE_BASE=/ vite build && cap sync ios",
+    "cap:sync": "cap sync",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "lint": "oxlint --type-aware --report-unused-disable-directives src vite.config.ts playwright.config.ts",
+    "lint": "oxlint --type-aware --report-unused-disable-directives src vite.config.ts capacitor.config.ts playwright.config.ts",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -23,6 +25,8 @@
     "format:check": "oxfmt --check ."
   },
   "dependencies": {
+    "@capacitor/core": "8.5.1",
+    "@capacitor/ios": "8.5.1",
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
@@ -46,6 +50,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.1",
     "@playwright/test": "1.61.1",
     "@tailwindcss/vite": "4.3.3",
     "@tanstack/ai": "^0.53.0",
