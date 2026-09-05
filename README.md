@@ -7,7 +7,7 @@ investment-history exports from
 Financial data stays in the browser's IndexedDB storage. BudgetLens has no account system,
 analytics, application server, or database service, and it does not upload imported files.
 
-![BudgetLens 1.0 dashboard populated with synthetic financial data](docs/images/budgetlens-dashboard.jpg)
+![BudgetLens overview with synthetic demo data: stat modules, filters, custom-chart builder, and the assistant button at bottom right](docs/images/budgetlens-dashboard.jpg)
 
 _The screenshot contains invented demo data only._
 

@@ -14,6 +14,7 @@
 use std::net::IpAddr;
 use std::time::Duration;
 
+use tauri::Manager;
 use zeroize::Zeroizing;
 
 const MAX_RESPONSE_BYTES: usize = 10_000_000;
@@ -226,6 +227,15 @@ async fn llm_models(
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Second launch focuses the running window instead of risking a
+            // duplicate IndexedDB writer.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())

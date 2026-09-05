@@ -1,6 +1,6 @@
 # App icons
 
-`icon.png` is a solid-teal 1024x1024 placeholder so `cargo check` /
-`tauri dev` pass. Replace with real product art before any release:
-run `pnpm tauri icon path/to/1024x1024-source.png`, which regenerates
-the platform icon sets from the source file.
+`icon.png` is the 1024x1024 source (dark rounded square + teal lens glyph,
+generated in-repo). Platform sets below were produced with
+`pnpm tauri icon src-tauri/icons/icon.png`. Re-run that command after
+replacing the source with final product art.

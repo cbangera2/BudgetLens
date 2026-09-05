@@ -73,6 +73,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # The v1 key has no password. The variable must still be defined
+          # (missing secret -> empty string): without it the CLI blocks on a
+          # terminal password prompt and fails non-interactively. Do not delete.
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Force web root. vite.config.ts maps GITHUB_ACTIONS=true to
           # "/BudgetLens/" (Pages) unless VITE_BASE is set — without this the
