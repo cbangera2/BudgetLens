@@ -43,7 +43,3 @@ minimumReleaseAgeExclude:
   - "@oxlint/binding-win32-x64-msvc@1.75.0"
   - oxfmt@0.60.0
   - oxlint@1.75.0
-
-overrides:
-  "undici@>=7.0.0 <7.29.0": "7.29.0"
-  "nanoid@<3.3.18": "3.3.18"

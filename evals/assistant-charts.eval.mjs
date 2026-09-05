@@ -4,13 +4,13 @@
 //   - POST /api/chat answers a chart request with a parseable
 //     ```budgetlens-chart fence whose data labels match the snapshot (>=2).
 //
-// Requires `vite --port 5177` and `opencode serve` running locally, then:
+// Requires `pnpm dev` and `opencode serve` running locally, then:
 //   node evals/assistant-charts.eval.mjs
 // Options via env:
-//   ASSISTANT_BASE=http://localhost:5177 (dev server origin)
+//   ASSISTANT_BASE=http://localhost:5173 (dev server origin)
 //   ASSISTANT_MODEL=opencode/muse-spark-1.3-contributor-free (model under test)
 
-const BASE = process.env.ASSISTANT_BASE ?? "http://localhost:5177"
+const BASE = process.env.ASSISTANT_BASE ?? "http://localhost:5173"
 const MODEL = process.env.ASSISTANT_MODEL ?? "opencode/muse-spark-1.3-contributor-free"
 const REQUEST_TIMEOUT_MS = 240_000
 
