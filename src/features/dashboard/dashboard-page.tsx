@@ -12,6 +12,12 @@ import { Select } from "@/components/ui/select"
 import { repositories } from "@/db/repositories"
 import type { BudgetGoal, Transaction, WealthSnapshot } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import {
+  CashFlowWaterfall,
+  DailyHeatmap,
+  SpendingRadar,
+  StackedCategoryBars,
+} from "@/features/charts/advanced"
 import { ChartWorkspace } from "@/features/charts/chart-workspace"
 import {
   EditableChartRenderer,
@@ -554,6 +560,10 @@ export function DashboardPage() {
     categories: <CategoryChartWidget transactions={visibleTransactions} />,
     totals: <TotalMetricsWidget transactions={visibleTransactions} />,
     monthlyTrends: <MonthlyTrendsWidget transactions={visibleTransactions} />,
+    stackedBars: <StackedCategoryBars transactions={visibleTransactions} />,
+    waterfall: <CashFlowWaterfall transactions={visibleTransactions} />,
+    spendingRadar: <SpendingRadar transactions={visibleTransactions} />,
+    dailyHeatmap: <DailyHeatmap transactions={visibleTransactions} />,
     transactions: <RecentWidget transactions={visibleTransactions} />,
     budgetGoals: <BudgetsWidget goals={goals} transactions={visibleTransactions} />,
     imports: <ImportWidget />,
