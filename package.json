@@ -20,6 +20,7 @@
     "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "10.0.0",
     "@dnd-kit/utilities": "3.2.2",
+    "@tanstack/charts": "0.16.0",
     "@tanstack/react-router": "1.170.18",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -31,7 +32,6 @@
     "radix-ui": "1.6.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "recharts": "3.10.0",
     "sonner": "2.0.7",
     "tailwind-merge": "3.6.0",
     "zod": "4.4.3"

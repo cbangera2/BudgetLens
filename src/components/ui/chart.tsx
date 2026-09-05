@@ -1,16 +1,9 @@
 import * as React from "react"
-import {
-  Legend as RechartsLegend,
-  Tooltip as RechartsTooltip,
-  type LegendPayload,
-  type TooltipContentProps,
-} from "recharts"
 
 import { cn } from "@/lib/cn"
 
 const themes = { light: "", dark: ".dark" } as const
 const themeNames: ReadonlyArray<keyof typeof themes> = ["light", "dark"]
-const defaultValueFormatter = (value: number) => String(value)
 
 export type ChartConfig = Record<
   string,
@@ -25,10 +18,8 @@ export type ChartConfig = Record<
 
 const ChartContext = React.createContext<ChartConfig | null>(null)
 
-function useChart() {
-  const config = React.useContext(ChartContext)
-  if (!config) throw new Error("Chart components must be rendered inside ChartContainer")
-  return config
+export function useChartConfig(): ChartConfig | null {
+  return React.useContext(ChartContext)
 }
 
 export function ChartContainer({
@@ -46,7 +37,7 @@ export function ChartContainer({
       <div
         data-chart={chartId}
         className={cn(
-          "min-h-64 w-full text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line]:stroke-border/60 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-layer]:outline-none [&_.recharts-surface]:outline-none",
+          "min-h-64 w-full text-xs [&_.ts-chart-host]:outline-none [&_svg]:outline-none",
           className,
         )}
         {...props}
@@ -79,20 +70,28 @@ function ChartStyle({ id, config }: { id: string; config: ChartConfig }) {
   return <style>{css}</style>
 }
 
-export const ChartTooltip = RechartsTooltip
+export interface ChartTooltipItem {
+  key: string
+  name: string
+  value: number
+  color?: string
+}
+
+const defaultTooltipValueFormatter = (value: number) => String(value)
 
 export function ChartTooltipContent({
-  active,
-  payload,
   label,
+  payload,
   className,
-  valueFormatter = defaultValueFormatter,
-}: Partial<TooltipContentProps<number, string>> & {
+  valueFormatter = defaultTooltipValueFormatter,
+}: {
+  label?: string
+  payload?: readonly ChartTooltipItem[]
   className?: string
   valueFormatter?: (value: number, name: string) => React.ReactNode
 }) {
-  const config = useChart()
-  if (!active || !payload?.length) return null
+  const config = useChartConfig()
+  if (!payload?.length) return null
 
   return (
     <div
@@ -101,25 +100,22 @@ export function ChartTooltipContent({
         className,
       )}
     >
-      {label !== undefined && <p className="font-medium">{String(label)}</p>}
+      {label !== undefined && <p className="font-medium">{label}</p>}
       <div className="grid gap-1.5">
         {payload.map((item) => {
-          const key = String(item.dataKey ?? item.name ?? "value")
-          const name = typeof item.name === "string" ? item.name : key
-          const displayName = config[key]?.label ?? name
-          const value = typeof item.value === "number" ? item.value : Number(item.value ?? 0)
+          const displayName = config?.[item.key]?.label ?? item.name
           return (
-            <div key={key} className="flex items-center justify-between gap-6">
+            <div key={item.key} className="flex items-center justify-between gap-6">
               <span className="flex items-center gap-2 text-muted-foreground">
                 <span
                   className="size-2.5 rounded-[3px]"
-                  style={{ backgroundColor: item.color ?? `var(--color-${key})` }}
+                  style={{ backgroundColor: item.color ?? `var(--color-${item.key})` }}
                   aria-hidden="true"
                 />
                 {displayName}
               </span>
               <span className="font-mono font-medium tabular-nums">
-                {valueFormatter(value, name)}
+                {valueFormatter(item.value, item.name)}
               </span>
             </div>
           )
@@ -129,33 +125,34 @@ export function ChartTooltipContent({
   )
 }
 
-export const ChartLegend = RechartsLegend
+export interface ChartLegendItem {
+  key: string
+  label: React.ReactNode
+  color?: string
+}
 
 export function ChartLegendContent({
   payload,
   className,
 }: {
-  payload?: ReadonlyArray<LegendPayload>
+  payload?: ReadonlyArray<ChartLegendItem>
   className?: string
 }) {
-  const config = useChart()
+  const config = useChartConfig()
   if (!payload?.length) return null
 
   return (
     <div className={cn("flex flex-wrap items-center justify-center gap-4 pt-3", className)}>
-      {payload.map((item) => {
-        const key = String(item.dataKey ?? item.value)
-        return (
-          <span key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span
-              className="size-2 rounded-sm"
-              style={{ backgroundColor: item.color }}
-              aria-hidden="true"
-            />
-            {config[key]?.label ?? item.value}
-          </span>
-        )
-      })}
+      {payload.map((item) => (
+        <span key={item.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span
+            className="size-2 rounded-sm"
+            style={{ backgroundColor: item.color }}
+            aria-hidden="true"
+          />
+          {config?.[item.key]?.label ?? item.label}
+        </span>
+      ))}
     </div>
   )
 }

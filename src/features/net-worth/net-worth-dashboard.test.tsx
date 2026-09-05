@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, within } from "@testing-library/react"
-import type React from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import type {
@@ -9,22 +8,11 @@ import type {
 } from "@/domain/models"
 import { NetWorthDashboard } from "@/features/net-worth/net-worth-dashboard"
 
-vi.mock("recharts", async (importOriginal) => {
-  const original = await importOriginal<typeof import("recharts")>()
-  return {
-    ...original,
-    AreaChart: ({ children }: { children?: React.ReactNode }) => (
-      <div data-testid="wealth-chart">{children}</div>
-    ),
-    Area: ({ name }: { name?: string }) => <span>{name}</span>,
-    BarChart: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-    Bar: ({ name }: { name?: string }) => <span>{name}</span>,
-    CartesianGrid: () => null,
-    XAxis: () => null,
-    YAxis: () => null,
-    Tooltip: () => null,
-  }
-})
+vi.mock("@tanstack/charts/react", () => ({
+  Chart: ({ ariaLabel }: { ariaLabel?: string }) => (
+    <div data-testid="wealth-chart" aria-label={ariaLabel} />
+  ),
+}))
 
 function snapshot(
   series: WealthSnapshot["series"],
