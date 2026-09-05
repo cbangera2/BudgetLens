@@ -1,0 +1,164 @@
+name: Desktop release
+
+# Desktop (Tauri) binaries + updater manifest. Tag-triggered only — PRs stay
+# on the fast ci.yml path. Tags use the `app-v*` pattern so desktop releases
+# never share a tag with anything that could overwrite `latest.json`.
+# Example: git tag app-v1.0.0 && git push origin app-v1.0.0
+# Before tagging, sync versions: package.json <-> tauri.conf.json <-> Cargo.toml.
+
+on:
+  push:
+    tags: ["app-v*"]
+
+# tauri-action uploads release assets + generates latest.json.
+permissions:
+  contents: write
+
+# One release at a time per tag; never cancel an in-progress production release.
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ""
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable (2026-09-06)
+        with:
+          toolchain: "1.98.0"
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2026-09-06)
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release desktop app
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1 (2026-09-06)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Force web root. vite.config.ts maps GITHUB_ACTIONS=true to
+          # "/BudgetLens/" (Pages) unless VITE_BASE is set — without this the
+          # desktop bundle serves absolute /BudgetLens/ URLs that don't exist
+          # under http://tauri.localhost (blank window on all artifacts).
+          VITE_BASE: /
+        with:
+          tagName: app-v__VERSION__
+          releaseName: BudgetLens Desktop app-v__VERSION__
+          releaseBody: See the assets below to download. Draft — publish only after all legs are green and validation passes.
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
+
+      - name: Assert no Pages base leaked into desktop bundle
+        run: |
+          if grep -q '/BudgetLens/' dist/index.html; then
+            echo "::error::dist/index.html contains /BudgetLens/ asset URLs — VITE_BASE was not /."
+            exit 1
+          fi
+
+  audit:
+    name: Cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable (2026-09-06)
+        with:
+          toolchain: "1.98.0"
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      - name: Audit Rust dependencies
+        run: cargo audit --manifest-path src-tauri/Cargo.lock
+        working-directory: .
+
+  validate:
+    name: Validate updater manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, audit]
+    steps:
+      - name: Validate latest.json (version, platforms, signatures, URLs)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="${TAG#app-v}"
+          echo "Tag: $TAG (expect version $EXPECTED_VERSION)"
+
+          RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
+          UPLOAD_URL="$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name == "latest.json") | .url')"
+          if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
+            echo "::error::latest.json not found on release $TAG — updater would offer nothing."
+            exit 1
+          fi
+          gh api -H "Accept: application/octet-stream" "$UPLOAD_URL" > latest.json
+          cat latest.json
+
+          VERSION="$(jq -r '.version' latest.json)"
+          if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "::error::latest.json version $VERSION != tag version $EXPECTED_VERSION."
+            exit 1
+          fi
+
+          for platform in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+            URL="$(jq -r --arg p "$platform" '.platforms[$p].url // empty' latest.json)"
+            SIG="$(jq -r --arg p "$platform" '.platforms[$p].signature // empty' latest.json)"
+            if [ -z "$URL" ] || [ -z "$SIG" ]; then
+              echo "::error::platform $platform missing url or signature in latest.json."
+              exit 1
+            fi
+            CODE="$(curl -sSL -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" "$URL")"
+            if [ "$CODE" != "200" ] && [ "$CODE" != "302" ]; then
+              echo "::error::platform $platform URL $URL returned HTTP $CODE."
+              exit 1
+            fi
+            echo "OK $platform -> HTTP $CODE"
+          done
+          echo "latest.json valid for $TAG."

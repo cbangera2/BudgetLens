@@ -1,8 +1,11 @@
+import { invoke } from "@tauri-apps/api/core"
+
 import {
   DEFAULT_THINKING_LEVEL,
   THINKING_LEVELS,
   type ThinkingLevel,
 } from "@/features/assistant/thinking-select"
+import { isTauriSync } from "@/lib/isTauri"
 
 export type AssistantProviderId =
   | "opencode-harness"
@@ -87,6 +90,12 @@ export interface AssistantSettings {
   model: string
   apiKey: string
   thinking: ThinkingLevel
+  /**
+   * Desktop only: persist the key in the OS keychain. Always true on first
+   * run in the binary (owner decision 2026-09-06); the checkbox opts out to
+   * memory-only. Ignored on web, where keys are never persisted.
+   */
+  rememberKey: boolean
 }
 
 export const ASSISTANT_SETTINGS_KEY = "budgetlens.assistant.v1"
@@ -114,6 +123,7 @@ export function defaultSettingsFor(provider: AssistantProviderId): AssistantSett
     model: preset.model,
     apiKey: "",
     thinking: DEFAULT_THINKING_LEVEL,
+    rememberKey: isTauriSync(),
   }
 }
 
@@ -143,6 +153,7 @@ export function readAssistantSettings(storage: Pick<Storage, "getItem">): Assist
       model: asText(parsed.model, preset.model),
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
       thinking: asThinkingLevel(parsed.thinking),
+      rememberKey: typeof parsed.rememberKey === "boolean" ? parsed.rememberKey : isTauriSync(),
     }
   } catch {
     return fallback
@@ -226,6 +237,35 @@ function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortS
   return signal ? AbortSignal.any([signal, timeout]) : timeout
 }
 
+/**
+ * This @tauri-apps/api version has no invoke-level AbortSignal support, so
+ * race the command against the caller's signal. The Rust side still enforces
+ * its own timeout; a late resolution is dropped here so Stop stays responsive.
+ */
+function invokeWithAbort<T>(
+  command: string,
+  args: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"))
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
+    invoke<T>(command, args).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
 async function postChatCompletions(options: {
   baseURL: string
   apiKey: string
@@ -235,6 +275,22 @@ async function postChatCompletions(options: {
   signal?: AbortSignal
   timeoutMs?: number
 }): Promise<unknown> {
+  // Desktop binary: route through the Rust proxy (no WebView Origin, so no
+  // CORS preflight; keys stay out of the JS bundle when remembered).
+  if (isTauriSync()) {
+    return await invokeWithAbort<unknown>(
+      "llm_chat",
+      {
+        baseUrl: options.baseURL,
+        apiKey: options.apiKey || null,
+        model: options.model,
+        messages: options.messages,
+        tools: options.tools && options.tools.length > 0 ? options.tools : null,
+      },
+      withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS),
+    )
+  }
+
   const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
     method: "POST",
     signal: withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS),
@@ -275,15 +331,101 @@ export async function requestChatTurn(options: {
     ...options.history.map((item) => ({ role: item.role, content: item.content })),
   ]
 
-  const payload = await postChatCompletions({
-    baseURL: options.baseURL,
-    apiKey: options.apiKey,
-    model: options.model,
-    messages,
-    tools: options.tools,
+  const withTools = options.tools.length > 0
+  try {
+    const payload = await postChatCompletions({
+      baseURL: options.baseURL,
+      apiKey: options.apiKey,
+      model: options.model,
+      messages,
+      tools: options.tools,
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+    return extractTurnMessage(payload)
+  } catch (error) {
+    // Local proxies often 400 on unknown fields (tools/tool_choice) or on
+    // models without function calling: retry the same turn as plain completion.
+    if (withTools && isRetryableToolError(error)) {
+      const payload = await postChatCompletions({
+        baseURL: options.baseURL,
+        apiKey: options.apiKey,
+        model: options.model,
+        messages,
+        ...(options.signal ? { signal: options.signal } : {}),
+      })
+      return extractTurnMessage(payload)
+    }
+    throw error
+  }
+}
+
+function isRetryableToolError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /Provider 4\d\d|tool_choice|function.?call|unsupported/i.test(message)
+}
+
+function isLoopbackHost(host: string): boolean {
+  const bare = host.toLowerCase().replace(/^\[|\]$/g, "")
+  return bare === "localhost" || bare === "127.0.0.1" || bare === "::1"
+}
+
+/** True for loopback base URLs (desktop Ollama/LM Studio/bridge): data stays local. */
+export function isLocalBaseURL(baseURL: string): boolean {
+  try {
+    return isLoopbackHost(new URL(baseURL).hostname)
+  } catch {
+    return baseURL.includes("localhost") || baseURL.includes("127.0.0.1")
+  }
+}
+
+/**
+ * List model ids from any OpenAI-compatible base (`GET {base}/models`).
+ * Desktop goes through the Rust proxy; web uses fetch. Throws on HTTP
+ * errors (401 = invalid key: don't save) and on empty listings.
+ */
+export async function listProviderModels(options: {
+  baseURL: string
+  apiKey: string
+  signal?: AbortSignal
+}): Promise<string[]> {
+  if (isTauriSync()) {
+    return await invokeWithAbort<string[]>(
+      "llm_models",
+      { baseUrl: options.baseURL, apiKey: options.apiKey || null },
+      withTimeout(options.signal, 15_000),
+    )
+  }
+
+  const headers: Record<string, string> = {}
+  if (options.apiKey) headers.authorization = `Bearer ${options.apiKey}`
+  const response = await fetch(joinURL(options.baseURL, "/models"), {
+    method: "GET",
     ...(options.signal ? { signal: options.signal } : {}),
+    headers,
   })
-  return extractTurnMessage(payload)
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "")
+    throw new Error(
+      `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
+    )
+  }
+  const payload: unknown = (await response.json()) as unknown
+  const ids = extractModelIds(payload)
+  if (ids.length === 0) throw new Error("Provider listed no models.")
+  return ids
+}
+
+function extractModelIds(payload: unknown): string[] {
+  if (!isRecord(payload)) return []
+  const data = payload.data
+  if (!Array.isArray(data)) return []
+  const ids: string[] = []
+  for (const entry of data) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || !entry.id) continue
+    if (!ids.includes(entry.id)) ids.push(entry.id)
+    if (ids.length >= 500) break
+  }
+  return ids
 }
 
 export async function sendToolResults(options: {

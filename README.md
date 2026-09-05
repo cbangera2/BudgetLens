@@ -50,6 +50,20 @@ pnpm dev
 Open the URL printed by Vite. No environment variables, PostgreSQL server, or Docker daemon are
 required.
 
+## Desktop app
+
+One-click builds for macOS (Apple Silicon + Intel) and Windows ship from GitHub Releases with
+in-app auto-update. Linux is out of scope for v1.
+
+- Download the latest `app-v*` release asset and launch. The v1 builds are unsigned: macOS may
+  need System Settings → Privacy & Security → Allow, and Windows may show `Unknown publisher` →
+  `More info` → `Run anyway`.
+- Browser data does not migrate automatically (the app is a different origin). In the browser go
+  to Settings → download a JSON backup, then restore it via Imports in the app.
+- The assistant defaults to local Ollama: install it, run `ollama serve`, then
+  `ollama pull qwen2.5:7b`. Hosted API keys are kept in memory unless you opt into OS-keychain
+  storage, and `localhost` providers never send data off the machine.
+
 ## Import data
 
 ### Transactions

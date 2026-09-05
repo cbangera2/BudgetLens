@@ -51,6 +51,8 @@ import {
   ASSISTANT_SETTINGS_KEY,
   formatMinor,
   isAssistantProviderId,
+  isLocalBaseURL,
+  listProviderModels,
   readAssistantSettings,
   requestChatTurn,
   sendToolResults,
@@ -75,6 +77,8 @@ import {
   type ThreadRecord,
 } from "@/features/assistant/thread-store"
 import { isTransactionSort } from "@/features/transactions/filtering"
+import { clearAssistantKey, loadAssistantKey, saveAssistantKey } from "@/lib/apiKeyStore"
+import { isTauriSync } from "@/lib/isTauri"
 
 interface ToolTrace {
   id: string
@@ -284,6 +288,9 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<AssistantSettings>(() =>
     readAssistantSettings(window.localStorage),
   )
+  // Desktop binary (Tauri) vs web/Pages. Stable for the session; gates the
+  // keychain, Rust transport (see provider.ts), probe, and updater UI.
+  const [isDesktop] = useState(() => isTauriSync())
   const [showSettings, setShowSettings] = useState(false)
   const [layout, setLayout] = useState<AssistantWindowLayout>(() =>
     readAssistantLayout(window.localStorage),
@@ -294,6 +301,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [modelsLoading, setModelsLoading] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [customModel, setCustomModel] = useState(false)
+  // Direct-provider model listing (non-harness): fetched on demand, never persisted.
+  const [directModels, setDirectModels] = useState<string[] | null>(null)
+  const [directModelsLoading, setDirectModelsLoading] = useState(false)
+  const [directModelsError, setDirectModelsError] = useState<string | null>(null)
+  // Desktop localhost probe (Ollama/LM Studio/bridge): reachability hint only.
+  const [probeStatus, setProbeStatus] = useState<"idle" | "checking" | "ok" | "unreachable">("idle")
+  const [probeModels, setProbeModels] = useState(0)
   const [proposal, setProposal] = useState<(BudgetProposal & { id: string }) | null>(null)
   const [proposalState, setProposalState] = useState<"idle" | "applied" | "applying">("idle")
   const [recatProposal, setRecatProposal] = useState<
@@ -335,16 +349,49 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Desktop keychain hydration gate: the persist effect below must not write
+  // (in particular, must not clear) until the first load attempt resolves,
+  // or mounting with an empty field would wipe a remembered key.
+  const keySyncReadyRef = useRef(false)
+
   useEffect(() => {
-    // Never persist API keys to clear-text storage: they stay in memory only
-    // and must be re-entered each session.
+    // API keys never touch clear-text storage: localStorage keeps settings
+    // with the key blanked. On desktop the keychain holds remembered keys.
     const persistedSettings: AssistantSettings = { ...settings, apiKey: "" }
     try {
       window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
     } catch {
       // Private-mode or quota failures must not break the panel.
     }
-  }, [settings])
+    if (isDesktop && keySyncReadyRef.current) {
+      if (settings.rememberKey && settings.apiKey) {
+        void saveAssistantKey(settings.provider, settings.apiKey)
+      } else {
+        // Opted out or cleared the field: forget the stored key.
+        void clearAssistantKey(settings.provider)
+      }
+    }
+  }, [settings, isDesktop])
+
+  // Desktop: pull the remembered key for this provider into memory.
+  useEffect(() => {
+    if (!isDesktop) return () => undefined
+    if (settings.rememberKey && !settings.apiKey && !keySyncReadyRef.current) {
+      let cancelled = false
+      void loadAssistantKey(settings.provider).then((key) => {
+        if (cancelled) return
+        keySyncReadyRef.current = true
+        if (key) {
+          setSettings((current) => (current.apiKey ? current : { ...current, apiKey: key }))
+        }
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    keySyncReadyRef.current = true
+    return () => undefined
+  }, [isDesktop, settings.provider, settings.rememberKey, settings.apiKey])
 
   useEffect(() => {
     try {
@@ -372,6 +419,42 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       window.clearTimeout(timer)
     }
   }, [settings.provider])
+
+  // Desktop: probe the configured local server (Ollama/LM Studio/bridge) for
+  // a first-run reachability hint. Hosted endpoints skip the probe — the Load
+  // models button below covers them with the key attached.
+  useEffect(() => {
+    if (
+      !isDesktop ||
+      !showSettings ||
+      settings.provider === "opencode-harness" ||
+      !isLocalBaseURL(settings.baseURL)
+    ) {
+      setProbeStatus("idle")
+      return () => undefined
+    }
+    setProbeStatus("checking")
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 2500)
+    void listProviderModels({
+      baseURL: settings.baseURL,
+      apiKey: settings.apiKey,
+      signal: controller.signal,
+    })
+      .then((models) => {
+        if (controller.signal.aborted) return
+        setProbeModels(models.length)
+        setProbeStatus("ok")
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setProbeStatus("unreachable")
+      })
+      .finally(() => window.clearTimeout(timer))
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [isDesktop, showSettings, settings.provider, settings.baseURL, settings.apiKey])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" })
@@ -564,13 +647,42 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     const preset = ASSISTANT_PRESETS.find((item) => item.id === provider)
     if (!preset) return
     setCustomModel(false)
+    setDirectModels(null)
+    setDirectModelsError(null)
     setHarnessSessionId(undefined)
+    if (isDesktop) {
+      // Keys are per-provider in the keychain: drop the in-memory key so the
+      // hydration effect pulls the new provider's remembered key (or none).
+      keySyncReadyRef.current = false
+    }
     setSettings((current) => ({
       ...current,
       provider,
       baseURL: preset.baseURL,
       model: preset.model,
+      ...(isDesktop ? { apiKey: "" } : {}),
     }))
+  }
+
+  async function loadDirectModels(): Promise<void> {
+    setDirectModelsLoading(true)
+    setDirectModelsError(null)
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 15_000)
+    try {
+      const models = await listProviderModels({
+        baseURL: settings.baseURL,
+        apiKey: settings.apiKey,
+        signal: controller.signal,
+      })
+      setDirectModels(models)
+    } catch (caught) {
+      setDirectModels(null)
+      setDirectModelsError(caught instanceof Error ? caught.message : "Could not load models.")
+    } finally {
+      window.clearTimeout(timer)
+      setDirectModelsLoading(false)
+    }
   }
 
   const modelsRequestedRef = useRef(false)
@@ -1226,14 +1338,90 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           ) : (
-            <label className="grid gap-1" htmlFor="assistant-model">
-              <span className="font-medium">Model</span>
-              <Input
-                id="assistant-model"
-                value={settings.model}
-                onChange={(event) => updateSettings({ model: event.target.value })}
-              />
-            </label>
+            <div className="grid gap-1">
+              <label className="grid gap-1" htmlFor="assistant-model">
+                <span className="font-medium">Model</span>
+                {directModels ? (
+                  <select
+                    id="assistant-model"
+                    className="h-9 rounded-xl border border-input bg-background px-2"
+                    value={settings.model}
+                    onChange={(event) => updateSettings({ model: event.target.value })}
+                  >
+                    {!directModels.includes(settings.model) && (
+                      <option value={settings.model}>{settings.model} (custom)</option>
+                    )}
+                    {directModels.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    id="assistant-model"
+                    value={settings.model}
+                    onChange={(event) => updateSettings({ model: event.target.value })}
+                  />
+                )}
+              </label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-full"
+                  disabled={directModelsLoading}
+                  onClick={() => {
+                    void loadDirectModels()
+                  }}
+                >
+                  {directModelsLoading
+                    ? "Loading…"
+                    : directModels
+                      ? "Reload models"
+                      : "Load models"}
+                </Button>
+                {directModels && (
+                  <span className="text-muted-foreground">{directModels.length} models</span>
+                )}
+              </div>
+              {directModelsError && <p className="text-muted-foreground">{directModelsError}</p>}
+              {isDesktop && isLocalBaseURL(settings.baseURL) && probeStatus === "checking" && (
+                <p className="text-muted-foreground">Checking local server…</p>
+              )}
+              {isDesktop && isLocalBaseURL(settings.baseURL) && probeStatus === "ok" && (
+                <p className="text-muted-foreground">
+                  Local server reachable ({probeModels} models).
+                </p>
+              )}
+              {isDesktop &&
+                isLocalBaseURL(settings.baseURL) &&
+                probeStatus === "unreachable" &&
+                settings.provider === "ollama" && (
+                  <p className="text-muted-foreground">
+                    Ollama isn&apos;t reachable at {settings.baseURL}. Install it
+                    (ollama.com/download), run `ollama serve`, then `ollama pull qwen2.5:7b`.
+                  </p>
+                )}
+              {isDesktop &&
+                isLocalBaseURL(settings.baseURL) &&
+                probeStatus === "unreachable" &&
+                settings.provider === "lmstudio" && (
+                  <p className="text-muted-foreground">
+                    In LM Studio: Developer → Server → enable CORS → Start Server.
+                  </p>
+                )}
+              {isDesktop &&
+                isLocalBaseURL(settings.baseURL) &&
+                probeStatus === "unreachable" &&
+                settings.provider !== "ollama" &&
+                settings.provider !== "lmstudio" && (
+                  <p className="text-muted-foreground">
+                    Nothing listening at {settings.baseURL}. Start your local server and retry.
+                  </p>
+                )}
+            </div>
           )}
           {settings.provider !== "opencode-harness" && (
             <>
@@ -1248,7 +1436,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 />
               </label>
               <label className="grid gap-1" htmlFor="assistant-key">
-                <span className="font-medium">API key (optional, kept for this session only)</span>
+                <span className="font-medium">
+                  {isDesktop
+                    ? settings.rememberKey
+                      ? "API key (stored in OS keychain)"
+                      : "API key (kept for this session only)"
+                    : "API key (optional, kept for this session only)"}
+                </span>
                 <Input
                   id="assistant-key"
                   type="password"
@@ -1258,7 +1452,37 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                   placeholder="sk-…"
                 />
               </label>
+              {isDesktop && (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={settings.rememberKey}
+                    onChange={(event) => {
+                      const remember = event.target.checked
+                      updateSettings({ rememberKey: remember })
+                      if (remember && !settings.apiKey) {
+                        void loadAssistantKey(settings.provider).then((key) => {
+                          if (key) {
+                            setSettings((current) =>
+                              current.apiKey ? current : { ...current, apiKey: key },
+                            )
+                          }
+                        })
+                      }
+                      if (!remember) void clearAssistantKey(settings.provider)
+                    }}
+                  />
+                  <span>Remember key on this device (OS keychain)</span>
+                </label>
+              )}
             </>
+          )}
+          {settings.provider !== "opencode-harness" && (
+            <p className="font-medium">
+              {isLocalBaseURL(settings.baseURL)
+                ? "Local · data stays on this machine"
+                : "Cloud · data leaves this machine"}
+            </p>
           )}
           {preset?.hint && <p className="text-muted-foreground">{preset.hint}</p>}
         </div>

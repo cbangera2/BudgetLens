@@ -42,7 +42,7 @@
   "plugins": {
     "updater": {
       "active": true,
-      "pubkey": "TODO: contents of budgetlens.key.pub (Phase 0 — build fails until set)",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNDOTUxNTNFN0E1QTExNzcKUldSM0VWcDZQaFdWUENMVTRrc1BQQ2lVRi95Uzd4YUFSemZkRVFtVHhrUVdORXlkZzFQa3E4ekQK",
       "endpoints": ["https://github.com/cbangera2/BudgetLens/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
