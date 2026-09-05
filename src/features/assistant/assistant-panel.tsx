@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Search,
+  ServerOff,
   Settings,
   Terminal,
   Wrench,
@@ -314,6 +315,9 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [contextSummary, setContextSummary] = useState<string | null>(null)
+  // null = unchecked, true = local harness endpoint reachable, false = static
+  // hosting (e.g. GitHub Pages) where the harness can never run.
+  const [harnessAvailable, setHarnessAvailable] = useState<boolean | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
   const storedIdsRef = useRef<Set<string>>(new Set())
@@ -341,6 +345,25 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       // Layout persistence is best-effort; never break the chat.
     }
   }, [layout])
+
+  useEffect(() => {
+    if (settings.provider !== "opencode-harness") return () => undefined
+    setHarnessAvailable(null)
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 6000)
+    void fetch("/api/models", { signal: controller.signal })
+      .then((response) => {
+        if (!controller.signal.aborted) setHarnessAvailable(response.ok)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setHarnessAvailable(false)
+      })
+      .finally(() => window.clearTimeout(timer))
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [settings.provider])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" })
@@ -990,6 +1013,42 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         >
           Agent sees: {contextSummary}
         </p>
+      )}
+
+      {settings.provider === "opencode-harness" && harnessAvailable === false && (
+        <div className="border-b bg-muted/50 px-4 py-4">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-secondary">
+              <ServerOff className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Assistant needs the local app</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                You are on the static GitHub Pages demo, which cannot run a server — so the Opencode
+                harness cannot work here. Run it locally instead:
+              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs">
+                <li>
+                  Clone the repo and run <code className="rounded bg-muted px-1">pnpm install</code>
+                </li>
+                <li>
+                  Start opencode:{" "}
+                  <code className="rounded bg-muted px-1">
+                    opencode serve --cors http://localhost:5173
+                  </code>
+                </li>
+                <li>
+                  Start the app: <code className="rounded bg-muted px-1">pnpm dev</code> and reopen
+                  this panel
+                </li>
+              </ol>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Tip: direct presets (OpenAI, OpenRouter, custom) work on this page with your own key
+                — no server needed.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {showHistory && (
