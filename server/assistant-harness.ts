@@ -27,19 +27,18 @@ const snapshotTransactionSchema = z.object({
   category: z.string().max(120).nullable(),
 })
 
+const spendingBucketSchema = z.object({
+  category: z.string().max(120),
+  count: z.number(),
+  totalMinor: z.number(),
+  total: z.string().max(64),
+})
+
 const snapshotSchema = z.object({
   generatedAt: z.string().max(64),
   transactionCount: z.number(),
-  spending: z
-    .array(
-      z.object({
-        category: z.string().max(120),
-        count: z.number(),
-        totalMinor: z.number(),
-        total: z.string().max(64),
-      }),
-    )
-    .max(30),
+  spending: z.array(spendingBucketSchema).max(30),
+  previousSpending: z.array(spendingBucketSchema).max(30).optional(),
   budgets: z
     .array(
       z.object({
@@ -72,7 +71,7 @@ const snapshotSchema = z.object({
     })
     .optional(),
   topTransactions: z.array(snapshotTransactionSchema).max(30).optional(),
-  recentTransactions: z.array(snapshotTransactionSchema).max(120).optional(),
+  recentTransactions: z.array(snapshotTransactionSchema).max(60).optional(),
   dailySeries: z
     .array(
       z.object({
@@ -313,6 +312,94 @@ async function drainHarnessTurn(
   return sessionId ? { content, toolEvents, sessionId } : { content, toolEvents }
 }
 
+const SNAPSHOT_PROMPT_BUDGET = 32_000
+
+type SnapshotBody = z.infer<typeof snapshotSchema>
+
+/**
+ * Prompt projection of the snapshot: display-string duplicates (total, spent,
+ * ...) are dropped since the model formats minor units itself. This roughly
+ * halves prompt bytes so the largest schema-valid snapshot still fits the
+ * budget without mid-JSON truncation.
+ */
+function pickTransaction(row: {
+  id?: string
+  date: string
+  description: string | null
+  amountMinor: number
+  category: string | null
+}): Record<string, unknown> {
+  return {
+    ...(typeof row.id === "string" ? { id: row.id } : {}),
+    date: row.date,
+    description: row.description,
+    amountMinor: row.amountMinor,
+    category: row.category,
+  }
+}
+
+function compactSnapshotForPrompt(snapshot: SnapshotBody): Record<string, unknown> {
+  return {
+    generatedAt: snapshot.generatedAt,
+    transactionCount: snapshot.transactionCount,
+    spending: snapshot.spending.map((bucket) => ({
+      category: bucket.category,
+      count: bucket.count,
+      totalMinor: bucket.totalMinor,
+    })),
+    ...(snapshot.previousSpending
+      ? {
+          previousSpending: snapshot.previousSpending.map((bucket) => ({
+            category: bucket.category,
+            count: bucket.count,
+            totalMinor: bucket.totalMinor,
+          })),
+        }
+      : {}),
+    budgets: snapshot.budgets.map((goal) => ({
+      category: goal.category,
+      period: goal.period,
+      goalMinor: goal.goalMinor,
+      spentMinor: goal.spentMinor,
+      remainingMinor: goal.remainingMinor,
+      over: goal.over,
+    })),
+    netWorth: snapshot.netWorth.map((point) => ({
+      date: point.date,
+      series: point.series,
+      valueMinor: point.valueMinor,
+    })),
+    ...(snapshot.extremes
+      ? {
+          extremes: {
+            largestExpense: snapshot.extremes.largestExpense
+              ? pickTransaction(snapshot.extremes.largestExpense)
+              : null,
+            largestIncome: snapshot.extremes.largestIncome
+              ? pickTransaction(snapshot.extremes.largestIncome)
+              : null,
+          },
+        }
+      : {}),
+    ...(snapshot.topTransactions
+      ? { topTransactions: snapshot.topTransactions.map(pickTransaction) }
+      : {}),
+    ...(snapshot.recentTransactions
+      ? { recentTransactions: snapshot.recentTransactions.map(pickTransaction) }
+      : {}),
+    ...(snapshot.dailySeries
+      ? {
+          dailySeries: snapshot.dailySeries.map((point) => ({
+            date: point.date,
+            spentMinor: point.spentMinor,
+            incomeMinor: point.incomeMinor,
+            count: point.count,
+          })),
+        }
+      : {}),
+  }
+}
+
 function buildSystemPrompt(
   snapshot: ChatBody["snapshot"],
   thinking: ThinkingLevel,
@@ -320,15 +407,15 @@ function buildSystemPrompt(
   prompt: string
   snapshotBlob: string
 } {
-  const snapshotBlob = snip(snapshot, 20_000)
+  const snapshotBlob = snip(compactSnapshotForPrompt(snapshot), SNAPSHOT_PROMPT_BUDGET)
   const prompt = [
     "You are BudgetLens Assistant, a local-first finance helper.",
-    "The user's private finance summary (aggregates plus capped recent rows) is:",
+    "The user's private finance summary (amounts in minor units; format as $X,XXX.XX) is:",
     snapshotBlob,
     "Rules:",
     "- Answer from the summary above; never invent balances or transactions.",
-    "- Amounts show as formatted currency already; minor-unit math is done for you.",
     "- `extremes`, `topTransactions`, and `recentTransactions` hold individual rows: use them for highest/lowest/single-transaction and row-detail questions — never claim you lack row access when these are present.",
+    "- `spending` is the current window and `previousSpending` the prior window: use both for month-over-month change questions.",
     "- `dailySeries` holds per-day spent/income totals for the last 90 days: use it for time charts and trend questions — it covers every transaction day, so never refuse a whole-history question for lack of rows.",
     "- Keep answers short, markdown-formatted, and point at what the user can verify in the app.",
     "- Write specific amounts EXACTLY as shown in the summary (e.g. -$3,300.00) so they can be automatically cited.",

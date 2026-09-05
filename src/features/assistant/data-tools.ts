@@ -1,4 +1,5 @@
 import type { BudgetLensRepositories } from "@/domain/repositories"
+import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import type { ChatFunctionTool } from "@/features/assistant/provider"
 import { formatMinor } from "@/features/assistant/provider"
 
@@ -307,22 +308,44 @@ export async function executeAssistantTool(
         repositories.budgets.list(),
         repositories.transactions.list(),
       ])
+      // Mirror the app's own progress math (calculateBudgetProgress): only
+      // expense-side amounts in the goal's current calendar period count.
+      const referenceDate = new Date().toISOString().slice(0, 10)
       return {
         goals: goals.map((goal) => {
+          const periodPrefix =
+            goal.period === "monthly" ? referenceDate.slice(0, 7) : referenceDate.slice(0, 4)
           const spentMinor = transactions
-            .filter((transaction) => transaction.category === goal.category)
-            .reduce((sum, transaction) => sum + transaction.amountMinor, 0)
-          const absSpent = Math.abs(spentMinor)
+            .filter(
+              (transaction) =>
+                transaction.category === goal.category &&
+                transaction.date.startsWith(periodPrefix) &&
+                normalizeTransactionAmountMinor(
+                  transaction.amountMinor,
+                  transaction.transactionType,
+                ) < 0,
+            )
+            .reduce(
+              (sum, transaction) =>
+                sum +
+                Math.abs(
+                  normalizeTransactionAmountMinor(
+                    transaction.amountMinor,
+                    transaction.transactionType,
+                  ),
+                ),
+              0,
+            )
           return {
             category: goal.category,
             period: goal.period,
             goalMinor: goal.amountMinor,
             goal: formatMinor(goal.amountMinor),
-            spentMinor: absSpent,
-            spent: formatMinor(absSpent),
-            remainingMinor: goal.amountMinor - absSpent,
-            remaining: formatMinor(goal.amountMinor - absSpent),
-            over: absSpent > goal.amountMinor,
+            spentMinor,
+            spent: formatMinor(spentMinor),
+            remainingMinor: goal.amountMinor - spentMinor,
+            remaining: formatMinor(goal.amountMinor - spentMinor),
+            over: spentMinor > goal.amountMinor,
           }
         }),
       }
@@ -353,6 +376,7 @@ export async function executeAssistantTool(
         total: rows.length,
         truncated: rows.length > limit,
         rows: ordered.slice(0, limit).map((transaction) => ({
+          id: transaction.id,
           date: transaction.date,
           description: truncate(transaction.description),
           amountMinor: transaction.amountMinor,
@@ -516,7 +540,7 @@ export interface FinanceSnapshot {
 }
 
 export const MAX_SNAPSHOT_TOP_ROWS = 25
-export const MAX_SNAPSHOT_RECENT_ROWS = 100
+export const MAX_SNAPSHOT_RECENT_ROWS = 60
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
