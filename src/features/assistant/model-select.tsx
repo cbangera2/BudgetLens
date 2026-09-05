@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Search } from "lucide-react"
+import { Brain, Check, ChevronDown, Eye, Search } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,9 @@ export interface ModelSelectOption {
   name: string
   provider: string
   free?: boolean
+  vision?: boolean
+  reasoning?: boolean
+  contextTokens?: number
 }
 
 interface ModelSelectProps {
@@ -61,19 +64,71 @@ function providerDotClass(provider: string): string {
   return PROVIDER_DOT_CLASSES[hash % PROVIDER_DOT_CLASSES.length] ?? "bg-muted-foreground"
 }
 
+const RECENT_MODELS_STORAGE_KEY = "budgetlens.assistant.recent-models.v1"
+const MAX_RECENT_MODELS = 5
+
+function readRecentModelIds(): string[] {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return []
+    const raw = window.localStorage.getItem(RECENT_MODELS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const ids: string[] = []
+    for (const entry of parsed) {
+      if (typeof entry !== "string" || !entry) continue
+      if (ids.includes(entry)) continue
+      ids.push(entry)
+      if (ids.length >= MAX_RECENT_MODELS) break
+    }
+    return ids
+  } catch {
+    return []
+  }
+}
+
+function trimCompactNumber(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded}` : `${rounded}`
+}
+
+function formatContextTokens(tokens: number): string | null {
+  if (!Number.isFinite(tokens) || tokens < 1000) return null
+  if (tokens >= 1_000_000) return `${trimCompactNumber(tokens / 1_000_000)}M`
+  return `${trimCompactNumber(tokens / 1000)}k`
+}
+
 export function ModelSelect({ models, value, onChange, onCustom, disabled }: ModelSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [recentIds, setRecentIds] = useState<string[]>(readRecentModelIds)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
 
   const selected = models.find((model) => model.id === value)
 
+  const recentModels = useMemo(() => {
+    if (recentIds.length === 0) return []
+    const byId = new Map(models.map((model) => [model.id, model] as const))
+    const list: ModelSelectOption[] = []
+    for (const id of recentIds) {
+      const model = byId.get(id)
+      if (!model) continue
+      if (query.trim() && !matchesQuery(model, query)) continue
+      list.push(model)
+    }
+    return list
+  }, [models, recentIds, query])
+
   const filtered = useMemo(() => {
     const queryModels = query.trim() ? models.filter((model) => matchesQuery(model, query)) : models
-    return groupModels(queryModels).filter((group) => group.models.length > 0)
-  }, [models, query])
+    const recentSet = new Set(recentModels.map((model) => model.id))
+    const rest = queryModels.filter((model) => !recentSet.has(model.id))
+    const groups = groupModels(rest).filter((group) => group.models.length > 0)
+    if (recentModels.length === 0) return groups
+    return [{ provider: "Recent", models: recentModels }, ...groups]
+  }, [models, query, recentModels])
 
   const flatIds = useMemo(
     () => filtered.flatMap((group) => group.models.map((model) => model.id)),
@@ -104,6 +159,15 @@ export function ModelSelect({ models, value, onChange, onCustom, disabled }: Mod
   }
 
   function choose(id: string) {
+    setRecentIds((current) => {
+      const next = [id, ...current.filter((entry) => entry !== id)].slice(0, MAX_RECENT_MODELS)
+      try {
+        window.localStorage.setItem(RECENT_MODELS_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // Storage may be unavailable (private mode); recent list stays in memory.
+      }
+      return next
+    })
     onChange(id)
     setOpen(false)
   }
@@ -184,6 +248,10 @@ export function ModelSelect({ models, value, onChange, onCustom, disabled }: Mod
                   {group.models.map((model) => {
                     const active = model.id === activeId
                     const isSelected = model.id === value
+                    const contextLabel =
+                      typeof model.contextTokens === "number"
+                        ? formatContextTokens(model.contextTokens)
+                        : null
                     return (
                       <button
                         key={model.id}
@@ -216,6 +284,36 @@ export function ModelSelect({ models, value, onChange, onCustom, disabled }: Mod
                             {model.free && (
                               <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-px text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
                                 free
+                              </span>
+                            )}
+                            {model.vision === true && (
+                              <span
+                                title="Vision capable"
+                                className="inline-flex shrink-0 items-center rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
+                              >
+                                <Eye className="size-3" aria-hidden="true" />
+                                <span className="sr-only">Vision capable</span>
+                              </span>
+                            )}
+                            {model.reasoning === true && (
+                              <span
+                                title="Reasoning capable"
+                                className="inline-flex shrink-0 items-center rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
+                              >
+                                <Brain className="size-3" aria-hidden="true" />
+                                <span className="sr-only">Reasoning capable</span>
+                              </span>
+                            )}
+                            {contextLabel && (
+                              <span
+                                title={
+                                  typeof model.contextTokens === "number"
+                                    ? `${model.contextTokens} tokens context`
+                                    : "Large context window"
+                                }
+                                className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
+                              >
+                                {contextLabel}
                               </span>
                             )}
                           </span>

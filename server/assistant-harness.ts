@@ -118,6 +118,9 @@ export interface HarnessModelOption {
   name: string
   provider: string
   free: boolean
+  vision?: boolean
+  reasoning?: boolean
+  contextTokens?: number
 }
 
 interface DrainedTurn {
@@ -381,11 +384,25 @@ function parseProviderModels(payload: unknown): HarnessModelOption[] {
       const toolcall =
         isRecord(value) && isRecord(value.capabilities) && value.capabilities.toolcall === true
       if (!toolcall) continue
+      const capabilities =
+        isRecord(value) && isRecord(value.capabilities) ? value.capabilities : undefined
+      const inputCapabilities =
+        capabilities && isRecord(capabilities.input) ? capabilities.input : undefined
+      const vision = inputCapabilities?.image === true || capabilities?.attachment === true
+      const reasoning = capabilities?.reasoning === true
+      const limit = isRecord(value) && isRecord(value.limit) ? value.limit : undefined
+      const contextTokens =
+        limit && typeof limit.context === "number" && Number.isFinite(limit.context)
+          ? limit.context
+          : undefined
       models.push({
         id,
         name,
         provider,
         free: /(^|[/:_-])free([/:_-]|$)/i.test(fullId),
+        ...(vision ? { vision: true } : {}),
+        ...(reasoning ? { reasoning: true } : {}),
+        ...(contextTokens !== undefined ? { contextTokens } : {}),
       })
     }
   }
