@@ -1,3 +1,5 @@
+import { cleanup } from "@testing-library/react"
+
 import type { Transaction } from "@/domain/models"
 import type {
   BudgetLensRepositories,
@@ -20,6 +22,10 @@ import {
   summarizeVariance,
 } from "@/features/assistant/data-tools"
 import { readAssistantSettings } from "@/features/assistant/provider"
+
+afterEach(() => {
+  cleanup()
+})
 
 interface StubTransaction {
   date: string
@@ -233,9 +239,9 @@ describe("assistant data tools", () => {
 
 describe("assistant markdown", () => {
   it("renders emphasis, lists, code, tables, and safe links", async () => {
-    const { render, screen } = await import("@testing-library/react")
+    const { render } = await import("@testing-library/react")
     const { Markdown } = await import("@/features/assistant/markdown")
-    render(
+    const { getByText, getByRole, queryByRole } = render(
       <Markdown
         id="test-doc"
         text={[
@@ -253,20 +259,17 @@ describe("assistant markdown", () => {
       />,
     )
 
-    expect(screen.getByText("-$3,300.00").tagName).toBe("STRONG")
-    expect(screen.getByText("Groceries", { selector: "li" })).toBeInTheDocument()
-    expect(screen.getByRole("table")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "docs" })).toHaveAttribute(
-      "href",
-      "https://example.com/help",
-    )
-    expect(screen.queryByRole("link", { name: "evil" })).not.toBeInTheDocument()
+    expect(getByText("-$3,300.00").tagName).toBe("STRONG")
+    expect(getByText("Groceries", { selector: "li" })).toBeInTheDocument()
+    expect(getByRole("table")).toBeInTheDocument()
+    expect(getByRole("link", { name: "docs" })).toHaveAttribute("href", "https://example.com/help")
+    expect(queryByRole("link", { name: "evil" })).not.toBeInTheDocument()
   })
 
   it("renders a real finance answer with stray markers intact", async () => {
-    const { render, screen } = await import("@testing-library/react")
+    const { render } = await import("@testing-library/react")
     const { Markdown } = await import("@/features/assistant/markdown")
-    render(
+    const { getByText, getAllByRole } = render(
       <Markdown
         id="finance-answer"
         text={[
@@ -282,9 +285,9 @@ describe("assistant markdown", () => {
       />,
     )
 
-    expect(screen.getByText("-$3,300.00").tagName).toBe("STRONG")
-    expect(screen.getAllByRole("listitem")).toHaveLength(3)
-    expect(screen.getByText("$15,750.00").tagName).toBe("STRONG")
+    expect(getByText("-$3,300.00").tagName).toBe("STRONG")
+    expect(getAllByRole("listitem")).toHaveLength(3)
+    expect(getByText("$15,750.00").tagName).toBe("STRONG")
   })
 })
 
@@ -440,7 +443,7 @@ describe("assistant proposal card", () => {
 
 describe("assistant chart fence", () => {
   it("renders a bar chart fence as svg with its title", async () => {
-    const { render, screen } = await import("@testing-library/react")
+    const { render } = await import("@testing-library/react")
     const { Markdown } = await import("@/features/assistant/markdown")
     const spec = JSON.stringify({
       type: "bar",
@@ -455,9 +458,10 @@ describe("assistant chart fence", () => {
     const { container } = render(
       <Markdown id="chart-bar" text={["```budgetlens-chart", spec, "```"].join("\n")} />,
     )
-    expect(screen.getByText("Spending by category")).toBeInTheDocument()
+    expect(container.querySelector("figcaption")?.textContent).toBe("Spending by category")
     expect(container.querySelector("svg")).not.toBeNull()
-    expect(screen.getByText("Housing", { selector: "th" })).toBeInTheDocument()
+    const cells = [...container.querySelectorAll("td")].map((cell) => cell.textContent ?? "")
+    expect(cells.some((cell) => cell.includes("Housing"))).toBe(true)
   })
 
   it("falls back to code for an invalid chart fence", async () => {
@@ -531,22 +535,21 @@ describe("assistant citations", () => {
       "/BudgetLens/",
     )
     expect(cites.length).toBeLessThanOrEqual(MAX_CITATIONS)
-    expect(text).toContain("-$1.00 should stay plain")
-    expect(text).not.toContain("-$1.00[[cite:")
+    expect(text.startsWith("```\n-$1.00 should stay plain\n```")).toBe(true)
     expect(cites[0]?.href.startsWith("/BudgetLens/transactions?")).toBe(true)
   })
 
   it("renders cite markers as links", async () => {
-    const { render, screen } = await import("@testing-library/react")
+    const { render } = await import("@testing-library/react")
     const { Markdown } = await import("@/features/assistant/markdown")
-    render(
+    const { getByRole } = render(
       <Markdown
         id="cite-render"
         text="Housing cost -$3,300.00[[cite:1]] this month."
         cites={[{ index: 1, label: "Rent · -$3,300.00", href: "/transactions?sort=amount-desc" }]}
       />,
     )
-    expect(screen.getByRole("link", { name: "[1]" })).toHaveAttribute(
+    expect(getByRole("link", { name: "[1]" })).toHaveAttribute(
       "href",
       "/transactions?sort=amount-desc",
     )

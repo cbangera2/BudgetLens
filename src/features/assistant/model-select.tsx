@@ -146,7 +146,7 @@ export function ModelSelect({ models, value, onChange, onCustom, disabled }: Mod
   useEffect(() => {
     if (open && activeId) {
       listRef.current
-        ?.querySelector(`[data-option-id=${CSS.escape(activeId)}]`)
+        ?.querySelector(`[data-option-id="${CSS.escape(activeId)}"]`)
         ?.scrollIntoView({ block: "nearest" })
     }
   }, [open, activeId])

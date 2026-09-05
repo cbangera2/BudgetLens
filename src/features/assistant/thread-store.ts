@@ -201,7 +201,7 @@ export async function deleteThread(id: string): Promise<void> {
 export async function listMessages(threadId: string): Promise<Array<StoredMessage>> {
   try {
     const rows = await assistantDb.messages.where("threadId").equals(threadId).sortBy("createdAt")
-    return rows.slice(0, MESSAGE_CAP).map(cleanMessageRow)
+    return rows.slice(-MESSAGE_CAP).map(cleanMessageRow)
   } catch {
     return []
   }
