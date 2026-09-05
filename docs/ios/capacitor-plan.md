@@ -174,11 +174,12 @@ Data Protection entitlement is encryption-at-rest hardening, not a durability fi
 
 ## 12. Decision log (fill during Phase 0 — do not start Phase 1 with blanks)
 
-- Spike 1: `VITE_BASE` value. History choice (hash vs memory). `basepath` derivation fix. Open-in plist keys (`CFBundleURLTypes`, `CFBundleDocumentTypes`, UTIs, `LSSupportsOpeningDocumentsInPlace`) + `appUrlOpen` handler design. Parity tests passing.
-- Spike 2: raw-`fetch` CORS result per provider (Simulator + device). Transport: `fetch` vs native HTTP plugin. "No custom Swift" confirmed or retracted.
-- Spike 3: `isSecureContext` / `randomUUID` / `subtle` results. Fallback/polyfill design. `persist()` granted? `appId` + `iosScheme` + `hostname` frozen values. Quota band + low-storage UX.
-- Spike 4: `Directory` choice. Chunked handoff design. Native caps (same or below desktop?). Filename disambiguation. Worker stringify plan.
-- Spike 5: picker UTIs + 20-file behavior + cancellation codes confirmed.
-- Spike 6: `viewport-fit`, `theme-color`, Toaster position, Keyboard resize mode, date-trigger design, footer-link handling, iOS floor (e.g. 17/18 for `oklch`/`dvh`).
-- Spike 7: v3 restore semantics (id remap, conflicts, budgets/groups/imports, v1 migration) + round-trip test green.
-- §2–§3 pins: exact plugin packages + versions, `kSecAttrAccessible`, sync vs ThisDeviceOnly, re-enroll + uninstall + wipe semantics, `PrivacyInfo` API reasons, tab membership (5+More), nutrition-label wording.
+Resolved during scaffolding (verified on this machine; device confirmation still owed for ★ items):
+
+- Capacitor 8.5.1 (`@capacitor/core`, `@capacitor/ios`, `@capacitor/cli`), config in `capacitor.config.ts`.
+- `appId` `com.cbangera2.budgetlens` (shared with the Tauri shell in `src-tauri/tauri.conf.json` for shared Keychain access), `appName` `BudgetLens`, `webDir` `dist`.
+- `server.hostname` `localhost` + `server.iosScheme` `capacitor` → origin `capacitor://localhost` (pinned in config; changing them orphans storage). ★ Device must still confirm `isSecureContext` + `crypto.subtle` under this origin (Spike 3).
+- iOS builds use `VITE_BASE=/` (`pnpm build:ios`); synced bundle verified to emit absolute `/assets/...` URLs that resolve on the custom scheme. GitHub Pages keeps `/BudgetLens/`.
+- Router on native: hash history + basepath `/`, extending the Tauri `isTauriSync()` pattern with `isNativeCapacitorSync()` (`src/lib/isNative.ts`, detects the WKWebView bridge; unit-tested both ways). Citation base-stripping parity test still owed (Spike 1).
+- `ios/` platform generated via `cap add ios` and synced via `cap sync ios` (CocoaPods + Xcode present); `ios/` stays gitignored, only config + scripts committed.
+- Open-in plist keys (`CFBundleURLTypes`, `CFBundleDocumentTypes`), Keychain plugin pin, nutrition-label wording: still open.

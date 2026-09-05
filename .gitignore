@@ -89,5 +89,5 @@ temp/
 .tanstack-projected-*
 
 # Capacitor native projects (generated via `cap add`; config is capacitor.config.ts)
-ios/
-android/
+/ios/
+/android/
