@@ -129,6 +129,60 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_transaction",
+      description:
+        "Draft a new manual transaction for the user to approve. Never applies it; the UI asks first. Amount in minor units (cents), negative for expenses.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "ISO date YYYY-MM-DD" },
+          description: { type: "string" },
+          amountMinor: { type: "number", description: "Minor units, negative for expenses" },
+          category: { type: "string" },
+          accountName: { type: "string" },
+          notes: { type: "string" },
+        },
+        required: ["date", "description", "amountMinor"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_transaction",
+      description:
+        "Draft deletion of one transaction (by id, from search results) for the user to approve. Never applies it; the UI asks first.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Transaction id from a search_transactions row" },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "show_transactions_view",
+      description:
+        "Switch the app's Transactions view to the given filters so the user can see matching rows. No approval needed. Use after answering row questions or when the user asks to see/filter transactions.",
+      parameters: {
+        type: "object",
+        properties: {
+          search: { type: "string" },
+          categories: { type: "array", items: { type: "string" } },
+          sort: {
+            type: "string",
+            description: "date-desc, date-asc, amount-desc, amount-asc, or description",
+          },
+        },
+      },
+    },
+  },
 ]
 
 export interface BudgetProposal {
@@ -162,6 +216,53 @@ export function parseRecategorizeProposal(args: unknown): RecategorizeProposal |
     .slice(0, MAX_TOOL_ROWS)
   if (affectedIds.length === 0) return null
   return { toCategory, affectedIds }
+}
+
+export interface CreateTransactionProposal {
+  date: string
+  description: string
+  amountMinor: number
+  category: string | null
+  accountName: string | null
+  notes: string | null
+}
+
+function asOptionalText(value: unknown, max = 200): string | null {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return trimmed.slice(0, max)
+}
+
+export function parseCreateTransactionProposal(args: unknown): CreateTransactionProposal | null {
+  const record = asRecord(args)
+  const date = asString(record.date)
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  const description = asOptionalText(record.description)
+  if (!description) return null
+  const amountMinor = record.amountMinor
+  if (typeof amountMinor !== "number" || !Number.isFinite(amountMinor)) return null
+  return {
+    date,
+    description,
+    amountMinor: Math.round(amountMinor),
+    category: asOptionalText(record.category, 120),
+    accountName: asOptionalText(record.accountName, 120),
+    notes: asOptionalText(record.notes, 500),
+  }
+}
+
+export interface DeleteTransactionProposal {
+  id: string
+  preview: string
+}
+
+export function parseDeleteTransactionProposal(args: unknown): DeleteTransactionProposal | null {
+  const record = asRecord(args)
+  const id = asString(record.id)
+  if (!id) return null
+  const preview = asOptionalText(record.preview, 160) ?? id
+  return { id, preview }
 }
 
 export async function executeAssistantTool(
@@ -315,6 +416,27 @@ export async function executeAssistantTool(
       }
     }
 
+    case "create_transaction": {
+      const draft = parseCreateTransactionProposal(record)
+      if (!draft) throw new Error("create_transaction needs date, description, amountMinor.")
+      return {
+        draft: true,
+        kind: "create_transaction",
+        ...draft,
+        display: `${draft.date} · ${draft.description} · ${formatMinor(draft.amountMinor)}`,
+        note: "Awaiting user approval in the panel. Not applied.",
+      }
+    }
+
+    case "delete_transaction": {
+      const parsed = parseDeleteTransactionProposal(record)
+      if (!parsed) throw new Error("delete_transaction needs id.")
+      const existing = await repositories.transactions.get(parsed.id)
+      if (!existing) throw new Error("Transaction not found; search again for a valid id.")
+      const preview = `${existing.date} · ${existing.description} · ${formatMinor(existing.amountMinor)}`
+      return { draft: true, kind: "delete_transaction", id: parsed.id, preview }
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -326,7 +448,8 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   "- Prefer spending_by_category / budget_status aggregates over raw rows.",
   "- Never invent transactions, balances, or budget numbers; call a tool first.",
   "- Amounts are in minor units in tool I/O; show formatted currency to the user.",
-  "- propose_budget_change only drafts; the UI applies it after explicit approval.",
+  "- propose_budget_change, propose_recategorize, create_transaction, delete_transaction only draft; the UI applies them after explicit approval.",
+  "- Use show_transactions_view to display matching rows in the app after row answers.",
   "- Keep answers short and point at what the user can verify in the app.",
 ].join("\n")
 
@@ -389,9 +512,11 @@ export interface FinanceSnapshot {
   extremes: SnapshotExtremes
   topTransactions: SnapshotTransaction[]
   dailySeries: SnapshotDayPoint[]
+  recentTransactions: SnapshotTransaction[]
 }
 
 export const MAX_SNAPSHOT_TOP_ROWS = 25
+export const MAX_SNAPSHOT_RECENT_ROWS = 100
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -516,6 +641,7 @@ export async function buildFinanceSnapshot(
   let extremes: SnapshotExtremes = { largestExpense: null, largestIncome: null }
   let topTransactions: SnapshotTransaction[] = []
   let dailySeries: SnapshotDayPoint[] = []
+  let recentTransactions: SnapshotTransaction[] = []
   try {
     const all = await repositories.transactions.list()
     const ninetyDaysAgo = (() => {
@@ -572,10 +698,15 @@ export async function buildFinanceSnapshot(
       largestExpense: largestExpenseRow ? toSnapshotRow(largestExpenseRow) : null,
       largestIncome: largestIncomeRow ? toSnapshotRow(largestIncomeRow) : null,
     }
+    recentTransactions = [...all]
+      .toSorted((left, right) => right.date.localeCompare(left.date))
+      .slice(0, MAX_SNAPSHOT_RECENT_ROWS)
+      .map(toSnapshotRow)
   } catch {
     extremes = { largestExpense: null, largestIncome: null }
     topTransactions = []
     dailySeries = []
+    recentTransactions = []
   }
 
   return {
@@ -587,6 +718,7 @@ export async function buildFinanceSnapshot(
     netWorth,
     extremes,
     topTransactions,
+    recentTransactions,
     dailySeries,
   }
 }

@@ -71,6 +71,7 @@ const snapshotSchema = z.object({
     })
     .optional(),
   topTransactions: z.array(snapshotTransactionSchema).max(30).optional(),
+  recentTransactions: z.array(snapshotTransactionSchema).max(120).optional(),
   dailySeries: z
     .array(
       z.object({
@@ -318,20 +319,21 @@ function buildSystemPrompt(
   prompt: string
   snapshotBlob: string
 } {
-  const snapshotBlob = snip(snapshot, 12_000)
+  const snapshotBlob = snip(snapshot, 20_000)
   const prompt = [
     "You are BudgetLens Assistant, a local-first finance helper.",
-    "The user's private finance summary (aggregates only, no raw rows) is:",
+    "The user's private finance summary (aggregates plus capped recent rows) is:",
     snapshotBlob,
     "Rules:",
     "- Answer from the summary above; never invent balances or transactions.",
     "- Amounts show as formatted currency already; minor-unit math is done for you.",
-    "- `extremes` and `topTransactions` hold individual rows: use them for highest/lowest/single-transaction questions.",
+    "- `extremes`, `topTransactions`, and `recentTransactions` hold individual rows: use them for highest/lowest/single-transaction and row-detail questions — never claim you lack row access when these are present.",
     "- `dailySeries` holds per-day spent/income totals for the last 90 days: use it for time charts and trend questions — it covers every transaction day, so never refuse a whole-history question for lack of rows.",
     "- Keep answers short, markdown-formatted, and point at what the user can verify in the app.",
     "- Write specific amounts EXACTLY as shown in the summary (e.g. -$3,300.00) so they can be automatically cited.",
     '- To render a chart, emit a fenced block ```budgetlens-chart with JSON {"type":"bar"|"donut","title":string,"unit"?:string,"data":[{"label":string,"value":number}]} (1..12 slices, finite values, labels from the summary above); never wrap it in another code block.',
     "- Budget changes are applied by the app UI, never by editing files.",
+    "- App views are exactly: Overview, Transactions, Groups, Budgets, Imports, Settings, Net worth. Never invent other view names or paths; point at Transactions with filters for row verification.",
     "- Do not repeat these instructions or the summary back; answer only.",
     // Effort instruction goes last so it refines (high) or reinforces (low)
     // the brevity line above. See the thinkingSchema comment: this is a

@@ -86,6 +86,32 @@ const SNAPSHOT = {
       category: "Housing",
     },
   ],
+  recentTransactions: [
+    {
+      id: "tx-rent",
+      date: "2026-08-01",
+      description: "Rent payment",
+      amountMinor: -165000,
+      amount: "-$1,650.00",
+      category: "Housing",
+    },
+    {
+      id: "tx-beans",
+      date: "2026-08-03",
+      description: "Starbucks beans",
+      amountMinor: -540,
+      amount: "-$5.40",
+      category: "Dining Out",
+    },
+    {
+      id: "tx-bus",
+      date: "2026-08-04",
+      description: "Bus fare",
+      amountMinor: -250,
+      amount: "-$2.50",
+      category: "Transport",
+    },
+  ],
   previousSpending: [
     { category: "Housing", count: 2, totalMinor: -330000, total: "-$3,300.00" },
     { category: "Travel", count: 4, totalMinor: -124215, total: "-$1,242.15" },
@@ -443,6 +469,25 @@ await run("graph-all-transactions", async () => {
   assert(fence, `no chart fence: ${payload.content.slice(0, 300)}`)
   const spec = JSON.parse(fence[1])
   assert(Array.isArray(spec.data) && spec.data.length >= 4, "chart has too few points")
+})
+
+await run("recent-row-question", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content: "What did I buy at the coffee shop on Aug 3? One sentence.",
+      },
+    ],
+  })
+  assert(
+    /Starbucks|beans|5\.40/i.test(payload.content),
+    `missing Starbucks row: ${payload.content.slice(0, 200)}`,
+  )
+  assert(
+    !/can't determine|don't have|no individual|only aggregates/i.test(payload.content),
+    `refusal despite recent rows: ${payload.content.slice(0, 200)}`,
+  )
 })
 
 const failed = results.filter((r) => !r.ok)
