@@ -1,14 +1,13 @@
 import {
   Bot,
   FileText,
+  History,
   MessageCircle,
   Pencil,
+  Plus,
   Search,
-  Send,
   Settings,
-  Square,
   Terminal,
-  Trash2,
   Wrench,
   X,
 } from "lucide-react"
@@ -17,16 +16,22 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { repositories } from "@/db/repositories"
+import { Composer } from "@/features/assistant/composer"
 import {
   ASSISTANT_SYSTEM_PROMPT,
   ASSISTANT_TOOL_SCHEMAS,
   buildFinanceSnapshot,
   executeAssistantTool,
   parseBudgetProposal,
+  parseRecategorizeProposal,
   type BudgetProposal,
+  type RecategorizeProposal,
 } from "@/features/assistant/data-tools"
+import { HistorySearch } from "@/features/assistant/history-search"
 import { Markdown } from "@/features/assistant/markdown"
+import { MessageActions } from "@/features/assistant/message-actions"
 import { ModelSelect } from "@/features/assistant/model-select"
+import { ProposalCard } from "@/features/assistant/proposal-card"
 import {
   ASSISTANT_PRESETS,
   ASSISTANT_SETTINGS_KEY,
@@ -37,6 +42,17 @@ import {
   type AssistantProviderId,
   type AssistantSettings,
 } from "@/features/assistant/provider"
+import { ThreadHistory } from "@/features/assistant/thread-history"
+import {
+  appendMessage,
+  createThread,
+  deleteThread,
+  listMessages,
+  listThreads,
+  renameThread,
+  setThreadPin,
+  type ThreadRecord,
+} from "@/features/assistant/thread-store"
 
 interface ToolTrace {
   id: string
@@ -56,6 +72,9 @@ const SUGGESTIONS = [
   "Am I over budget anywhere?",
   "How is my net worth trending?",
 ]
+
+const FEEDBACK_STORAGE_KEY = "budgetlens.assistant.feedback.v1"
+const FEEDBACK_STORAGE_CAP = 50
 
 function messageId(): string {
   return globalThis.crypto.randomUUID()
@@ -103,11 +122,24 @@ interface HarnessModelOption {
   name: string
   provider: string
   free?: boolean
+  vision?: boolean
+  reasoning?: boolean
+  contextTokens?: number
 }
 
 function summarizeToolOutput(name: string, output: unknown): string {
   const text = JSON.stringify(output)
   return `${name}: ${text.length > 220 ? `${text.slice(0, 220)}…` : text}`
+}
+
+function historyOf(nextMessages: PanelMessage[]): Array<{
+  role: "user" | "assistant"
+  content: string
+}> {
+  return nextMessages
+    .filter((item) => item.content)
+    .slice(-10)
+    .map((item) => ({ role: item.role, content: item.content }))
 }
 
 export function AssistantFab({ onOpen }: { onOpen: () => void }) {
@@ -137,11 +169,20 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [customModel, setCustomModel] = useState(false)
   const [proposal, setProposal] = useState<(BudgetProposal & { id: string }) | null>(null)
   const [proposalState, setProposalState] = useState<"idle" | "applied" | "applying">("idle")
+  const [recatProposal, setRecatProposal] = useState<
+    (RecategorizeProposal & { id: string }) | null
+  >(null)
+  const [recatState, setRecatState] = useState<"idle" | "applied" | "applying">("idle")
+  const [threads, setThreads] = useState<ThreadRecord[]>([])
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
+  const storedIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(settings))
@@ -152,6 +193,152 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   }, [messages, busy])
 
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  async function refreshThreads(): Promise<void> {
+    setThreads(await listThreads())
+  }
+
+  // Load most recent thread on mount; otherwise start empty (created on first send).
+  useEffect(() => {
+    let cancelled = false
+    void listThreads().then((records) => {
+      if (cancelled) return
+      setThreads(records)
+      const current = records[0]
+      if (!current) return
+      setActiveThreadId(current.id)
+      void listMessages(current.id).then((stored) => {
+        if (cancelled) return
+        setMessages(
+          stored.map((item) => ({
+            id: item.id,
+            role: item.role,
+            content: item.content,
+            ...(item.trace ? { trace: item.trace } : {}),
+          })),
+        )
+        storedIdsRef.current = new Set(stored.map((item) => item.id))
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Persist new messages into the active thread (dedupe via stored ids).
+  useEffect(() => {
+    if (!activeThreadId) return
+    const threadId = activeThreadId
+    const pending = messages.filter((item) => item.content && !storedIdsRef.current.has(item.id))
+    if (pending.length === 0) return
+    for (const item of pending) storedIdsRef.current.add(item.id)
+    void (async () => {
+      for (const item of pending) {
+        // oxlint-disable-next-line no-await-in-loop -- Message order must be preserved.
+        await appendMessage(threadId, {
+          role: item.role,
+          content: item.content,
+          ...(item.trace ? { trace: item.trace } : {}),
+        })
+      }
+      await refreshThreads()
+    })()
+  }, [messages, activeThreadId])
+
+  async function ensureThread(question: string): Promise<string | null> {
+    if (activeThreadId) return activeThreadId
+    const thread = await createThread({
+      title: question.slice(0, 50) || "New chat",
+      provider: settings.provider,
+      model: settings.model,
+    })
+    storedIdsRef.current = new Set()
+    setActiveThreadId(thread.id)
+    await refreshThreads()
+    return thread.id
+  }
+
+  async function handleNewChat(): Promise<void> {
+    abortRef.current?.abort()
+    setMessages([])
+    storedIdsRef.current = new Set()
+    setProposal(null)
+    setRecatProposal(null)
+    setHarnessSessionId(undefined)
+    setError(null)
+    setActiveThreadId(null)
+    setShowHistory(false)
+    await refreshThreads()
+  }
+
+  async function handleSelectThread(id: string): Promise<void> {
+    abortRef.current?.abort()
+    const stored = await listMessages(id)
+    setMessages(
+      stored.map((item) => ({
+        id: item.id,
+        role: item.role,
+        content: item.content,
+        ...(item.trace ? { trace: item.trace } : {}),
+      })),
+    )
+    storedIdsRef.current = new Set(stored.map((item) => item.id))
+    setActiveThreadId(id)
+    setProposal(null)
+    setRecatProposal(null)
+    setHarnessSessionId(undefined)
+    setError(null)
+    setShowHistory(false)
+  }
+
+  async function handleDeleteThread(id: string): Promise<void> {
+    await deleteThread(id)
+    if (id === activeThreadId) {
+      abortRef.current?.abort()
+      setMessages([])
+      storedIdsRef.current = new Set()
+      setActiveThreadId(null)
+      setProposal(null)
+      setRecatProposal(null)
+      setHarnessSessionId(undefined)
+    }
+    await refreshThreads()
+  }
+
+  async function handleToggleThreadPin(id: string): Promise<void> {
+    const thread = threads.find((item) => item.id === id)
+    if (!thread) return
+    await setThreadPin(id, !thread.pinned)
+    await refreshThreads()
+  }
+
+  async function handleRenameThread(id: string, title: string): Promise<void> {
+    const next = title.trim()
+    if (!next) return
+    await renameThread(id, next.slice(0, 80))
+    await refreshThreads()
+  }
+
+  function recordFeedback(kind: "up" | "down", content: string): void {
+    try {
+      const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
+      const parsed: unknown = raw ? (JSON.parse(raw) as unknown) : []
+      const entries = Array.isArray(parsed) ? parsed : []
+      entries.push({
+        at: new Date().toISOString(),
+        kind,
+        provider: settings.provider,
+        model: settings.model,
+        snippet: content.slice(0, 300),
+      })
+      window.localStorage.setItem(
+        FEEDBACK_STORAGE_KEY,
+        JSON.stringify(entries.slice(-FEEDBACK_STORAGE_CAP)),
+      )
+    } catch {
+      // Feedback is best-effort; never break the chat.
+    }
+  }
 
   function updateSettings(patch: Partial<AssistantSettings>) {
     setSettings((current) => ({ ...current, ...patch }))
@@ -190,6 +377,11 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           name: typeof entry.name === "string" ? entry.name : entry.id,
           provider: typeof entry.provider === "string" ? entry.provider : "other",
           ...(entry.free === true ? { free: true as const } : {}),
+          ...(entry.vision === true ? { vision: true as const } : {}),
+          ...(entry.reasoning === true ? { reasoning: true as const } : {}),
+          ...(typeof entry.contextTokens === "number" && Number.isFinite(entry.contextTokens)
+            ? { contextTokens: entry.contextTokens }
+            : {}),
         })
       }
       setHarnessModels(models)
@@ -246,12 +438,84 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     ])
   }
 
+  async function runDirectTurn(
+    history: Array<{ role: "user" | "assistant"; content: string }>,
+    controller: AbortController,
+  ): Promise<void> {
+    const turn = await requestChatTurn({
+      baseURL: settings.baseURL,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      system: ASSISTANT_SYSTEM_PROMPT,
+      history,
+      tools: ASSISTANT_TOOL_SCHEMAS,
+      signal: controller.signal,
+    })
+
+    if (turn.toolCalls.length === 0) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: messageId(),
+          role: "assistant",
+          content: turn.content || "No response from provider.",
+        },
+      ])
+      return
+    }
+
+    const trace: ToolTrace[] = []
+    const toolOutputs: Array<{ id: string; name: string; output: unknown }> = []
+    for (const call of turn.toolCalls.slice(0, 4)) {
+      // oxlint-disable-next-line no-await-in-loop -- Tool calls run in model order for a readable trace.
+      const output = await executeAssistantTool(repositories, call.name, call.args)
+      trace.push({
+        id: call.id,
+        name: call.name,
+        summary: summarizeToolOutput(call.name, output),
+      })
+      toolOutputs.push({ id: call.id, name: call.name, output })
+      if (call.name === "propose_budget_change") {
+        const draft = parseBudgetProposal(output)
+        if (draft) {
+          setProposal({ ...draft, id: messageId() })
+          setProposalState("idle")
+        }
+      }
+      if (call.name === "propose_recategorize") {
+        const draft = parseRecategorizeProposal(output)
+        if (draft) {
+          setRecatProposal({ ...draft, id: messageId() })
+          setRecatState("idle")
+        }
+      }
+    }
+
+    const finalAnswer = await sendToolResults({
+      baseURL: settings.baseURL,
+      apiKey: settings.apiKey,
+      model: settings.model,
+      system: ASSISTANT_SYSTEM_PROMPT,
+      history,
+      pendingAssistantContent: turn.content,
+      pendingToolCalls: turn.toolCalls,
+      toolOutputs,
+      signal: controller.signal,
+    })
+
+    setMessages((current) => [
+      ...current,
+      { id: messageId(), role: "assistant", content: finalAnswer, trace },
+    ])
+  }
+
   async function handleSend(event?: React.FormEvent, presetText?: string) {
     event?.preventDefault()
     const question = (presetText ?? input).trim()
     if (!question || busy) return
     setError(null)
     setProposalState("idle")
+    setRecatState("idle")
     const userMessage: PanelMessage = { id: messageId(), role: "user", content: question }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -261,73 +525,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     abortRef.current = controller
 
     try {
+      await ensureThread(question)
       if (settings.provider === "opencode-harness") {
         await handleHarnessSend(nextMessages, controller)
         return
       }
-      const history = nextMessages
-        .filter((item) => item.content)
-        .slice(-10)
-        .map((item) => ({ role: item.role, content: item.content }))
-
-      const turn = await requestChatTurn({
-        baseURL: settings.baseURL,
-        apiKey: settings.apiKey,
-        model: settings.model,
-        system: ASSISTANT_SYSTEM_PROMPT,
-        history,
-        tools: ASSISTANT_TOOL_SCHEMAS,
-        signal: controller.signal,
-      })
-
-      if (turn.toolCalls.length === 0) {
-        setMessages((current) => [
-          ...current,
-          {
-            id: messageId(),
-            role: "assistant",
-            content: turn.content || "No response from provider.",
-          },
-        ])
-        return
-      }
-
-      const trace: ToolTrace[] = []
-      const toolOutputs: Array<{ id: string; name: string; output: unknown }> = []
-      for (const call of turn.toolCalls.slice(0, 4)) {
-        // oxlint-disable-next-line no-await-in-loop -- Tool calls run in model order for a readable trace.
-        const output = await executeAssistantTool(repositories, call.name, call.args)
-        trace.push({
-          id: call.id,
-          name: call.name,
-          summary: summarizeToolOutput(call.name, output),
-        })
-        toolOutputs.push({ id: call.id, name: call.name, output })
-        if (call.name === "propose_budget_change") {
-          const draft = parseBudgetProposal(output)
-          if (draft) {
-            setProposal({ ...draft, id: messageId() })
-            setProposalState("idle")
-          }
-        }
-      }
-
-      const finalAnswer = await sendToolResults({
-        baseURL: settings.baseURL,
-        apiKey: settings.apiKey,
-        model: settings.model,
-        system: ASSISTANT_SYSTEM_PROMPT,
-        history,
-        pendingAssistantContent: turn.content,
-        pendingToolCalls: turn.toolCalls,
-        toolOutputs,
-        signal: controller.signal,
-      })
-
-      setMessages((current) => [
-        ...current,
-        { id: messageId(), role: "assistant", content: finalAnswer, trace },
-      ])
+      await runDirectTurn(historyOf(nextMessages), controller)
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") return
       setError(caught instanceof Error ? caught.message : "Assistant request failed.")
@@ -357,6 +560,46 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function applyRecategorize() {
+    if (!recatProposal || recatState !== "idle") return
+    setRecatState("applying")
+    try {
+      await repositories.transactions.updateMany(recatProposal.affectedIds, {
+        category: recatProposal.toCategory,
+      })
+      setRecatState("applied")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not apply recategorize.")
+      setRecatState("idle")
+    }
+  }
+
+  async function handleRegenerate(): Promise<void> {
+    if (busy) return
+    const kept = messages.slice(0, messages.map((item) => item.role).lastIndexOf("user") + 1)
+    const lastUser = kept[kept.length - 1]
+    if (!lastUser || lastUser.role !== "user") return
+    setMessages(kept)
+    setError(null)
+    setBusy(true)
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      await ensureThread(lastUser.content)
+      if (settings.provider === "opencode-harness") {
+        await handleHarnessSend(kept, controller)
+        return
+      }
+      await runDirectTurn(historyOf(kept), controller)
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return
+      setError(caught instanceof Error ? caught.message : "Assistant request failed.")
+    } finally {
+      setBusy(false)
+      abortRef.current = null
+    }
+  }
+
   const preset = ASSISTANT_PRESETS.find((item) => item.id === settings.provider)
 
   return (
@@ -382,6 +625,17 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           variant="ghost"
           size="icon"
           className="size-8"
+          aria-label="Chat history"
+          title="Chat history"
+          aria-expanded={showHistory}
+          onClick={() => setShowHistory((value) => !value)}
+        >
+          <History className="size-4" aria-hidden="true" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
           aria-label="Assistant settings"
           title="Assistant settings"
           aria-expanded={showSettings}
@@ -393,16 +647,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           variant="ghost"
           size="icon"
           className="size-8"
-          aria-label="Clear conversation"
-          title="Clear conversation"
+          aria-label="New chat"
+          title="New chat"
           onClick={() => {
-            setMessages([])
-            setProposal(null)
-            setHarnessSessionId(undefined)
-            setError(null)
+            void handleNewChat()
           }}
         >
-          <Trash2 className="size-4" aria-hidden="true" />
+          <Plus className="size-4" aria-hidden="true" />
         </Button>
         <Button
           variant="ghost"
@@ -414,6 +665,40 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           <X className="size-4" aria-hidden="true" />
         </Button>
       </header>
+
+      {showHistory && (
+        <div className="absolute inset-0 z-10">
+          <ThreadHistory
+            open
+            threads={threads}
+            activeId={activeThreadId}
+            onClose={() => setShowHistory(false)}
+            onSelect={(id) => {
+              void handleSelectThread(id)
+            }}
+            onNew={() => {
+              void handleNewChat()
+            }}
+            onDelete={(id) => {
+              void handleDeleteThread(id)
+            }}
+            onTogglePin={(id) => {
+              void handleToggleThreadPin(id)
+            }}
+            onRename={(id, title) => {
+              void handleRenameThread(id, title)
+            }}
+          />
+        </div>
+      )}
+      <HistorySearch
+        open={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelect={(id) => {
+          setShowSearch(false)
+          void handleSelectThread(id)
+        }}
+      />
 
       {showSettings && (
         <div className="grid gap-2 border-b p-4 text-xs">
@@ -573,6 +858,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             <div key={item.id} className="flex justify-start">
               <div className="max-w-[92%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm">
                 <Markdown text={item.content} id={item.id} />
+                <MessageActions
+                  content={item.content}
+                  onRegenerate={() => {
+                    void handleRegenerate()
+                  }}
+                  onFeedback={(kind) => recordFeedback(kind, item.content)}
+                />
                 {item.trace && item.trace.length > 0 && (
                   <details className="text-xs">
                     <summary className="cursor-pointer text-muted-foreground">
@@ -621,39 +913,33 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
       {proposal && (
         <div className="border-t px-4 py-3">
-          <section
-            aria-label="Budget proposal awaiting approval"
-            className="rounded-2xl border border-dashed p-3 text-xs"
-          >
-            <p className="font-semibold">
-              Proposed budget {proposalState === "applied" ? "applied ✓" : "needs approval"}
-            </p>
-            <p className="mt-1 text-muted-foreground">
-              {proposal.category} · {(proposal.amountMinor / 100).toFixed(2)} · {proposal.period}
-            </p>
-            {proposalState !== "applied" && (
-              <div className="mt-2 flex gap-2">
-                <Button
-                  size="sm"
-                  className="rounded-full"
-                  onClick={() => {
-                    void applyProposal()
-                  }}
-                  disabled={proposalState === "applying"}
-                >
-                  {proposalState === "applying" ? "Applying…" : "Approve + apply"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-full"
-                  onClick={() => setProposal(null)}
-                >
-                  Dismiss
-                </Button>
-              </div>
-            )}
-          </section>
+          <ProposalCard
+            title="Proposed budget"
+            lines={[
+              `${proposal.category} · ${(proposal.amountMinor / 100).toFixed(2)} · ${proposal.period}`,
+            ]}
+            status={proposalState}
+            onApprove={() => {
+              void applyProposal()
+            }}
+            onDismiss={() => setProposal(null)}
+          />
+        </div>
+      )}
+
+      {recatProposal && (
+        <div className="border-t px-4 py-3">
+          <ProposalCard
+            title="Proposed recategorization"
+            lines={[
+              `Move ${recatProposal.affectedIds.length} transaction${recatProposal.affectedIds.length === 1 ? "" : "s"} to ${recatProposal.toCategory}`,
+            ]}
+            status={recatState}
+            onApprove={() => {
+              void applyRecategorize()
+            }}
+            onDismiss={() => setRecatProposal(null)}
+          />
         </div>
       )}
 
@@ -667,43 +953,18 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         </p>
       )}
 
-      <form
-        onSubmit={(event) => {
-          void handleSend(event)
-        }}
-        className="flex items-center gap-2 border-t p-3"
-      >
-        <Input
-          aria-label="Ask the assistant"
+      <div className="border-t p-3">
+        <Composer
           value={input}
-          onChange={(event) => setInput(event.target.value)}
+          onChange={setInput}
+          onSend={() => {
+            void handleSend()
+          }}
+          busy={busy}
+          onStop={() => abortRef.current?.abort()}
           placeholder="Ask about spending, budgets…"
-          disabled={busy}
-          className="rounded-full"
         />
-        {busy ? (
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            aria-label="Stop assistant"
-            className="shrink-0 rounded-full"
-            onClick={() => abortRef.current?.abort()}
-          >
-            <Square className="size-4" aria-hidden="true" />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="icon"
-            aria-label="Send message"
-            disabled={!input.trim()}
-            className="shrink-0 rounded-full"
-          >
-            <Send className="size-4" aria-hidden="true" />
-          </Button>
-        )}
-      </form>
+      </div>
     </section>
   )
 }
