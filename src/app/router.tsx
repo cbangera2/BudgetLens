@@ -1,4 +1,6 @@
 import {
+  createBrowserHistory,
+  createHashHistory,
   createRootRoute,
   createRoute,
   createRouter,
@@ -6,6 +8,7 @@ import {
 } from "@tanstack/react-router"
 
 import { AppShell } from "@/app/app-shell"
+import { isTauriSync } from "@/lib/isTauri"
 
 const rootRoute = createRootRoute({ component: AppShell })
 
@@ -56,10 +59,14 @@ const routeTree = rootRoute.addChildren(routes)
 
 // Keep router base in sync with Vite `base` (import.meta.env.BASE_URL).
 // "/BudgetLens/" -> "/BudgetLens", "/" -> "/"
+// Desktop binary (Tauri, custom protocol, no history fallback): hash history
+// with base "/". Gated on runtime detection so one dist/ serves web + desktop.
+const desktop = isTauriSync()
 const rawBase = import.meta.env.BASE_URL
-const basepath = rawBase.replace(/\/$/, "") || "/"
+const basepath = desktop ? "/" : rawBase.replace(/\/$/, "") || "/"
+const history = desktop ? createHashHistory() : createBrowserHistory()
 
-export const router = createRouter({ routeTree, basepath })
+export const router = createRouter({ routeTree, basepath, history })
 
 declare module "@tanstack/react-router" {
   interface Register {

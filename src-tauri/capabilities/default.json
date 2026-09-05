@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-cap",
+  "description": "BudgetLens v1 desktop shell: updater + relaunch + file dialogs only. No fs/shell.",
+  "windows": ["main"],
+  "permissions": [
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit",
+    "dialog:allow-open",
+    "dialog:allow-save"
+  ]
+}
