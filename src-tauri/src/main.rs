@@ -20,6 +20,34 @@ use zeroize::Zeroizing;
 const MAX_RESPONSE_BYTES: usize = 10_000_000;
 const MAX_LISTED_MODELS: usize = 500;
 
+/// Fixed keychain namespace. The frontend can only address these; anything
+/// else is rejected here (never trust the WebView for the auth boundary).
+/// `opencode-harness` needs no stored key and is intentionally absent.
+const KEYCHAIN_SERVICE: &str = "budgetlens";
+const KEYCHAIN_ACCOUNTS: [&str; 6] = [
+    "assistant.opencode-bridge",
+    "assistant.ollama",
+    "assistant.lmstudio",
+    "assistant.openrouter",
+    "assistant.openai",
+    "assistant.custom",
+];
+
+fn check_keychain_scope(service: &str, account: &str) -> Result<(), String> {
+    if service != KEYCHAIN_SERVICE || !KEYCHAIN_ACCOUNTS.contains(&account) {
+        return Err("Keychain scope is not allowed.".into());
+    }
+    Ok(())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let bare = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_lowercase();
+    bare == "localhost" || bare == "127.0.0.1" || bare == "::1"
+}
+
 fn snippet(text: &str, max_chars: usize) -> String {
     let end = text
         .char_indices()
@@ -84,32 +112,32 @@ fn auth_header(
     }
 }
 
-fn attribution_headers(
-    builder: reqwest::RequestBuilder,
-    host: &str,
-) -> reqwest::RequestBuilder {
+fn attribution_headers(builder: reqwest::RequestBuilder, host: &str) -> reqwest::RequestBuilder {
     if host.contains("openrouter.ai") {
         builder
-            .header(
-                "HTTP-Referer",
-                "https://github.com/cbangera2/BudgetLens",
-            )
+            .header("HTTP-Referer", "https://github.com/cbangera2/BudgetLens")
             .header("X-Title", "BudgetLens")
     } else {
         builder
     }
 }
 
-async fn read_json_body(response: reqwest::Response) -> Result<serde_json::Value, String> {
+async fn read_json_body(mut response: reqwest::Response) -> Result<serde_json::Value, String> {
     let status = response.status();
-    let bytes = response
-        .bytes()
+    // Incremental read: `bytes()` would buffer an unbounded body first and
+    // only then hit the length check.
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(bytes) = response
+        .chunk()
         .await
-        .map_err(|error| format!("Provider read failed: {error}"))?;
-    if bytes.len() > MAX_RESPONSE_BYTES {
-        return Err("Provider response too large.".into());
+        .map_err(|error| format!("Provider read failed: {error}"))?
+    {
+        body.extend_from_slice(&bytes);
+        if body.len() > MAX_RESPONSE_BYTES {
+            return Err("Provider response too large.".into());
+        }
     }
-    let text = String::from_utf8_lossy(&bytes);
+    let text = String::from_utf8_lossy(&body);
     if !status.is_success() {
         return Err(format!(
             "Provider {}: {}",
@@ -122,6 +150,7 @@ async fn read_json_body(response: reqwest::Response) -> Result<serde_json::Value
 
 #[tauri::command]
 fn get_secret(service: String, account: String) -> Result<Option<String>, String> {
+    check_keychain_scope(&service, &account)?;
     let entry = keyring::Entry::new(&service, &account).map_err(|error| error.to_string())?;
     match entry.get_password() {
         Ok(secret) => Ok(Some(secret)),
@@ -132,6 +161,7 @@ fn get_secret(service: String, account: String) -> Result<Option<String>, String
 
 #[tauri::command]
 fn set_secret(service: String, account: String, secret: String) -> Result<(), String> {
+    check_keychain_scope(&service, &account)?;
     if secret.len() > 8_192 {
         return Err("Secret is too large.".into());
     }
@@ -143,6 +173,7 @@ fn set_secret(service: String, account: String, secret: String) -> Result<(), St
 
 #[tauri::command]
 fn delete_secret(service: String, account: String) -> Result<(), String> {
+    check_keychain_scope(&service, &account)?;
     let entry = keyring::Entry::new(&service, &account).map_err(|error| error.to_string())?;
     match entry.delete_password() {
         Ok(()) => Ok(()),
@@ -166,9 +197,16 @@ async fn llm_chat(
     let host = url.host_str().unwrap_or_default().to_owned();
     let client = http_client(Duration::from_secs(120))?;
     let key = api_key.map(Zeroizing::new);
+    // Never send bearer credentials over cleartext HTTP — except to loopback,
+    // where desktop Ollama/LM Studio/bridge live.
+    if key.as_ref().is_some_and(|k| !k.trim().is_empty())
+        && url.scheme() == "http"
+        && !is_loopback_host(&host)
+    {
+        return Err("API keys are only sent over https (http is allowed for localhost).".into());
+    }
 
-    let mut body =
-        serde_json::json!({ "model": model, "messages": messages, "temperature": 0.2 });
+    let mut body = serde_json::json!({ "model": model, "messages": messages, "temperature": 0.2 });
     if let Some(definitions) = tools {
         body["tools"] = definitions;
         body["tool_choice"] = serde_json::json!("auto");
@@ -190,19 +228,19 @@ async fn llm_chat(
 }
 
 #[tauri::command]
-async fn llm_models(
-    base_url: String,
-    api_key: Option<String>,
-) -> Result<Vec<String>, String> {
+async fn llm_models(base_url: String, api_key: Option<String>) -> Result<Vec<String>, String> {
     let url = endpoint_url(&base_url, "/models")?;
     let host = url.host_str().unwrap_or_default().to_owned();
     let client = http_client(Duration::from_secs(15))?;
     let key = api_key.map(Zeroizing::new);
+    if key.as_ref().is_some_and(|k| !k.trim().is_empty())
+        && url.scheme() == "http"
+        && !is_loopback_host(&host)
+    {
+        return Err("API keys are only sent over https (http is allowed for localhost).".into());
+    }
 
-    let request = attribution_headers(
-        auth_header(client.get(url), key.as_ref()),
-        &host,
-    );
+    let request = attribution_headers(auth_header(client.get(url), key.as_ref()), &host);
     let response = request
         .send()
         .await

@@ -61,8 +61,9 @@ in-app auto-update. Linux is out of scope for v1.
 - Browser data does not migrate automatically (the app is a different origin). In the browser go
   to Settings → download a JSON backup, then restore it via Imports in the app.
 - The assistant defaults to local Ollama: install it, run `ollama serve`, then
-  `ollama pull qwen2.5:7b`. Hosted API keys are kept in memory unless you opt into OS-keychain
-  storage, and `localhost` providers never send data off the machine.
+  `ollama pull qwen2.5:7b`. Hosted API keys are remembered in the OS keychain by default (use
+  Forget in the assistant settings to opt out), and `localhost` providers never send data off
+  the machine.
 
 ## Import data
 

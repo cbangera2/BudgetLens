@@ -10,9 +10,10 @@ on:
   push:
     tags: ["app-v*"]
 
-# tauri-action uploads release assets + generates latest.json.
+# tauri-action uploads release assets + generates latest.json, so only the
+# build job gets write access. Audit and validate stay read-only.
 permissions:
-  contents: write
+  contents: read
 
 # One release at a time per tag; never cancel an in-progress production release.
 concurrency:
@@ -22,6 +23,8 @@ concurrency:
 jobs:
   build:
     name: Build (${{ matrix.target }})
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -117,8 +120,9 @@ jobs:
         run: cargo install --locked cargo-audit
 
       - name: Audit Rust dependencies
-        run: cargo audit --manifest-path src-tauri/Cargo.lock
-        working-directory: .
+        # Unmaintained-crate warnings (e.g. gtk-rs via wry) report but exit 0;
+        # only real vulnerabilities fail this step.
+        run: cargo audit --file src-tauri/Cargo.lock
 
   validate:
     name: Validate updater manifest

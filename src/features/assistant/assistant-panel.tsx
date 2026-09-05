@@ -649,6 +649,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setCustomModel(false)
     setDirectModels(null)
     setDirectModelsError(null)
+    modelsAbortRef.current?.abort()
     setHarnessSessionId(undefined)
     if (isDesktop) {
       // Keys are per-provider in the keychain: drop the in-memory key so the
@@ -664,24 +665,45 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     }))
   }
 
+  // Latest settings mirror for guarding async commits (stale model lists).
+  const latestSettingsRef = useRef(settings)
+  latestSettingsRef.current = settings
+  // In-flight model listing: aborted when superseded or unmounted.
+  const modelsAbortRef = useRef<AbortController | null>(null)
+  const modelsRequestRef = useRef(0)
+
+  useEffect(() => () => modelsAbortRef.current?.abort(), [])
+
   async function loadDirectModels(): Promise<void> {
+    modelsAbortRef.current?.abort()
+    const controller = new AbortController()
+    modelsAbortRef.current = controller
+    const requestId = modelsRequestRef.current + 1
+    modelsRequestRef.current = requestId
+    // Capture the target: results commit only if it is still selected.
+    const wantProvider = settings.provider
+    const wantBaseURL = settings.baseURL
     setDirectModelsLoading(true)
     setDirectModelsError(null)
-    const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), 15_000)
     try {
       const models = await listProviderModels({
-        baseURL: settings.baseURL,
+        baseURL: wantBaseURL,
         apiKey: settings.apiKey,
         signal: controller.signal,
       })
+      if (modelsRequestRef.current !== requestId) return
+      const latest = latestSettingsRef.current
+      if (latest.provider !== wantProvider || latest.baseURL !== wantBaseURL) return
       setDirectModels(models)
     } catch (caught) {
+      if (modelsRequestRef.current !== requestId) return
+      if (controller.signal.aborted) return
       setDirectModels(null)
       setDirectModelsError(caught instanceof Error ? caught.message : "Could not load models.")
     } finally {
       window.clearTimeout(timer)
-      setDirectModelsLoading(false)
+      if (modelsRequestRef.current === requestId) setDirectModelsLoading(false)
     }
   }
 

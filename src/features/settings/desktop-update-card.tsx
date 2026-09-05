@@ -16,8 +16,13 @@ type UpdateStatus =
   | "ready"
   | "error"
 
-async function handleRelaunch(): Promise<void> {
-  await relaunch()
+async function handleRestart(onError: (message: string) => void): Promise<void> {
+  try {
+    await relaunch()
+  } catch {
+    // Stay on the ready screen so retry remains available.
+    onError("Automatic restart failed. Quit and reopen BudgetLens to apply the update.")
+  }
 }
 
 /**
@@ -119,7 +124,7 @@ export function DesktopUpdateCard() {
         {status === "ready" && (
           <p className="text-sm font-medium">Update installed. Restart to apply it.</p>
         )}
-        {status === "error" && error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex flex-wrap gap-2">
           {(status === "idle" || status === "current" || status === "error") && (
             <Button type="button" variant="outline" onClick={() => void handleCheck()}>
@@ -139,7 +144,14 @@ export function DesktopUpdateCard() {
             </Button>
           )}
           {status === "ready" && (
-            <Button type="button" onClick={() => void handleRelaunch()}>
+            <Button
+              type="button"
+              onClick={() =>
+                void handleRestart((message) => {
+                  setError(message)
+                })
+              }
+            >
               Restart now
             </Button>
           )}

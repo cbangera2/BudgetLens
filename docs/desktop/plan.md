@@ -54,7 +54,7 @@ Reference OSS running this exact shape: Jan (local/cloud LLM chat, closest to ou
 - No universal macOS binary. Ship split `aarch64` + `x86_64`.
 - No Linux binary in v1 (owner call 2026-09-06: Linux users out of scope). Ship mac + Windows only; Linux deferred to later (baseline when revived: `ubuntu-22.04` + WebKitGTK 4.1). No Linux QA, no `.deb`/`.AppImage` in v1 `latest.json`.
 - No paid signing in v1. Ship unsigned with documented Gatekeeper/SmartScreen bypass; add signing in v1.1 (see §9).
-- No single-instance/file-association handling in v1 (opening a CSV with the app spawns a second instance — explicitly deferred). Window floor: `title`, `minWidth` ~1024 for the sidebar shell.
+- No file-association handling in v1 (opening a CSV with the app does not import it — explicitly deferred). Single-instance is implemented: a second launch focuses the running window. Window floor: `title`, `minWidth` ~1024 for the sidebar shell.
 
 ## 3. Architecture
 
@@ -214,7 +214,7 @@ Keep it fast: release-only trigger, always `rust-cache`, split (not universal) m
 - **Phase 2 — assistant transport (1-2 days):** Rust proxy command (SSRF/timeout contract) + keyring get/set/delete, `/models` per-provider listing + cache + `Custom…` + `Test key`, probe + doctor copy, minimal-body + tool-fallback, OpenRouter headers, privacy badges, harness gates. Harness stays dev-only.
 - **Phase 3 — release lane (half day):** `release.yml` matrix + pinned SHAs + caches, `includeUpdaterJson` split (stable true / prerelease false), draft → QA → publish drill, `latest.json` jq validation, `cargo audit`/`deny`.
 - **Phase 4 — hardening (as needed):** local e2e matrix (3 v1 artifacts), unsigned-bypass docs, README badge, migration wizard UI, optional PWA rehearsal.
-- **v1.1 — signing:** Apple cert + notarization + Windows Trusted Signing; then size opts (`lto` etc.) if wanted. Explicitly deferred: single-instance/file-association, `dialog`+`fs` picker upgrade, Linux port.
+- **v1.1 — signing:** Apple cert + notarization + Windows Trusted Signing; then size opts (`lto` etc.) if wanted. Explicitly deferred: file-association, `dialog`+`fs` picker upgrade, Linux port.
 
 ## 10. Alternatives considered (and why deferred)
 
