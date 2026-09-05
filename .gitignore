@@ -84,3 +84,6 @@ temp/
 # Browser test artifacts
 /playwright-report/
 /test-results/
+
+# TanStack sandbox workspace projection markers (local dev harness)
+.tanstack-projected-*

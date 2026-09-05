@@ -5,6 +5,8 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
 
+import { assistantHarnessPlugin } from "./server/assistant-harness"
+
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
 
 // GitHub Pages serves project sites at https://<user>.github.io/<repo>/.
@@ -15,7 +17,7 @@ export default defineConfig(({ command }) => {
 
   return {
     base: command === "build" ? buildBase : "/",
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), assistantHarnessPlugin()],
     resolve: {
       alias: {
         "@": path.resolve(rootDirectory, "src"),
