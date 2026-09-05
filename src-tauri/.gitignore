@@ -1,0 +1,4 @@
+# Rust build output (regenerable)
+target/
+# Tauri generated schemas (regenerable via `tauri dev` / `tauri build`)
+gen/schemas/

@@ -18,6 +18,12 @@ export default defineConfig(({ command }) => {
   return {
     base: command === "build" ? buildBase : "/",
     plugins: [react(), tailwindcss(), assistantHarnessPlugin()],
+    // Pinned for `tauri dev` (devUrl). host stays default; TAURI_DEV_HOST
+    // only matters for LAN device testing.
+    server: {
+      port: 5173,
+      strictPort: true,
+    },
     resolve: {
       alias: {
         "@": path.resolve(rootDirectory, "src"),

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { repositories } from "@/db/repositories"
 import { clearAllData, createBackup } from "@/features/settings/backup"
+import { DesktopUpdateCard } from "@/features/settings/desktop-update-card"
 import { cn } from "@/lib/cn"
 
 const themes = [
@@ -167,6 +168,8 @@ export function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      <DesktopUpdateCard />
 
       <Card className="border-destructive/40">
         <CardHeader>

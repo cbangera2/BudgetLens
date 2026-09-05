@@ -7,7 +7,7 @@ investment-history exports from
 Financial data stays in the browser's IndexedDB storage. BudgetLens has no account system,
 analytics, application server, or database service, and it does not upload imported files.
 
-![BudgetLens 1.0 dashboard populated with synthetic financial data](docs/images/budgetlens-dashboard.jpg)
+![BudgetLens overview with synthetic demo data: stat modules, filters, custom-chart builder, and the assistant button at bottom right](docs/images/budgetlens-dashboard.jpg)
 
 _The screenshot contains invented demo data only._
 
@@ -49,6 +49,21 @@ pnpm dev
 
 Open the URL printed by Vite. No environment variables, PostgreSQL server, or Docker daemon are
 required.
+
+## Desktop app
+
+One-click builds for macOS (Apple Silicon + Intel) and Windows ship from GitHub Releases with
+in-app auto-update. Linux is out of scope for v1.
+
+- Download the latest `app-v*` release asset and launch. The v1 builds are unsigned: macOS may
+  need System Settings → Privacy & Security → Allow, and Windows may show `Unknown publisher` →
+  `More info` → `Run anyway`.
+- Browser data does not migrate automatically (the app is a different origin). In the browser go
+  to Settings → download a JSON backup, then restore it via Imports in the app.
+- The assistant defaults to local Ollama: install it, run `ollama serve`, then
+  `ollama pull qwen2.5:7b`. Hosted API keys are remembered in the OS keychain by default (use
+  Forget in the assistant settings to opt out), and `localhost` providers never send data off
+  the machine.
 
 ## Import data
 
