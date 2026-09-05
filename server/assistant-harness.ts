@@ -10,6 +10,7 @@ import { z } from "zod"
 
 const DEFAULT_HARNESS_MODEL = "opencode/muse-spark-1.3-contributor-free"
 const MAX_BODY_BYTES = 256_000
+const HARNESS_TURN_TIMEOUT_MS = 8 * 60_000
 const OPENCODE_BASE_URL = process.env.OPENCODE_BASE_URL ?? "http://127.0.0.1:4096"
 
 const messageSchema = z.object({
@@ -426,26 +427,38 @@ async function handleHarnessChat(
 
   const { prompt, snapshotBlob } = buildSystemPrompt(snapshot, thinking)
   const port = await pickFreePort()
-  const stream = chat({
-    adapter: opencodeText(model, { permissionMode: "default", port, hostname: "127.0.0.1" }),
-    threadId: "budgetlens-assistant",
-    // Resumed harness sessions already hold prior context; send only the latest turn.
-    messages: sessionId ? [lastUser] : messages,
-    systemPrompts: [prompt],
-    modelOptions: sessionId ? { sessionId } : {},
-    middleware: [withSandbox(sandbox)],
-    abortController: controller,
-  })
+  let timedOut = false
+  const turnTimer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, HARNESS_TURN_TIMEOUT_MS)
+  try {
+    const stream = chat({
+      adapter: opencodeText(model, { permissionMode: "default", port, hostname: "127.0.0.1" }),
+      threadId: "budgetlens-assistant",
+      // Resumed harness sessions already hold prior context; send only the latest turn.
+      messages: sessionId ? [lastUser] : messages,
+      systemPrompts: [prompt],
+      modelOptions: sessionId ? { sessionId } : {},
+      middleware: [withSandbox(sandbox)],
+      abortController: controller,
+    })
 
-  const drained = await drainHarnessTurn(stream, controller.signal)
-  const userTexts = messages.filter((item) => item.role === "user").map((item) => item.content)
-  return {
-    status: 200,
-    payload: {
-      content: stripEcho(drained.content, userTexts, snapshotBlob),
-      toolEvents: drained.toolEvents,
-      ...(drained.sessionId ? { sessionId: drained.sessionId } : {}),
-    },
+    const drained = await drainHarnessTurn(stream, controller.signal)
+    if (timedOut) {
+      return { status: 504, payload: { error: "Assistant turn timed out after 8 minutes." } }
+    }
+    const userTexts = messages.filter((item) => item.role === "user").map((item) => item.content)
+    return {
+      status: 200,
+      payload: {
+        content: stripEcho(drained.content, userTexts, snapshotBlob),
+        toolEvents: drained.toolEvents,
+        ...(drained.sessionId ? { sessionId: drained.sessionId } : {}),
+      },
+    }
+  } finally {
+    clearTimeout(turnTimer)
   }
 }
 

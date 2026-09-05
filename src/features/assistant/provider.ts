@@ -219,6 +219,13 @@ function extractContent(payload: unknown): string {
   return extractTurnMessage(payload).content
 }
 
+export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
+
+function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs)
+  return signal ? AbortSignal.any([signal, timeout]) : timeout
+}
+
 async function postChatCompletions(options: {
   baseURL: string
   apiKey: string
@@ -226,10 +233,11 @@ async function postChatCompletions(options: {
   messages: ChatCompletionsMessage[]
   tools?: ChatFunctionTool[]
   signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<unknown> {
   const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
     method: "POST",
-    ...(options.signal ? { signal: options.signal } : {}),
+    signal: withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS),
     headers: {
       "content-type": "application/json",
       ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),

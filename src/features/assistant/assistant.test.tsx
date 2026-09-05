@@ -403,8 +403,7 @@ describe("assistant variance", () => {
 
 describe("assistant proposal card", () => {
   it("approves, dismisses, and shows applied state", async () => {
-    const { render, screen } = await import("@testing-library/react")
-    const user = (await import("@testing-library/user-event")).default
+    const { render, screen, fireEvent } = await import("@testing-library/react")
     const { ProposalCard } = await import("@/features/assistant/proposal-card")
 
     let approved = 0
@@ -423,9 +422,9 @@ describe("assistant proposal card", () => {
       />,
     )
     expect(screen.getByRole("group")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /approve \+ apply/i }))
+    fireEvent.click(screen.getByRole("button", { name: /approve \+ apply/i }))
     expect(approved).toBe(1)
-    await user.click(screen.getByRole("button", { name: /dismiss/i }))
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }))
     expect(dismissed).toBe(1)
 
     rerender(
@@ -460,8 +459,10 @@ describe("assistant chart fence", () => {
     )
     expect(container.querySelector("figcaption")?.textContent).toBe("Spending by category")
     expect(container.querySelector("svg")).not.toBeNull()
-    const cells = [...container.querySelectorAll("td")].map((cell) => cell.textContent ?? "")
-    expect(cells.some((cell) => cell.includes("Housing"))).toBe(true)
+    const labels = [...container.querySelectorAll('th[scope="row"]')].map(
+      (cell) => cell.textContent ?? "",
+    )
+    expect(labels.some((label) => label.includes("Housing"))).toBe(true)
   })
 
   it("falls back to code for an invalid chart fence", async () => {
@@ -549,10 +550,9 @@ describe("assistant citations", () => {
         cites={[{ index: 1, label: "Rent · -$3,300.00", href: "/transactions?sort=amount-desc" }]}
       />,
     )
-    expect(getByRole("link", { name: "[1]" })).toHaveAttribute(
-      "href",
-      "/transactions?sort=amount-desc",
-    )
+    expect(
+      getByRole("link", { name: "Open supporting transactions: Rent · -$3,300.00" }),
+    ).toHaveAttribute("href", "/transactions?sort=amount-desc")
   })
 })
 
