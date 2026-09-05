@@ -181,6 +181,48 @@ await run("session-resume", async () => {
   )
 })
 
+await run("variance-in-snapshot", async () => {
+  const payload = await postChat({
+    messages: [
+      { role: "user", content: "Where did my money go last month? List amounts briefly." },
+    ],
+  })
+  assert(typeof payload.content === "string" && payload.content.length > 20, "empty answer")
+  assert(
+    /\$[\d,]+\.\d{2}/.test(payload.content),
+    `missing currency amount: ${payload.content.slice(0, 200)}`,
+  )
+  for (const leaked of [
+    "transactionCount",
+    "generatedAt",
+    "previousSpending",
+    "Rules:",
+    "minor-unit",
+  ]) {
+    assert(!payload.content.includes(leaked), `prompt leak: ${leaked}`)
+  }
+})
+
+await run("models-capabilities", async () => {
+  const response = await fetch(`${BASE}/api/models`, { signal: AbortSignal.timeout(30_000) })
+  assert(response.ok, `models responded ${response.status}`)
+  const payload = await response.json()
+  assert(Array.isArray(payload.models) && payload.models.length > 0, "model list is empty")
+  for (const model of payload.models) {
+    const free = model.free
+    assert(
+      free === true || free === false || free === 0 || free === 1,
+      `bad free field: ${model.id}`,
+    )
+    if ("contextTokens" in model && model.contextTokens != null) {
+      assert(
+        typeof model.contextTokens === "number" && Number.isFinite(model.contextTokens),
+        `bad contextTokens: ${model.id}`,
+      )
+    }
+  }
+})
+
 const failed = results.filter((r) => !r.ok)
 console.log(`\n${results.length - failed.length}/${results.length} evals passed`)
 for (const result of results) {

@@ -14,6 +14,8 @@ import {
   executeAssistantTool,
   MAX_TOOL_ROWS,
   parseBudgetProposal,
+  parseRecategorizeProposal,
+  summarizeVariance,
 } from "@/features/assistant/data-tools"
 import { readAssistantSettings } from "@/features/assistant/provider"
 
@@ -257,5 +259,151 @@ describe("assistant markdown", () => {
       "https://example.com/help",
     )
     expect(screen.queryByRole("link", { name: "evil" })).not.toBeInTheDocument()
+  })
+})
+
+describe("assistant recategorize proposals", () => {
+  it("parses a valid draft and rejects junk", () => {
+    expect(
+      parseRecategorizeProposal({ toCategory: "Groceries", affectedIds: ["tx-0", "tx-1"] }),
+    ).toEqual({ toCategory: "Groceries", affectedIds: ["tx-0", "tx-1"] })
+    expect(parseRecategorizeProposal({ toCategory: "", affectedIds: ["tx-0"] })).toBeNull()
+    expect(parseRecategorizeProposal({ toCategory: "Groceries" })).toBeNull()
+    expect(parseRecategorizeProposal({ toCategory: "Groceries", affectedIds: [] })).toBeNull()
+    expect(parseRecategorizeProposal({ toCategory: "  ", affectedIds: ["tx-0"] })).toBeNull()
+  })
+
+  it("drafts recategorize without writing", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        {
+          date: "2026-08-01",
+          description: "Store run",
+          amountMinor: -1000,
+          category: "Dining Out",
+        },
+        {
+          date: "2026-08-02",
+          description: "Store run",
+          amountMinor: -2000,
+          category: "Dining Out",
+        },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "propose_recategorize", {
+      toCategory: "Groceries",
+    })
+    expect(output).toMatchObject({
+      draft: true,
+      toCategory: "Groceries",
+      affectedCount: 2,
+      totalCount: 2,
+      truncated: false,
+    })
+    if (!isRecord(output) || !Array.isArray(output.affectedIds)) {
+      throw new Error("expected affectedIds in recategorize output")
+    }
+    expect(output.affectedIds).toHaveLength(2)
+    const rows = await repos.transactions.list()
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.category).toBe("Dining Out")
+  })
+
+  it("caps recategorize drafts at 50 rows", async () => {
+    const repos = stubRepositories({
+      transactions: Array.from({ length: MAX_TOOL_ROWS + 10 }, (_, index) => ({
+        date: "2026-08-01",
+        description: `Row ${index}`,
+        amountMinor: -100,
+        category: "Dining Out",
+      })),
+    })
+    const output: unknown = await executeAssistantTool(repos, "propose_recategorize", {
+      toCategory: "Groceries",
+      limit: MAX_TOOL_ROWS + 999,
+    })
+    if (!isRecord(output) || !Array.isArray(output.affectedIds)) {
+      throw new Error("expected affectedIds in recategorize output")
+    }
+    expect(output.affectedIds).toHaveLength(MAX_TOOL_ROWS)
+    expect(output).toMatchObject({ truncated: true, totalCount: MAX_TOOL_ROWS + 10 })
+  })
+
+  it("requires toCategory", async () => {
+    const repos = stubRepositories({})
+    await expect(executeAssistantTool(repos, "propose_recategorize", {})).rejects.toThrow(
+      "toCategory",
+    )
+  })
+})
+
+describe("assistant variance", () => {
+  it("summarizes the biggest mover", async () => {
+    const { formatMinor } = await import("@/features/assistant/provider")
+    const summary = summarizeVariance({
+      generatedAt: "2026-09-05T00:00:00.000Z",
+      transactionCount: 3,
+      spending: [
+        { category: "Groceries", count: 2, totalMinor: -1000, total: formatMinor(-1000) },
+        { category: "Transport", count: 1, totalMinor: -500, total: formatMinor(-500) },
+      ],
+      previousSpending: [
+        { category: "Groceries", count: 2, totalMinor: -5000, total: formatMinor(-5000) },
+        { category: "Transport", count: 1, totalMinor: -600, total: formatMinor(-600) },
+      ],
+      budgets: [],
+      netWorth: [],
+    })
+    expect(summary).toContain("Groceries")
+    expect(summary).toContain(formatMinor(4000))
+    expect(summary.split("\n").length).toBeLessThanOrEqual(3)
+  })
+
+  it("includes previousSpending without throwing on empty repos", async () => {
+    const repos = stubRepositories({})
+    const snapshot = await buildFinanceSnapshot(repos)
+    expect(snapshot.previousSpending).toEqual([])
+    expect(snapshot.spending).toEqual([])
+    expect(typeof snapshot.generatedAt).toBe("string")
+  })
+})
+
+describe("assistant proposal card", () => {
+  it("approves, dismisses, and shows applied state", async () => {
+    const { render, screen } = await import("@testing-library/react")
+    const user = (await import("@testing-library/user-event")).default
+    const { ProposalCard } = await import("@/features/assistant/proposal-card")
+
+    let approved = 0
+    let dismissed = 0
+    const { rerender } = render(
+      <ProposalCard
+        title="Proposed recategorize"
+        lines={["Dining Out → Groceries · 2 transactions"]}
+        status="idle"
+        onApprove={() => {
+          approved += 1
+        }}
+        onDismiss={() => {
+          dismissed += 1
+        }}
+      />,
+    )
+    expect(screen.getByRole("group")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /approve \+ apply/i }))
+    expect(approved).toBe(1)
+    await user.click(screen.getByRole("button", { name: /dismiss/i }))
+    expect(dismissed).toBe(1)
+
+    rerender(
+      <ProposalCard
+        title="Proposed recategorize"
+        lines={["Dining Out → Groceries · 2 transactions"]}
+        status="applied"
+        onApprove={() => undefined}
+        onDismiss={() => undefined}
+      />,
+    )
+    expect(screen.getByText(/applied ✓/)).toBeInTheDocument()
   })
 })

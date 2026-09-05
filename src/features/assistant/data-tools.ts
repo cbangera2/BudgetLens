@@ -105,6 +105,24 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "propose_recategorize",
+      description:
+        "Draft a category change for matching transactions. Never applies it; the UI asks first.",
+      parameters: {
+        type: "object",
+        properties: {
+          search: { type: "string" },
+          fromCategory: { type: "string" },
+          toCategory: { type: "string" },
+          limit: { type: "number" },
+        },
+        required: ["toCategory"],
+      },
+    },
+  },
 ]
 
 export interface BudgetProposal {
@@ -119,6 +137,25 @@ export function parseBudgetProposal(args: unknown): BudgetProposal | null {
   if (typeof record.amountMinor !== "number" || !Number.isFinite(record.amountMinor)) return null
   const period = record.period === "yearly" ? "yearly" : "monthly"
   return { category: record.category.trim(), amountMinor: Math.round(record.amountMinor), period }
+}
+
+export interface RecategorizeProposal {
+  toCategory: string
+  affectedIds: string[]
+}
+
+export function parseRecategorizeProposal(args: unknown): RecategorizeProposal | null {
+  const record = asRecord(args)
+  const rawCategory = asString(record.toCategory)
+  const toCategory = rawCategory ? rawCategory.trim() : ""
+  if (!toCategory) return null
+  const rawIds = record.affectedIds
+  if (!Array.isArray(rawIds)) return null
+  const affectedIds = rawIds
+    .filter((item): item is string => typeof item === "string" && item.length > 0)
+    .slice(0, MAX_TOOL_ROWS)
+  if (affectedIds.length === 0) return null
+  return { toCategory, affectedIds }
 }
 
 export async function executeAssistantTool(
@@ -237,6 +274,32 @@ export async function executeAssistantTool(
       }
     }
 
+    case "propose_recategorize": {
+      const rawCategory = asString(record.toCategory)
+      const toCategory = rawCategory ? rawCategory.trim() : ""
+      if (!toCategory) throw new Error("propose_recategorize needs toCategory.")
+      const search = asString(record.search)
+      const fromCategory = asString(record.fromCategory)
+      const limit = asLimit(record.limit)
+      const matches = await repositories.transactions.list({
+        ...(search ? { search } : {}),
+        ...(fromCategory ? { categories: [fromCategory] } : {}),
+      })
+      const totalCount = matches.length
+      const affectedIds = matches
+        .slice(0, limit)
+        .slice(0, MAX_TOOL_ROWS)
+        .map((transaction) => transaction.id)
+      return {
+        draft: true,
+        toCategory,
+        affectedIds,
+        affectedCount: affectedIds.length,
+        totalCount,
+        truncated: totalCount > affectedIds.length,
+      }
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -282,6 +345,7 @@ export interface FinanceSnapshot {
   generatedAt: string
   transactionCount: number
   spending: SnapshotSpendingBucket[]
+  previousSpending: SnapshotSpendingBucket[]
   budgets: SnapshotBudget[]
   netWorth: SnapshotNetWorthPoint[]
 }
@@ -301,6 +365,12 @@ function asBoolean(value: unknown): boolean {
 function threeMonthsAgo(): string {
   const date = new Date()
   date.setMonth(date.getMonth() - 3)
+  return date.toISOString().slice(0, 10)
+}
+
+function sixMonthsAgo(): string {
+  const date = new Date()
+  date.setMonth(date.getMonth() - 6)
   return date.toISOString().slice(0, 10)
 }
 
@@ -375,11 +445,66 @@ export async function buildFinanceSnapshot(
       ? spendingRaw.transactionCount
       : 0
 
+  let previousSpending: SnapshotSpendingBucket[] = []
+  try {
+    const previousRaw = await executeAssistantTool(repositories, "spending_by_category", {
+      startDate: sixMonthsAgo(),
+      endDate: threeMonthsAgo(),
+    })
+    if (isRecord(previousRaw) && Array.isArray(previousRaw.buckets)) {
+      const parsed: SnapshotSpendingBucket[] = []
+      for (const entry of previousRaw.buckets.slice(0, 20)) {
+        if (!isRecord(entry) || typeof entry.category !== "string") continue
+        const totalMinor = asNumber(entry.totalMinor, 0)
+        parsed.push({
+          category: entry.category,
+          count: asNumber(entry.count, 0),
+          totalMinor,
+          total: typeof entry.total === "string" ? entry.total : formatMinor(totalMinor),
+        })
+      }
+      previousSpending = parsed
+    }
+  } catch {
+    previousSpending = []
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     transactionCount,
     spending,
+    previousSpending,
     budgets,
     netWorth,
   }
+}
+
+export function summarizeVariance(snapshot: FinanceSnapshot): string {
+  const currentBuckets = Array.isArray(snapshot.spending) ? snapshot.spending : []
+  const previousBuckets = Array.isArray(snapshot.previousSpending) ? snapshot.previousSpending : []
+  const currentByCategory = new Map<string, number>()
+  for (const bucket of currentBuckets) {
+    currentByCategory.set(bucket.category, bucket.totalMinor)
+  }
+  const previousByCategory = new Map<string, number>()
+  for (const bucket of previousBuckets) {
+    previousByCategory.set(bucket.category, bucket.totalMinor)
+  }
+  const categories = new Set<string>([...currentByCategory.keys(), ...previousByCategory.keys()])
+  const movers = [...categories]
+    .map((category) => {
+      const current = currentByCategory.get(category) ?? 0
+      const previous = previousByCategory.get(category) ?? 0
+      return { category, current, previous, delta: current - previous }
+    })
+    .filter((entry) => entry.delta !== 0)
+    .toSorted((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, 3)
+  if (movers.length === 0) return "No spending changes vs prior 3 months."
+  return movers
+    .map(
+      (entry) =>
+        `- ${entry.category}: ${formatMinor(entry.previous)} → ${formatMinor(entry.current)} (${formatMinor(entry.delta)})`,
+    )
+    .join("\n")
 }
