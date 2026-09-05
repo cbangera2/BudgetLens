@@ -1,3 +1,9 @@
+import {
+  DEFAULT_THINKING_LEVEL,
+  THINKING_LEVELS,
+  type ThinkingLevel,
+} from "@/features/assistant/thinking-select"
+
 export type AssistantProviderId =
   | "opencode-harness"
   | "opencode-bridge"
@@ -80,6 +86,7 @@ export interface AssistantSettings {
   baseURL: string
   model: string
   apiKey: string
+  thinking: ThinkingLevel
 }
 
 export const ASSISTANT_SETTINGS_KEY = "budgetlens.assistant.v1"
@@ -101,7 +108,20 @@ function presetFor(provider: AssistantProviderId): AssistantProviderPreset {
 
 export function defaultSettingsFor(provider: AssistantProviderId): AssistantSettings {
   const preset = presetFor(provider)
-  return { provider: preset.id, baseURL: preset.baseURL, model: preset.model, apiKey: "" }
+  return {
+    provider: preset.id,
+    baseURL: preset.baseURL,
+    model: preset.model,
+    apiKey: "",
+    thinking: DEFAULT_THINKING_LEVEL,
+  }
+}
+
+function asThinkingLevel(value: unknown): ThinkingLevel {
+  return (
+    THINKING_LEVELS.find((level): level is ThinkingLevel => level === value) ??
+    DEFAULT_THINKING_LEVEL
+  )
 }
 
 function asText(value: unknown, fallback: string): string {
@@ -122,6 +142,7 @@ export function readAssistantSettings(storage: Pick<Storage, "getItem">): Assist
       baseURL: asText(parsed.baseURL, preset.baseURL),
       model: asText(parsed.model, preset.model),
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
+      thinking: asThinkingLevel(parsed.thinking),
     }
   } catch {
     return fallback

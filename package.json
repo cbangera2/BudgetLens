@@ -14,6 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "test:browser": "playwright test",
     "eval:assistant": "node evals/assistant.eval.mjs",
+    "eval:assistant:charts": "node evals/assistant-charts.eval.mjs",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },

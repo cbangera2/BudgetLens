@@ -1,8 +1,11 @@
+import { useRouter } from "@tanstack/react-router"
 import {
   Bot,
   FileText,
   History,
+  Maximize2,
   MessageCircle,
+  Minimize2,
   Pencil,
   Plus,
   Search,
@@ -16,6 +19,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { repositories } from "@/db/repositories"
+import {
+  extractCitations,
+  rowsFromSnapshot,
+  type Cite,
+  type CitationRow,
+} from "@/features/assistant/citations"
 import { Composer } from "@/features/assistant/composer"
 import {
   ASSISTANT_SYSTEM_PROMPT,
@@ -42,6 +51,11 @@ import {
   type AssistantProviderId,
   type AssistantSettings,
 } from "@/features/assistant/provider"
+import {
+  THINKING_LEVELS,
+  ThinkingSelect,
+  type ThinkingLevel,
+} from "@/features/assistant/thinking-select"
 import { ThreadHistory } from "@/features/assistant/thread-history"
 import {
   appendMessage,
@@ -65,6 +79,8 @@ interface PanelMessage {
   role: "user" | "assistant"
   content: string
   trace?: ToolTrace[]
+  citedText?: string
+  cites?: Cite[]
 }
 
 const SUGGESTIONS = [
@@ -75,6 +91,71 @@ const SUGGESTIONS = [
 
 const FEEDBACK_STORAGE_KEY = "budgetlens.assistant.feedback.v1"
 const FEEDBACK_STORAGE_CAP = 50
+
+const ASSISTANT_LAYOUT_KEY = "budgetlens.assistant.layout.v1"
+
+type AssistantWindowSize = "s" | "m" | "l"
+
+interface AssistantCustomSize {
+  width: number
+  height: number
+}
+
+interface AssistantWindowLayout {
+  fullscreen: boolean
+  size: AssistantWindowSize
+  custom: AssistantCustomSize | null
+}
+
+const DEFAULT_ASSISTANT_LAYOUT: AssistantWindowLayout = {
+  fullscreen: false,
+  size: "m",
+  custom: null,
+}
+
+const MIN_WINDOW_WIDTH = 320
+const MIN_WINDOW_HEIGHT = 420
+
+const ASSISTANT_WINDOW_SIZE_OPTIONS: Array<{ id: AssistantWindowSize; label: string }> = [
+  { id: "s", label: "Compact" },
+  { id: "m", label: "Regular" },
+  { id: "l", label: "Wide" },
+]
+
+function isAssistantWindowSize(value: unknown): value is AssistantWindowSize {
+  return value === "s" || value === "m" || value === "l"
+}
+
+function readAssistantLayout(storage: Storage): AssistantWindowLayout {
+  try {
+    const raw = storage.getItem(ASSISTANT_LAYOUT_KEY)
+    if (!raw) return DEFAULT_ASSISTANT_LAYOUT
+    const parsed: unknown = JSON.parse(raw) as unknown
+    if (!isRecord(parsed)) return DEFAULT_ASSISTANT_LAYOUT
+    const custom = parsed.custom
+    return {
+      fullscreen: parsed.fullscreen === true,
+      size: isAssistantWindowSize(parsed.size) ? parsed.size : "m",
+      custom:
+        isRecord(custom) &&
+        typeof custom.width === "number" &&
+        typeof custom.height === "number" &&
+        Number.isFinite(custom.width) &&
+        Number.isFinite(custom.height)
+          ? {
+              width: Math.min(Math.max(Math.round(custom.width), MIN_WINDOW_WIDTH), 1600),
+              height: Math.min(Math.max(Math.round(custom.height), MIN_WINDOW_HEIGHT), 1200),
+            }
+          : null,
+    }
+  } catch {
+    return DEFAULT_ASSISTANT_LAYOUT
+  }
+}
+
+function isThinkingLevel(value: string): value is ThinkingLevel {
+  return THINKING_LEVELS.some((level) => level === value)
+}
 
 function messageId(): string {
   return globalThis.crypto.randomUUID()
@@ -157,10 +238,25 @@ export function AssistantFab({ onOpen }: { onOpen: () => void }) {
 }
 
 export function AssistantPanel({ onClose }: { onClose: () => void }) {
+  const router = useRouter()
+  const navigateToTransactions = useCallback(
+    (href: string) => {
+      // Citation hrefs carry the deploy base ("/" locally, "/BudgetLens/" on
+      // Pages); strip it so router history pushes the app-relative path with
+      // no full-page reload, preserving chat state.
+      const base = import.meta.env.BASE_URL
+      const internal = href.startsWith(base) ? href.slice(base.length - 1) : href
+      router.history.push(internal || "/")
+    },
+    [router],
+  )
   const [settings, setSettings] = useState<AssistantSettings>(() =>
     readAssistantSettings(window.localStorage),
   )
   const [showSettings, setShowSettings] = useState(false)
+  const [layout, setLayout] = useState<AssistantWindowLayout>(() =>
+    readAssistantLayout(window.localStorage),
+  )
   const [messages, setMessages] = useState<PanelMessage[]>([])
   const [harnessSessionId, setHarnessSessionId] = useState<string | undefined>(undefined)
   const [harnessModels, setHarnessModels] = useState<HarnessModelOption[] | null>(null)
@@ -180,13 +276,34 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [contextSummary, setContextSummary] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const logRef = useRef<HTMLDivElement | null>(null)
   const storedIdsRef = useRef<Set<string>>(new Set())
+  const citeRowsRef = useRef<CitationRow[]>([])
+
+  function finalizeAssistantMessage(content: string, trace?: ToolTrace[]): PanelMessage {
+    const cited = extractCitations(content, citeRowsRef.current, import.meta.env.BASE_URL)
+    return {
+      id: messageId(),
+      role: "assistant",
+      content,
+      ...(trace && trace.length > 0 ? { trace } : {}),
+      ...(cited.cites.length > 0 ? { citedText: cited.text, cites: cited.cites } : {}),
+    }
+  }
 
   useEffect(() => {
     window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(settings))
   }, [settings])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ASSISTANT_LAYOUT_KEY, JSON.stringify(layout))
+    } catch {
+      // Layout persistence is best-effort; never break the chat.
+    }
+  }, [layout])
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" })
@@ -215,6 +332,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             role: item.role,
             content: item.content,
             ...(item.trace ? { trace: item.trace } : {}),
+            ...(item.citedText ? { citedText: item.citedText } : {}),
+            ...(item.cites ? { cites: item.cites } : {}),
           })),
         )
         storedIdsRef.current = new Set(stored.map((item) => item.id))
@@ -239,6 +358,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           role: item.role,
           content: item.content,
           ...(item.trace ? { trace: item.trace } : {}),
+          ...(item.citedText ? { citedText: item.citedText } : {}),
+          ...(item.cites ? { cites: item.cites } : {}),
         })
       }
       await refreshThreads()
@@ -265,6 +386,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setProposal(null)
     setRecatProposal(null)
     setHarnessSessionId(undefined)
+    setContextSummary(null)
     setError(null)
     setActiveThreadId(null)
     setShowHistory(false)
@@ -280,6 +402,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         role: item.role,
         content: item.content,
         ...(item.trace ? { trace: item.trace } : {}),
+        ...(item.citedText ? { citedText: item.citedText } : {}),
+        ...(item.cites ? { cites: item.cites } : {}),
       })),
     )
     storedIdsRef.current = new Set(stored.map((item) => item.id))
@@ -287,6 +411,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setProposal(null)
     setRecatProposal(null)
     setHarnessSessionId(undefined)
+    setContextSummary(null)
     setError(null)
     setShowHistory(false)
   }
@@ -301,6 +426,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       setProposal(null)
       setRecatProposal(null)
       setHarnessSessionId(undefined)
+      setContextSummary(null)
     }
     await refreshThreads()
   }
@@ -403,6 +529,10 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   async function handleHarnessSend(nextMessages: PanelMessage[], controller: AbortController) {
     const snapshot = await buildFinanceSnapshot(repositories)
+    citeRowsRef.current = rowsFromSnapshot(snapshot)
+    setContextSummary(
+      `${snapshot.transactionCount} txns · ${snapshot.spending.length} categories · top ${snapshot.topTransactions.length} rows`,
+    )
     const history = nextMessages
       .filter((item) => item.content)
       .slice(-10)
@@ -416,6 +546,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         messages: history,
         snapshot,
         model: settings.model || undefined,
+        thinking: settings.thinking,
         ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
       }),
     })
@@ -429,12 +560,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     if (turn.sessionId) setHarnessSessionId(turn.sessionId)
     setMessages((current) => [
       ...current,
-      {
-        id: messageId(),
-        role: "assistant",
-        content: turn.content || "The harness returned no text.",
-        ...(turn.trace.length > 0 ? { trace: turn.trace } : {}),
-      },
+      finalizeAssistantMessage(turn.content || "The harness returned no text.", turn.trace),
     ])
   }
 
@@ -442,6 +568,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     history: Array<{ role: "user" | "assistant"; content: string }>,
     controller: AbortController,
   ): Promise<void> {
+    setContextSummary("live tools · 5 capped Dexie queries")
+    try {
+      citeRowsRef.current = rowsFromSnapshot(await buildFinanceSnapshot(repositories))
+    } catch {
+      citeRowsRef.current = []
+    }
     const turn = await requestChatTurn({
       baseURL: settings.baseURL,
       apiKey: settings.apiKey,
@@ -455,11 +587,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     if (turn.toolCalls.length === 0) {
       setMessages((current) => [
         ...current,
-        {
-          id: messageId(),
-          role: "assistant",
-          content: turn.content || "No response from provider.",
-        },
+        finalizeAssistantMessage(turn.content || "No response from provider."),
       ])
       return
     }
@@ -503,10 +631,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       signal: controller.signal,
     })
 
-    setMessages((current) => [
-      ...current,
-      { id: messageId(), role: "assistant", content: finalAnswer, trace },
-    ])
+    setMessages((current) => [...current, finalizeAssistantMessage(finalAnswer, trace)])
   }
 
   async function handleSend(event?: React.FormEvent, presetText?: string) {
@@ -602,11 +727,82 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   const preset = ASSISTANT_PRESETS.find((item) => item.id === settings.provider)
 
+  const sizeWidthClass =
+    layout.size === "s" ? "sm:w-[22rem]" : layout.size === "l" ? "sm:w-[32rem]" : "sm:w-[26rem]"
+  const useCustomSize = !layout.fullscreen && layout.custom !== null
+  const windowClassName = layout.fullscreen
+    ? "assistant-window fixed inset-3 z-50 flex h-auto max-h-none min-h-0 w-auto flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-6"
+    : `assistant-window fixed inset-x-4 bottom-4 z-50 flex h-[min(40rem,calc(100dvh-6rem))] max-h-[calc(100dvh-3rem)] min-h-[22rem] flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 ${sizeWidthClass} sm:max-w-[calc(100vw-2rem)] sm:min-w-[20rem]`
+  const windowStyle =
+    useCustomSize && layout.custom
+      ? { width: layout.custom.width, height: layout.custom.height }
+      : undefined
+
+  const resizeDragRef = useRef<{
+    startX: number
+    startY: number
+    width: number
+    height: number
+  } | null>(null)
+  const windowRef = useRef<HTMLElement | null>(null)
+
+  function startResizeDrag(event: React.PointerEvent<HTMLButtonElement>): void {
+    if (layout.fullscreen) return
+    const element = windowRef.current
+    if (!element) return
+    const rect = element.getBoundingClientRect()
+    resizeDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function moveResizeDrag(event: React.PointerEvent): void {
+    const start = resizeDragRef.current
+    // Bottom-right stays anchored; dragging the top-left grip grows the window.
+    if (!start || event.buttons === 0) return
+    const width = Math.min(
+      Math.max(Math.round(start.width + (start.startX - event.clientX)), MIN_WINDOW_WIDTH),
+      window.innerWidth - 32,
+    )
+    const height = Math.min(
+      Math.max(Math.round(start.height + (start.startY - event.clientY)), MIN_WINDOW_HEIGHT),
+      window.innerHeight - 48,
+    )
+    setLayout((current) => ({ ...current, custom: { width, height } }))
+  }
+
+  function stopResizeDrag(): void {
+    resizeDragRef.current = null
+  }
+
   return (
     <section
+      ref={windowRef}
       aria-label="BudgetLens assistant"
-      className="assistant-window fixed inset-x-4 bottom-4 z-50 flex h-[min(40rem,calc(100dvh-6rem))] max-h-[calc(100dvh-3rem)] min-h-[22rem] [resize:both] flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[26rem] sm:max-w-[calc(100vw-2rem)] sm:min-w-[20rem]"
+      className={windowClassName}
+      style={windowStyle}
     >
+      {!layout.fullscreen && (
+        <button
+          type="button"
+          aria-label="Resize assistant window"
+          title="Drag to resize"
+          onPointerDown={startResizeDrag}
+          onPointerMove={moveResizeDrag}
+          onPointerUp={stopResizeDrag}
+          onPointerCancel={stopResizeDrag}
+          className="absolute top-0 left-0 z-20 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-br-xl text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100"
+        >
+          <span aria-hidden="true" className="flex flex-col items-start gap-[3px] p-1.5">
+            <span className="block h-px w-3 rotate-[-45deg] bg-current" />
+            <span className="block h-px w-2 rotate-[-45deg] bg-current" />
+          </span>
+        </button>
+      )}
       <header className="flex items-center gap-3 border-b px-4 py-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
           <Bot className="size-5" aria-hidden="true" />
@@ -659,12 +855,38 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           variant="ghost"
           size="icon"
           className="size-8"
+          aria-label={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
+          title={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
+          aria-pressed={layout.fullscreen}
+          onClick={() => {
+            setLayout((current) => ({ ...current, fullscreen: !current.fullscreen }))
+          }}
+        >
+          {layout.fullscreen ? (
+            <Minimize2 className="size-4" aria-hidden="true" />
+          ) : (
+            <Maximize2 className="size-4" aria-hidden="true" />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
           aria-label="Close assistant"
           onClick={onClose}
         >
           <X className="size-4" aria-hidden="true" />
         </Button>
       </header>
+
+      {contextSummary && (
+        <p
+          className="border-b px-4 py-1 text-[11px] text-muted-foreground"
+          title="What the agent can see for this conversation. Finance rows stay capped; raw data never leaves this browser except as shown."
+        >
+          Agent sees: {contextSummary}
+        </p>
+      )}
 
       {showHistory && (
         <div className="absolute inset-0 z-10">
@@ -719,6 +941,30 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               ))}
             </select>
           </label>
+          <fieldset className="grid gap-1">
+            <legend className="font-medium">Window size</legend>
+            <div className="flex gap-1">
+              {ASSISTANT_WINDOW_SIZE_OPTIONS.map((option) => (
+                <Button
+                  key={option.id}
+                  type="button"
+                  variant={layout.size === option.id ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1 rounded-full"
+                  disabled={layout.fullscreen}
+                  aria-pressed={layout.size === option.id}
+                  onClick={() => {
+                    setLayout((current) => ({ ...current, size: option.id, custom: null }))
+                  }}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+            {layout.fullscreen && (
+              <p className="text-muted-foreground">Exit fullscreen to change window size.</p>
+            )}
+          </fieldset>
           {settings.provider === "opencode-harness" ? (
             <div className="grid gap-1">
               <span id="assistant-model-label" className="font-medium">
@@ -772,6 +1018,17 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 </span>
               )}
               {modelsError && <p className="text-muted-foreground">{modelsError}</p>}
+              <div className="grid gap-1">
+                <span id="assistant-thinking-label" className="font-medium">
+                  Thinking effort
+                </span>
+                <ThinkingSelect
+                  value={settings.thinking}
+                  onChange={(level) => {
+                    if (isThinkingLevel(level)) updateSettings({ thinking: level })
+                  }}
+                />
+              </div>
             </div>
           ) : (
             <label className="grid gap-1" htmlFor="assistant-model">
@@ -857,7 +1114,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           ) : (
             <div key={item.id} className="flex justify-start">
               <div className="max-w-[92%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm">
-                <Markdown text={item.content} id={item.id} />
+                <Markdown
+                  text={item.citedText ?? item.content}
+                  id={item.id}
+                  navigate={navigateToTransactions}
+                  {...(item.cites ? { cites: item.cites } : {})}
+                />
                 <MessageActions
                   content={item.content}
                   onRegenerate={() => {

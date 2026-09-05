@@ -17,12 +17,20 @@ export interface StoredTraceStep {
   summary: string
 }
 
+export interface StoredCite {
+  index: number
+  label: string
+  href: string
+}
+
 export interface StoredMessage {
   id: string
   threadId: string
   role: "user" | "assistant"
   content: string
   trace?: Array<StoredTraceStep>
+  citedText?: string
+  cites?: Array<StoredCite>
   createdAt: string
 }
 
@@ -36,6 +44,8 @@ export interface AppendMessageInput {
   role: "user" | "assistant"
   content: string
   trace?: Array<StoredTraceStep>
+  citedText?: string
+  cites?: Array<StoredCite>
 }
 
 const ASSISTANT_DB_NAME = "budgetlens-assistant"
@@ -104,14 +114,29 @@ function cleanTrace(trace: unknown): Array<StoredTraceStep> | undefined {
   return cleaned.length > 0 ? cleaned : undefined
 }
 
+function cleanCites(cites: unknown): Array<StoredCite> | undefined {
+  if (!Array.isArray(cites)) return undefined
+  const cleaned: Array<StoredCite> = []
+  for (const entry of cites) {
+    if (!isRecord(entry)) continue
+    if (typeof entry.index !== "number" || !Number.isFinite(entry.index)) continue
+    if (typeof entry.label !== "string" || typeof entry.href !== "string") continue
+    cleaned.push({ index: entry.index, label: entry.label, href: entry.href })
+  }
+  return cleaned.length > 0 ? cleaned : undefined
+}
+
 function cleanMessageRow(row: StoredMessage): StoredMessage {
   const cleanedTrace = cleanTrace(row.trace)
+  const cleanedCites = cleanCites(row.cites)
   return {
     id: row.id,
     threadId: row.threadId,
     role: row.role === "assistant" ? "assistant" : "user",
     content: row.content,
     ...(cleanedTrace ? { trace: cleanedTrace } : {}),
+    ...(typeof row.citedText === "string" && row.citedText ? { citedText: row.citedText } : {}),
+    ...(cleanedCites ? { cites: cleanedCites } : {}),
     createdAt: row.createdAt,
   }
 }
@@ -188,12 +213,17 @@ export async function appendMessage(
 ): Promise<StoredMessage> {
   const now = nowIso()
   const cleanedTrace = cleanTrace(input.trace)
+  const cleanedCites = cleanCites(input.cites)
   const message: StoredMessage = {
     id: newId(),
     threadId,
     role: input.role,
     content: input.content,
     ...(cleanedTrace ? { trace: cleanedTrace } : {}),
+    ...(typeof input.citedText === "string" && input.citedText
+      ? { citedText: input.citedText }
+      : {}),
+    ...(cleanedCites ? { cites: cleanedCites } : {}),
     createdAt: now,
   }
   try {

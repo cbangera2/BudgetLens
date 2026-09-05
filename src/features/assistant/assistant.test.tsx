@@ -260,6 +260,30 @@ describe("assistant markdown", () => {
     )
     expect(screen.queryByRole("link", { name: "evil" })).not.toBeInTheDocument()
   })
+
+  it("renders a real finance answer with stray markers intact", async () => {
+    const { render, screen } = await import("@testing-library/react")
+    const { Markdown } = await import("@/features/assistant/markdown")
+    render(
+      <Markdown
+        id="finance-answer"
+        text={[
+          "Largest outflows you can verify in the Spending view:",
+          "",
+          "* Housing: **-$3,300.00** (2)",
+          "* Travel: **-$1,242.15** (4)",
+          "",
+          "Inflows in the same period:",
+          "",
+          "* Income: **$15,750.00*** across 5 transactions",
+        ].join("\n")}
+      />,
+    )
+
+    expect(screen.getByText("-$3,300.00").tagName).toBe("STRONG")
+    expect(screen.getAllByRole("listitem")).toHaveLength(3)
+    expect(screen.getByText("$15,750.00").tagName).toBe("STRONG")
+  })
 })
 
 describe("assistant recategorize proposals", () => {
@@ -353,6 +377,9 @@ describe("assistant variance", () => {
       ],
       budgets: [],
       netWorth: [],
+      extremes: { largestExpense: null, largestIncome: null },
+      topTransactions: [],
+      dailySeries: [],
     })
     expect(summary).toContain("Groceries")
     expect(summary).toContain(formatMinor(4000))
@@ -405,5 +432,120 @@ describe("assistant proposal card", () => {
       />,
     )
     expect(screen.getByText(/applied ✓/)).toBeInTheDocument()
+  })
+})
+
+describe("assistant chart fence", () => {
+  it("renders a bar chart fence as svg with its title", async () => {
+    const { render, screen } = await import("@testing-library/react")
+    const { Markdown } = await import("@/features/assistant/markdown")
+    const spec = JSON.stringify({
+      type: "bar",
+      title: "Spending by category",
+      unit: "$",
+      data: [
+        { label: "Housing", value: 3300 },
+        { label: "Travel", value: 1242.15 },
+        { label: "Groceries", value: 1141 },
+      ],
+    })
+    const { container } = render(
+      <Markdown id="chart-bar" text={["```budgetlens-chart", spec, "```"].join("\n")} />,
+    )
+    expect(screen.getByText("Spending by category")).toBeInTheDocument()
+    expect(container.querySelector("svg")).not.toBeNull()
+    expect(screen.getByText("Housing", { selector: "th" })).toBeInTheDocument()
+  })
+
+  it("falls back to code for an invalid chart fence", async () => {
+    const { render } = await import("@testing-library/react")
+    const { Markdown } = await import("@/features/assistant/markdown")
+    const { container } = render(
+      <Markdown id="chart-invalid" text={["```budgetlens-chart", "{not json", "```"].join("\n")} />,
+    )
+    expect(container.querySelector("svg")).toBeNull()
+    expect(container.querySelector("pre code")?.textContent).toContain("{not json")
+  })
+
+  it("leaves non-chart fences unchanged", async () => {
+    const { render } = await import("@testing-library/react")
+    const { Markdown } = await import("@/features/assistant/markdown")
+    const { container } = render(
+      <Markdown id="chart-other" text={["```js", "const x = 1", "```"].join("\n")} />,
+    )
+    expect(container.querySelector("svg")).toBeNull()
+    expect(container.querySelector("pre code")?.textContent).toContain("const x = 1")
+  })
+})
+
+describe("assistant citations", () => {
+  it("links exact snapshot amounts to filtered transaction views", async () => {
+    const { extractCitations } = await import("@/features/assistant/citations")
+    const { text, cites } = extractCitations(
+      "Top outflow Housing: -$3,300.00 (2). Income was $15,750.00.",
+      [
+        {
+          id: "a",
+          date: "2026-08-01",
+          description: "Rent",
+          amount: "-$3,300.00",
+          category: "Housing",
+        },
+        {
+          id: "b",
+          date: "2026-08-01",
+          description: "Pay",
+          amount: "$15,750.00",
+          category: "Income",
+        },
+      ],
+      "/",
+    )
+    expect(cites).toHaveLength(2)
+    expect(text).toContain("-$3,300.00[[cite:1]]")
+    expect(cites[0]?.href).toContain("/transactions?")
+    expect(cites[0]?.href).toContain("sort=amount-desc")
+    expect(cites[0]?.href).toContain("categories=Housing")
+  })
+
+  it("skips code fences and caps markers", async () => {
+    const { extractCitations, MAX_CITATIONS } = await import("@/features/assistant/citations")
+    const rows = Array.from({ length: MAX_CITATIONS + 5 }, (_, index) => ({
+      id: `r${index}`,
+      date: "2026-08-01",
+      description: `Item ${index}`,
+      amount: `-$${index + 1}.00`,
+      category: "Misc",
+    }))
+    const { text, cites } = extractCitations(
+      [
+        "```",
+        "-$1.00 should stay plain",
+        "```",
+        ...rows.map((row) => `Row ${row.amount} here`),
+      ].join("\n"),
+      rows,
+      "/BudgetLens/",
+    )
+    expect(cites.length).toBeLessThanOrEqual(MAX_CITATIONS)
+    expect(text).toContain("-$1.00 should stay plain")
+    expect(text).not.toContain("-$1.00[[cite:")
+    expect(cites[0]?.href.startsWith("/BudgetLens/transactions?")).toBe(true)
+  })
+
+  it("renders cite markers as links", async () => {
+    const { render, screen } = await import("@testing-library/react")
+    const { Markdown } = await import("@/features/assistant/markdown")
+    render(
+      <Markdown
+        id="cite-render"
+        text="Housing cost -$3,300.00[[cite:1]] this month."
+        cites={[{ index: 1, label: "Rent · -$3,300.00", href: "/transactions?sort=amount-desc" }]}
+      />,
+    )
+    expect(screen.getByRole("link", { name: "[1]" })).toHaveAttribute(
+      "href",
+      "/transactions?sort=amount-desc",
+    )
   })
 })

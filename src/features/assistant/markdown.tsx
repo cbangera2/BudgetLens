@@ -1,6 +1,9 @@
 import type { ReactNode } from "react"
 import { useMemo } from "react"
 
+import { ChartBlock } from "@/features/assistant/chart-block"
+import type { Cite } from "@/features/assistant/citations"
+
 function hashKey(seed: string): string {
   let hash = 5381
   for (let index = 0; index < seed.length; index += 1) {
@@ -13,8 +16,35 @@ function isSafeUrl(url: string): boolean {
   return /^https?:\/\/[^\s<>"']+$/.test(url)
 }
 
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[[^\]]+\]\(https?:[^)\s]+\))/g
+function CiteLink({ cite, navigate }: { cite: Cite; navigate?: (href: string) => void }) {
+  return (
+    <a
+      href={cite.href}
+      title={cite.label}
+      aria-label={`Open supporting transactions: ${cite.label}`}
+      onClick={
+        navigate
+          ? (event) => {
+              event.preventDefault()
+              navigate(cite.href)
+            }
+          : undefined
+      }
+      className="ml-0.5 rounded-md bg-accent px-1 py-px align-super text-[10px] font-semibold text-accent-foreground no-underline"
+    >
+      [{cite.index}]
+    </a>
+  )
+}
+
+function renderInline(
+  text: string,
+  keyPrefix: string,
+  cites?: Cite[],
+  navigate?: (href: string) => void,
+): ReactNode[] {
+  const pattern =
+    /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\n]+\*|\[\[cite:\d+\]\]|\[[^\]]+\]\(https?:[^)\s]+\))/g
   const nodes: ReactNode[] = []
   let lastIndex = 0
   let ordinal = 0
@@ -33,9 +63,23 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
         </code>,
       )
     } else if (token.startsWith("**")) {
-      nodes.push(<strong key={key}>{renderInline(token.slice(2, -2), `${key}-b`)}</strong>)
+      nodes.push(
+        <strong key={key}>{renderInline(token.slice(2, -2), `${key}-b`, cites, navigate)}</strong>,
+      )
     } else if (token.startsWith("*")) {
-      nodes.push(<em key={key}>{renderInline(token.slice(1, -1), `${key}-i`)}</em>)
+      nodes.push(<em key={key}>{renderInline(token.slice(1, -1), `${key}-i`, cites, navigate)}</em>)
+    } else if (token.startsWith("[[cite:")) {
+      const number = Number.parseInt(token.slice("[[cite:".length, -2), 10)
+      const cite = Number.isFinite(number)
+        ? cites?.find((entry) => entry.index === number)
+        : undefined
+      nodes.push(
+        cite ? (
+          <CiteLink key={key} cite={cite} {...(navigate ? { navigate } : {})} />
+        ) : (
+          <span key={key}>{token}</span>
+        ),
+      )
     } else {
       const separator = token.lastIndexOf("](")
       const label = token.slice(1, separator)
@@ -62,7 +106,12 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   return nodes
 }
 
-function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
+function renderBlocks(
+  source: string,
+  keyPrefix: string,
+  cites?: Cite[],
+  navigate?: (href: string) => void,
+): ReactNode[] {
   const blocks = source.split(/\n{2,}/)
   const nodes: ReactNode[] = []
   let chain = keyPrefix
@@ -82,11 +131,27 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
     const block = raw.replace(/^\n+|\n+$/g, "")
     if (!block) continue
 
-    const fenced = block.match(/^```(\w*)\n([\s\S]*?)```$/)
+    const fenced = block.match(/^```([\w-]*)\n([\s\S]*?)```$/)
     if (fenced) {
+      const info = fenced[1] ?? ""
+      const code = fenced[2]?.replace(/\n$/, "") ?? ""
+      if (info === "budgetlens-chart") {
+        try {
+          const parsed: unknown = JSON.parse(code)
+          push(<ChartBlock spec={parsed} />, block)
+        } catch {
+          push(
+            <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
+              <code>{code}</code>
+            </pre>,
+            block,
+          )
+        }
+        continue
+      }
       push(
         <pre className="overflow-x-auto rounded-xl bg-muted p-3 text-xs">
-          <code>{fenced[2]?.replace(/\n$/, "") ?? ""}</code>
+          <code>{code}</code>
         </pre>,
         block,
       )
@@ -96,7 +161,7 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
     const heading = block.match(/^(#{1,4})\s+(.+)$/)
     if (heading) {
       const level = heading[1]?.length ?? 1
-      const content = renderInline(heading[2] ?? "", `${keyPrefix}-h`)
+      const content = renderInline(heading[2] ?? "", `${keyPrefix}-h`, cites, navigate)
       const className = level <= 2 ? "text-sm font-semibold" : "text-sm font-medium"
       if (level === 1) push(<h4 className={className}>{content}</h4>, block)
       else if (level === 2) push(<h5 className={className}>{content}</h5>, block)
@@ -127,7 +192,7 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
                       key={hashKey(`h${cell}`)}
                       className="border-b px-2 py-1 text-left font-semibold"
                     >
-                      {renderInline(cell, `${keyPrefix}-th`)}
+                      {renderInline(cell, `${keyPrefix}-th`, cites, navigate)}
                     </th>
                   ))}
                 </tr>
@@ -137,7 +202,7 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
                   <tr key={hashKey(`r${row.join("~")}`)} className="border-b last:border-0">
                     {row.map((cell) => (
                       <td key={hashKey(`c${cell}`)} className="px-2 py-1 align-top">
-                        {renderInline(cell, `${keyPrefix}-td`)}
+                        {renderInline(cell, `${keyPrefix}-td`, cites, navigate)}
                       </td>
                     ))}
                   </tr>
@@ -155,7 +220,7 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
       const ordered = /^\s*\d+[.)]/.test(lines[0] ?? "")
       const items = lines.map((line) => line.replace(/^\s*([-*•]|\d+[.)])\s+/, ""))
       const list = items.map((item) => (
-        <li key={hashKey(`li${item}`)}>{renderInline(item, `${keyPrefix}-li`)}</li>
+        <li key={hashKey(`li${item}`)}>{renderInline(item, `${keyPrefix}-li`, cites, navigate)}</li>
       ))
       push(
         ordered ? (
@@ -174,6 +239,8 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
           {renderInline(
             lines.map((line) => line.replace(/^\s*>\s?/, "")).join("\n"),
             `${keyPrefix}-q`,
+            cites,
+            navigate,
           )}
         </blockquote>,
         block,
@@ -181,13 +248,28 @@ function renderBlocks(source: string, keyPrefix: string): ReactNode[] {
       continue
     }
 
-    push(<p className="whitespace-pre-wrap">{renderInline(block, `${keyPrefix}-p`)}</p>, block)
+    push(
+      <p className="whitespace-pre-wrap">
+        {renderInline(block, `${keyPrefix}-p`, cites, navigate)}
+      </p>,
+      block,
+    )
   }
 
   return nodes
 }
 
-export function Markdown({ text, id }: { text: string; id: string }) {
-  const nodes = useMemo(() => renderBlocks(text, id), [text, id])
+export function Markdown({
+  text,
+  id,
+  cites,
+  navigate,
+}: {
+  text: string
+  id: string
+  cites?: Cite[]
+  navigate?: (href: string) => void
+}) {
+  const nodes = useMemo(() => renderBlocks(text, id, cites, navigate), [text, id, cites, navigate])
   return <div className="space-y-2 leading-relaxed">{nodes}</div>
 }
