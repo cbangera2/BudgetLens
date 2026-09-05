@@ -6,6 +6,8 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   ReceiptText,
   Settings,
   Sun,
@@ -17,6 +19,8 @@ import { useEffect, useState } from "react"
 import { AppFooter } from "@/app/app-footer"
 import { useTheme } from "@/app/theme-provider"
 import { Button } from "@/components/ui/button"
+import { AssistantFab, AssistantPanel } from "@/features/assistant/assistant-panel"
+import { ASSISTANT_OPEN_KEY } from "@/features/assistant/provider"
 import { DemoBanner } from "@/features/demo/demo-banner"
 import { ensureDemoData } from "@/features/demo/demo-seed"
 
@@ -46,10 +50,21 @@ export function readSidebarPreference(storage: Pick<Storage, "getItem">): boolea
   }
 }
 
+export function readAssistantOpenPreference(storage: Pick<Storage, "getItem">): boolean {
+  try {
+    return storage.getItem(ASSISTANT_OPEN_KEY) === "open"
+  } catch {
+    return false
+  }
+}
+
 export function AppShell() {
   const { theme, setTheme } = useTheme()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     readSidebarPreference(window.localStorage),
+  )
+  const [assistantOpen, setAssistantOpen] = useState(() =>
+    readAssistantOpenPreference(window.localStorage),
   )
 
   useEffect(() => {
@@ -60,10 +75,19 @@ export function AppShell() {
   }, [sidebarCollapsed])
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(ASSISTANT_OPEN_KEY, assistantOpen ? "open" : "closed")
+    } catch {
+      // Private-mode storage may throw; the panel just defaults to closed.
+    }
+  }, [assistantOpen])
+
+  useEffect(() => {
     void ensureDemoData()
   }, [])
 
   const sidebarToggleLabel = sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
+  const assistantToggleLabel = assistantOpen ? "Close assistant" : "Open assistant"
 
   return (
     <div className="flex min-h-svh flex-col bg-background text-foreground">
@@ -75,15 +99,31 @@ export function AppShell() {
             </span>
             <span>BudgetLens</span>
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Toggle color theme"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            <Sun className="hidden size-5 dark:block" aria-hidden="true" />
-            <Moon className="size-5 dark:hidden" aria-hidden="true" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={assistantOpen ? "secondary" : "ghost"}
+              size="icon"
+              aria-label={assistantToggleLabel}
+              title={assistantToggleLabel}
+              aria-expanded={assistantOpen}
+              onClick={() => setAssistantOpen((open) => !open)}
+            >
+              {assistantOpen ? (
+                <PanelRightClose className="size-5" aria-hidden="true" />
+              ) : (
+                <PanelRightOpen className="size-5" aria-hidden="true" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Toggle color theme"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              <Sun className="hidden size-5 dark:block" aria-hidden="true" />
+              <Moon className="size-5 dark:hidden" aria-hidden="true" />
+            </Button>
+          </div>
         </div>
       </header>
       <DemoBanner />
@@ -136,6 +176,11 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {assistantOpen ? (
+        <AssistantPanel onClose={() => setAssistantOpen(false)} />
+      ) : (
+        <AssistantFab onOpen={() => setAssistantOpen(true)} />
+      )}
       <AppFooter />
     </div>
   )
