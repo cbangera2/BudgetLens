@@ -237,7 +237,7 @@ export function AssistantFab({ onOpen }: { onOpen: () => void }) {
       aria-label="Open assistant"
       title="Ask about your finances"
       onClick={onOpen}
-      className="fixed right-5 bottom-5 z-50 size-14 rounded-full shadow-xl transition-transform hover:scale-105"
+      className="fixed right-5 bottom-5 z-40 size-14 rounded-full shadow-xl transition-transform hover:scale-105"
     >
       <MessageCircle className="size-6" aria-hidden="true" />
     </Button>
@@ -861,8 +861,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     layout.size === "s" ? "sm:w-[22rem]" : layout.size === "l" ? "sm:w-[32rem]" : "sm:w-[26rem]"
   const useCustomSize = !layout.fullscreen && layout.custom !== null
   const windowClassName = layout.fullscreen
-    ? "assistant-window fixed inset-3 z-50 flex h-auto max-h-none min-h-0 w-auto flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-6"
-    : `assistant-window fixed inset-x-4 bottom-4 z-50 flex h-[min(40rem,calc(100dvh-6rem))] max-h-[calc(100dvh-3rem)] min-h-[22rem] flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 ${sizeWidthClass} sm:max-w-[calc(100vw-2rem)] sm:min-w-[20rem]`
+    ? "assistant-window fixed inset-3 z-40 flex h-auto max-h-none min-h-0 w-auto flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-6"
+    : `assistant-window fixed inset-x-4 bottom-4 z-40 flex h-[min(40rem,calc(100dvh-6rem))] max-h-[calc(100dvh-3rem)] min-h-[22rem] flex-col overflow-hidden rounded-3xl border bg-card text-card-foreground shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 ${sizeWidthClass} sm:max-w-[calc(100vw-2rem)] sm:min-w-[20rem]`
   const windowStyle =
     useCustomSize && layout.custom
       ? { width: layout.custom.width, height: layout.custom.height }
