@@ -32,8 +32,12 @@ import {
   buildFinanceSnapshot,
   executeAssistantTool,
   parseBudgetProposal,
+  parseCreateTransactionProposal,
+  parseDeleteTransactionProposal,
   parseRecategorizeProposal,
   type BudgetProposal,
+  type CreateTransactionProposal,
+  type DeleteTransactionProposal,
   type RecategorizeProposal,
 } from "@/features/assistant/data-tools"
 import { HistorySearch } from "@/features/assistant/history-search"
@@ -44,6 +48,7 @@ import { ProposalCard } from "@/features/assistant/proposal-card"
 import {
   ASSISTANT_PRESETS,
   ASSISTANT_SETTINGS_KEY,
+  formatMinor,
   isAssistantProviderId,
   readAssistantSettings,
   requestChatTurn,
@@ -67,6 +72,7 @@ import {
   setThreadPin,
   type ThreadRecord,
 } from "@/features/assistant/thread-store"
+import { isTransactionSort } from "@/features/transactions/filtering"
 
 interface ToolTrace {
   id: string
@@ -250,6 +256,29 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     },
     [router],
   )
+
+  const openTransactionsView = useCallback(
+    (args: unknown): Record<string, unknown> => {
+      const record = isRecord(args) ? args : {}
+      const params = new URLSearchParams()
+      const search = typeof record.search === "string" ? record.search.trim().slice(0, 200) : ""
+      if (search) params.set("q", search)
+      if (Array.isArray(record.categories)) {
+        const categories = record.categories.filter(
+          (item): item is string => typeof item === "string" && item.length > 0,
+        )
+        if (categories.length > 0) params.set("categories", categories.join(","))
+      }
+      const sort =
+        typeof record.sort === "string" && isTransactionSort(record.sort)
+          ? record.sort
+          : "date-desc"
+      params.set("sort", sort)
+      navigateToTransactions(`${import.meta.env.BASE_URL}transactions?${params.toString()}`)
+      return { opened: true, filters: params.toString() }
+    },
+    [navigateToTransactions],
+  )
   const [settings, setSettings] = useState<AssistantSettings>(() =>
     readAssistantSettings(window.localStorage),
   )
@@ -269,6 +298,14 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     (RecategorizeProposal & { id: string }) | null
   >(null)
   const [recatState, setRecatState] = useState<"idle" | "applied" | "applying">("idle")
+  const [createProposal, setCreateProposal] = useState<
+    (CreateTransactionProposal & { id: string }) | null
+  >(null)
+  const [createState, setCreateState] = useState<"idle" | "applied" | "applying">("idle")
+  const [deleteProposal, setDeleteProposal] = useState<
+    (DeleteTransactionProposal & { id: string }) | null
+  >(null)
+  const [deleteState, setDeleteState] = useState<"idle" | "applied" | "applying">("idle")
   const [threads, setThreads] = useState<ThreadRecord[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
@@ -385,6 +422,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     storedIdsRef.current = new Set()
     setProposal(null)
     setRecatProposal(null)
+    setCreateProposal(null)
+    setDeleteProposal(null)
     setHarnessSessionId(undefined)
     setContextSummary(null)
     setError(null)
@@ -410,6 +449,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setActiveThreadId(id)
     setProposal(null)
     setRecatProposal(null)
+    setCreateProposal(null)
+    setDeleteProposal(null)
     setHarnessSessionId(undefined)
     setContextSummary(null)
     setError(null)
@@ -425,6 +466,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       setActiveThreadId(null)
       setProposal(null)
       setRecatProposal(null)
+      setCreateProposal(null)
+      setDeleteProposal(null)
       setHarnessSessionId(undefined)
       setContextSummary(null)
     }
@@ -595,6 +638,16 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     const trace: ToolTrace[] = []
     const toolOutputs: Array<{ id: string; name: string; output: unknown }> = []
     for (const call of turn.toolCalls.slice(0, 4)) {
+      if (call.name === "show_transactions_view") {
+        const output = openTransactionsView(call.args)
+        trace.push({
+          id: call.id,
+          name: call.name,
+          summary: summarizeToolOutput(call.name, output),
+        })
+        toolOutputs.push({ id: call.id, name: call.name, output })
+        continue
+      }
       // oxlint-disable-next-line no-await-in-loop -- Tool calls run in model order for a readable trace.
       const output = await executeAssistantTool(repositories, call.name, call.args)
       trace.push({
@@ -615,6 +668,20 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         if (draft) {
           setRecatProposal({ ...draft, id: messageId() })
           setRecatState("idle")
+        }
+      }
+      if (call.name === "create_transaction") {
+        const draft = parseCreateTransactionProposal(output)
+        if (draft) {
+          setCreateProposal({ ...draft, id: messageId() })
+          setCreateState("idle")
+        }
+      }
+      if (call.name === "delete_transaction") {
+        const draft = parseDeleteTransactionProposal(output)
+        if (draft) {
+          setDeleteProposal({ ...draft, id: messageId() })
+          setDeleteState("idle")
         }
       }
     }
@@ -641,6 +708,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setError(null)
     setProposalState("idle")
     setRecatState("idle")
+    setCreateState("idle")
+    setDeleteState("idle")
     const userMessage: PanelMessage = { id: messageId(), role: "user", content: question }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -696,6 +765,41 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not apply recategorize.")
       setRecatState("idle")
+    }
+  }
+
+  async function applyCreateTransaction() {
+    if (!createProposal || createState !== "idle") return
+    setCreateState("applying")
+    try {
+      await repositories.transactions.add({
+        date: createProposal.date,
+        description: createProposal.description,
+        amountMinor: createProposal.amountMinor,
+        category: createProposal.category,
+        transactionType: null,
+        accountName: createProposal.accountName,
+        accountType: null,
+        provider: null,
+        labels: [],
+        notes: createProposal.notes,
+      })
+      setCreateState("applied")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add transaction.")
+      setCreateState("idle")
+    }
+  }
+
+  async function applyDeleteTransaction() {
+    if (!deleteProposal || deleteState !== "idle") return
+    setDeleteState("applying")
+    try {
+      await repositories.transactions.remove(deleteProposal.id)
+      setDeleteState("applied")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete transaction.")
+      setDeleteState("idle")
     }
   }
 
@@ -1201,6 +1305,38 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               void applyRecategorize()
             }}
             onDismiss={() => setRecatProposal(null)}
+          />
+        </div>
+      )}
+
+      {createProposal && (
+        <div className="border-t px-4 py-3">
+          <ProposalCard
+            title="Proposed transaction"
+            lines={[
+              `${createProposal.date} · ${createProposal.description}`,
+              `${formatMinor(createProposal.amountMinor)} · ${createProposal.category ?? "Uncategorized"}`,
+              ...(createProposal.accountName ? [`Account: ${createProposal.accountName}`] : []),
+            ]}
+            status={createState}
+            onApprove={() => {
+              void applyCreateTransaction()
+            }}
+            onDismiss={() => setCreateProposal(null)}
+          />
+        </div>
+      )}
+
+      {deleteProposal && (
+        <div className="border-t px-4 py-3">
+          <ProposalCard
+            title="Proposed deletion"
+            lines={[deleteProposal.preview, "This cannot be undone."]}
+            status={deleteState}
+            onApprove={() => {
+              void applyDeleteTransaction()
+            }}
+            onDismiss={() => setDeleteProposal(null)}
           />
         </div>
       )}

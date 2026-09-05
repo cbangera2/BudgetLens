@@ -14,6 +14,8 @@ import {
   executeAssistantTool,
   MAX_TOOL_ROWS,
   parseBudgetProposal,
+  parseCreateTransactionProposal,
+  parseDeleteTransactionProposal,
   parseRecategorizeProposal,
   summarizeVariance,
 } from "@/features/assistant/data-tools"
@@ -380,6 +382,7 @@ describe("assistant variance", () => {
       extremes: { largestExpense: null, largestIncome: null },
       topTransactions: [],
       dailySeries: [],
+      recentTransactions: [],
     })
     expect(summary).toContain("Groceries")
     expect(summary).toContain(formatMinor(4000))
@@ -547,5 +550,85 @@ describe("assistant citations", () => {
       "href",
       "/transactions?sort=amount-desc",
     )
+  })
+})
+
+describe("assistant write tools", () => {
+  it("parses create drafts and rejects bad input", async () => {
+    expect(
+      parseCreateTransactionProposal({
+        date: "2026-08-03",
+        description: "Latte",
+        amountMinor: -540,
+        category: "Dining Out",
+      }),
+    ).toMatchObject({ date: "2026-08-03", description: "Latte", amountMinor: -540 })
+    expect(
+      parseCreateTransactionProposal({ date: "08/03/2026", description: "x", amountMinor: 1 }),
+    ).toBeNull()
+    expect(
+      parseCreateTransactionProposal({ date: "2026-08-03", description: "  ", amountMinor: 1 }),
+    ).toBeNull()
+    expect(parseCreateTransactionProposal({ date: "2026-08-03", description: "x" })).toBeNull()
+  })
+
+  it("parses delete drafts and rejects missing ids", async () => {
+    expect(parseDeleteTransactionProposal({ id: "tx-1" })).toMatchObject({ id: "tx-1" })
+    expect(parseDeleteTransactionProposal({})).toBeNull()
+  })
+
+  it("drafts creates without applying", async () => {
+    const repos = stubRepositories({})
+    const output = await executeAssistantTool(repos, "create_transaction", {
+      date: "2026-08-03",
+      description: "Latte",
+      amountMinor: -540,
+    })
+    expect(output).toMatchObject({ draft: true, kind: "create_transaction" })
+  })
+
+  it("drafts deletes with a preview of the real row", async () => {
+    const repos = stubRepositories({})
+    repos.transactions.get = async (id: string) =>
+      id === "tx-9"
+        ? {
+            id: "tx-9",
+            date: "2026-08-03",
+            description: "Latte",
+            amountMinor: -540,
+            category: "Dining Out",
+            transactionType: null,
+            accountName: null,
+            accountType: null,
+            provider: null,
+            labels: [],
+            notes: null,
+            groupId: null,
+            shared: false,
+            shareCount: 2,
+            importBatchId: "manual",
+            fingerprint: "fp",
+            createdAt: "2026-08-03T00:00:00.000Z",
+            updatedAt: "2026-08-03T00:00:00.000Z",
+          }
+        : undefined
+    const output = await executeAssistantTool(repos, "delete_transaction", { id: "tx-9" })
+    expect(output).toMatchObject({ draft: true, kind: "delete_transaction", id: "tx-9" })
+    await expect(executeAssistantTool(repos, "delete_transaction", { id: "nope" })).rejects.toThrow(
+      "not found",
+    )
+  })
+
+  it("caps recent snapshot rows with ids", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-08-03", description: "Latte", amountMinor: -540, category: "Dining Out" },
+        { date: "2026-08-02", description: "Bus", amountMinor: -250, category: "Transport" },
+      ],
+    })
+    const snapshot = await buildFinanceSnapshot(repos)
+    expect(snapshot.recentTransactions).toHaveLength(2)
+    expect(snapshot.recentTransactions[0]?.date).toBe("2026-08-03")
+    expect(typeof snapshot.recentTransactions[0]?.id).toBe("string")
   })
 })
