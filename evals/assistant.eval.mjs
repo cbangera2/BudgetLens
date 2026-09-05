@@ -54,6 +54,52 @@ const SNAPSHOT = {
     { date: "2026-08-24", series: "netWorth", valueMinor: 22287713, value: "$222,877.13" },
     { date: "2026-08-25", series: "netWorth", valueMinor: 22285288, value: "$222,852.88" },
   ],
+  extremes: {
+    largestExpense: {
+      date: "2026-08-01",
+      description: "Rent payment",
+      amountMinor: -165000,
+      amount: "-$1,650.00",
+      category: "Housing",
+    },
+    largestIncome: {
+      date: "2026-08-01",
+      description: "Paycheck",
+      amountMinor: 315000,
+      amount: "$3,150.00",
+      category: "Income",
+    },
+  },
+  topTransactions: [
+    {
+      date: "2026-08-01",
+      description: "Paycheck",
+      amountMinor: 315000,
+      amount: "$3,150.00",
+      category: "Income",
+    },
+    {
+      date: "2026-08-01",
+      description: "Rent payment",
+      amountMinor: -165000,
+      amount: "-$1,650.00",
+      category: "Housing",
+    },
+  ],
+  previousSpending: [
+    { category: "Housing", count: 2, totalMinor: -330000, total: "-$3,300.00" },
+    { category: "Travel", count: 4, totalMinor: -124215, total: "-$1,242.15" },
+    { category: "Groceries", count: 6, totalMinor: -20000, total: "-$200.00" },
+    { category: "Dining Out", count: 6, totalMinor: -31200, total: "-$312.00" },
+  ],
+  dailySeries: [
+    { date: "2026-08-20", spent: "$120.00", spentMinor: 12000, income: "$0.00", incomeMinor: 0, count: 3 },
+    { date: "2026-08-21", spent: "$85.50", spentMinor: 8550, income: "$0.00", incomeMinor: 0, count: 2 },
+    { date: "2026-08-22", spent: "$210.25", spentMinor: 21025, income: "$3,150.00", incomeMinor: 315000, count: 4 },
+    { date: "2026-08-23", spent: "$45.00", spentMinor: 4500, income: "$0.00", incomeMinor: 0, count: 1 },
+    { date: "2026-08-24", spent: "$1,650.00", spentMinor: 165000, income: "$0.00", incomeMinor: 0, count: 1 },
+    { date: "2026-08-25", spent: "$312.40", spentMinor: 31240, income: "$85.00", incomeMinor: 8500, count: 5 },
+  ],
 }
 
 const KNOWN_FEATURE_DIRS = [
@@ -221,6 +267,140 @@ await run("models-capabilities", async () => {
       )
     }
   }
+})
+
+await run("variance-fastest-grower", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content:
+          "Prior window spending was Housing $3,300.00, Travel $1,242.15, Groceries $200.00, Dining Out $312.00. Current spending is Housing $3,300.00, Travel $1,242.15, Groceries $1,141.00, Dining Out $312.00. Which spending category grew fastest versus the prior period? Name the category. Be brief.",
+      },
+    ],
+  })
+  assert(
+    /groceries/i.test(payload.content),
+    `expected Groceries as fastest grower: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("total-over-budget", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content:
+          "How much am I over budget in total across all categories? Name the over-budget categories and include a dollar amount. Be brief.",
+      },
+    ],
+  })
+  assert(
+    /\$[\d,]+\.\d{2}/.test(payload.content),
+    `missing currency amount: ${payload.content.slice(0, 200)}`,
+  )
+  assert(
+    /Dining Out|Groceries/i.test(payload.content),
+    `missing over-budget category: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("income-vs-expenses", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content:
+          "Did income cover expenses? By how much? Please use the word cover in your reply and include a dollar amount. Be brief.",
+      },
+    ],
+  })
+  assert(
+    /yes|cover/i.test(payload.content),
+    `missing cover verdict: ${payload.content.slice(0, 200)}`,
+  )
+  assert(
+    /\$[\d,]+\.\d{2}/.test(payload.content),
+    `missing currency amount: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("what-if-dining", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content:
+          "My Dining Out budget shows $806.00 spent. If I cut dining out spending in half, how much would I save per month? Start your answer with the savings amount and include a dollar amount. Be brief.",
+      },
+    ],
+  })
+  const match = payload.content.match(/\$([\d,]+\.\d{2})/)
+  assert(match, `missing currency amount: ${payload.content.slice(0, 200)}`)
+  const value = Number.parseFloat(match[1].replaceAll(",", ""))
+  assert(Number.isFinite(value), `bad currency parse: ${match[0]}`)
+  const ratio = value / 403.0
+  assert(
+    ratio > 0.7 && ratio < 1.3,
+    `savings ${match[0]} not within 30% of $403.00: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("net-worth-direction", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content: "Is my net worth going up or down lately? Compare the two dates briefly.",
+      },
+    ],
+  })
+  assert(
+    /up|down|growing|increasing|rose|fell|declin/i.test(payload.content),
+    `missing direction: ${payload.content.slice(0, 200)}`,
+  )
+  assert(
+    /\$[\d,]+\.\d{2}/.test(payload.content),
+    `missing currency amount: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("highest-transaction", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content: "What was my largest single transaction by amount? One sentence.",
+      },
+    ],
+  })
+  assert(
+    /3,150/.test(payload.content),
+    `missing largest transaction $3,150.00: ${payload.content.slice(0, 200)}`,
+  )
+  assert(
+    !/can't determine|don't have|no individual/i.test(payload.content),
+    `refusal despite extremes: ${payload.content.slice(0, 200)}`,
+  )
+})
+
+await run("graph-all-transactions", async () => {
+  const payload = await postChat({
+    messages: [
+      {
+        role: "user",
+        content: "Graph my daily spending over time as a chart.",
+      },
+    ],
+  })
+  assert(
+    !/can't graph|only exposes|no individual|don't have/i.test(payload.content),
+    `refusal despite dailySeries: ${payload.content.slice(0, 200)}`,
+  )
+  const fence = payload.content.match(/```budgetlens-chart\s+([\s\S]*?)```/)
+  assert(fence, `no chart fence: ${payload.content.slice(0, 300)}`)
+  const spec = JSON.parse(fence[1])
+  assert(Array.isArray(spec.data) && spec.data.length >= 4, "chart has too few points")
 })
 
 const failed = results.filter((r) => !r.ok)

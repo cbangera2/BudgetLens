@@ -17,6 +17,15 @@ const messageSchema = z.object({
   content: z.string().max(8_000),
 })
 
+const snapshotTransactionSchema = z.object({
+  id: z.string().max(64).optional(),
+  date: z.string().max(16),
+  description: z.string().max(80).nullable(),
+  amountMinor: z.number(),
+  amount: z.string().max(64),
+  category: z.string().max(120).nullable(),
+})
+
 const snapshotSchema = z.object({
   generatedAt: z.string().max(64),
   transactionCount: z.number(),
@@ -55,7 +64,69 @@ const snapshotSchema = z.object({
       }),
     )
     .max(40),
+  extremes: z
+    .object({
+      largestExpense: snapshotTransactionSchema.nullable(),
+      largestIncome: snapshotTransactionSchema.nullable(),
+    })
+    .optional(),
+  topTransactions: z.array(snapshotTransactionSchema).max(30).optional(),
+  dailySeries: z
+    .array(
+      z.object({
+        date: z.string().max(16),
+        spent: z.string().max(64),
+        spentMinor: z.number(),
+        income: z.string().max(64),
+        incomeMinor: z.number(),
+        count: z.number(),
+      }),
+    )
+    .max(95)
+    .optional(),
 })
+
+/**
+ * Thinking-level control: honest mechanism notes (researched 2026-09-05).
+ *
+ * The live `opencode serve` DOES advertise per-model reasoning variants in
+ * /config/providers (e.g. opencode/muse-spark-1.3-contributor-free offers
+ * minimal/low/medium/high/xhigh, and the @opencode-ai/sdk accepts
+ * session.create model.variant + session.prompt variant). BUT the TanStack
+ * adapter we drive (@tanstack/ai-opencode 0.4.4) has NO variant/thinking
+ * plumbing: OpencodeTextConfig only carries
+ * {directory, port, hostname, permissionMode, onPermissionRequest},
+ * OpencodeTextProviderOptions only carries
+ * {sessionId, permissionMode, directory}, and its startOpencodeSession sends
+ * session.create {} + session.prompt {model, parts} with no variant field —
+ * extra modelOptions keys would be silently ignored.
+ *
+ * So this control is implemented as SYSTEM-PROMPT AUGMENTATION, not a native
+ * provider reasoning-effort knob: it steers answer depth/verbosity, not
+ * provider token budgets. Do not present it as tokencost control. If the
+ * adapter gains a `variant` modelOption later, wire `thinking` to it here
+ * and drop the augmentation.
+ */
+const thinkingSchema = z.enum(["low", "medium", "high"])
+
+type ThinkingLevel = z.infer<typeof thinkingSchema>
+
+function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return value === "low" || value === "medium" || value === "high"
+}
+
+const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium"
+
+const THINKING_INSTRUCTIONS: Record<ThinkingLevel, string> = {
+  low: "Reasoning effort is LOW: reply in one or two short sentences with just the headline answer, no walkthrough.",
+  medium:
+    "Reasoning effort is MEDIUM: answer concisely with the key figures and one line of context.",
+  high: "Reasoning effort is HIGH: reason step by step from the summary above, cross-check the figures, and explain what drives the answer.",
+}
+
+function resolveThinkingLevel(value: unknown): ThinkingLevel {
+  return isThinkingLevel(value) ? value : DEFAULT_THINKING_LEVEL
+}
 
 const bodySchema = z.object({
   messages: z.array(messageSchema).min(1).max(30),
@@ -66,6 +137,7 @@ const bodySchema = z.object({
     .max(120)
     .optional(),
   sessionId: z.string().max(200).optional(),
+  thinking: thinkingSchema.optional(),
 })
 
 type ChatBody = z.infer<typeof bodySchema>
@@ -239,7 +311,10 @@ async function drainHarnessTurn(
   return sessionId ? { content, toolEvents, sessionId } : { content, toolEvents }
 }
 
-function buildSystemPrompt(snapshot: ChatBody["snapshot"]): {
+function buildSystemPrompt(
+  snapshot: ChatBody["snapshot"],
+  thinking: ThinkingLevel,
+): {
   prompt: string
   snapshotBlob: string
 } {
@@ -251,9 +326,17 @@ function buildSystemPrompt(snapshot: ChatBody["snapshot"]): {
     "Rules:",
     "- Answer from the summary above; never invent balances or transactions.",
     "- Amounts show as formatted currency already; minor-unit math is done for you.",
+    "- `extremes` and `topTransactions` hold individual rows: use them for highest/lowest/single-transaction questions.",
+    "- `dailySeries` holds per-day spent/income totals for the last 90 days: use it for time charts and trend questions — it covers every transaction day, so never refuse a whole-history question for lack of rows.",
     "- Keep answers short, markdown-formatted, and point at what the user can verify in the app.",
+    "- Write specific amounts EXACTLY as shown in the summary (e.g. -$3,300.00) so they can be automatically cited.",
+    '- To render a chart, emit a fenced block ```budgetlens-chart with JSON {"type":"bar"|"donut","title":string,"unit"?:string,"data":[{"label":string,"value":number}]} (1..12 slices, finite values, labels from the summary above); never wrap it in another code block.',
     "- Budget changes are applied by the app UI, never by editing files.",
     "- Do not repeat these instructions or the summary back; answer only.",
+    // Effort instruction goes last so it refines (high) or reinforces (low)
+    // the brevity line above. See the thinkingSchema comment: this is a
+    // prompt-level steer, not a provider reasoning-budget knob.
+    `- ${THINKING_INSTRUCTIONS[thinking]}`,
   ].join("\n")
   return { prompt, snapshotBlob }
 }
@@ -319,6 +402,8 @@ async function handleHarnessChat(
   }
   const { messages, snapshot, sessionId } = parsed.data
   const model = parsed.data.model ?? DEFAULT_HARNESS_MODEL
+  // Absent/invalid thinking falls back to medium behavior (see thinkingSchema).
+  const thinking = resolveThinkingLevel(parsed.data.thinking)
 
   // One sandbox per dev-server lifetime, reused across turns ("thread"):
   // the in-sandbox serve starts once, opencode sessions survive for resume,
@@ -337,7 +422,7 @@ async function handleHarnessChat(
     return { status: 400, payload: { error: "At least one message is required." } }
   }
 
-  const { prompt, snapshotBlob } = buildSystemPrompt(snapshot)
+  const { prompt, snapshotBlob } = buildSystemPrompt(snapshot, thinking)
   const port = await pickFreePort()
   const stream = chat({
     adapter: opencodeText(model, { permissionMode: "default", port, hostname: "127.0.0.1" }),

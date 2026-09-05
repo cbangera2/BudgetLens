@@ -61,7 +61,8 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
     type: "function",
     function: {
       name: "search_transactions",
-      description: "Search recent transactions. Descriptions are truncated and rows capped.",
+      description:
+        "Search transactions with optional amount sorting. Descriptions are truncated and rows capped.",
       parameters: {
         type: "object",
         properties: {
@@ -70,6 +71,11 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
           startDate: { type: "string" },
           endDate: { type: "string" },
           limit: { type: "number" },
+          sortBy: {
+            type: "string",
+            description:
+              "recent (default), amountDesc for largest first, amountAsc for smallest first",
+          },
         },
       },
     },
@@ -227,16 +233,25 @@ export async function executeAssistantTool(
       const categories = asStringArray(record.categories)
       const startDate = asString(record.startDate)
       const endDate = asString(record.endDate)
+      const sortBy = asString(record.sortBy)
       const rows = await repositories.transactions.list({
         ...(search ? { search } : {}),
         ...(categories ? { categories } : {}),
         ...(startDate ? { startDate } : {}),
         ...(endDate ? { endDate } : {}),
       })
+      const ordered =
+        sortBy === "amountDesc"
+          ? rows.toSorted((left, right) => Math.abs(right.amountMinor) - Math.abs(left.amountMinor))
+          : sortBy === "amountAsc"
+            ? rows.toSorted(
+                (left, right) => Math.abs(left.amountMinor) - Math.abs(right.amountMinor),
+              )
+            : rows
       return {
         total: rows.length,
         truncated: rows.length > limit,
-        rows: rows.slice(0, limit).map((transaction) => ({
+        rows: ordered.slice(0, limit).map((transaction) => ({
           date: transaction.date,
           description: truncate(transaction.description),
           amountMinor: transaction.amountMinor,
@@ -341,6 +356,29 @@ export interface SnapshotNetWorthPoint {
   value: string
 }
 
+export interface SnapshotTransaction {
+  id: string
+  date: string
+  description: string | null
+  amountMinor: number
+  amount: string
+  category: string | null
+}
+
+export interface SnapshotExtremes {
+  largestExpense: SnapshotTransaction | null
+  largestIncome: SnapshotTransaction | null
+}
+
+export interface SnapshotDayPoint {
+  date: string
+  spent: string
+  spentMinor: number
+  income: string
+  incomeMinor: number
+  count: number
+}
+
 export interface FinanceSnapshot {
   generatedAt: string
   transactionCount: number
@@ -348,7 +386,12 @@ export interface FinanceSnapshot {
   previousSpending: SnapshotSpendingBucket[]
   budgets: SnapshotBudget[]
   netWorth: SnapshotNetWorthPoint[]
+  extremes: SnapshotExtremes
+  topTransactions: SnapshotTransaction[]
+  dailySeries: SnapshotDayPoint[]
 }
+
+export const MAX_SNAPSHOT_TOP_ROWS = 25
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -376,8 +419,9 @@ function sixMonthsAgo(): string {
 
 /**
  * Compact, capped finance summary built in the browser from Dexie.
- * Sent to the local harness endpoint so the agent can answer
- * without ever touching raw transaction rows.
+ * Sent to the local harness endpoint so the agent can answer.
+ * Aggregates first; individual rows are limited to the top 25 by absolute
+ * amount with truncated descriptions.
  */
 export async function buildFinanceSnapshot(
   repositories: BudgetLensRepositories,
@@ -469,6 +513,71 @@ export async function buildFinanceSnapshot(
     previousSpending = []
   }
 
+  let extremes: SnapshotExtremes = { largestExpense: null, largestIncome: null }
+  let topTransactions: SnapshotTransaction[] = []
+  let dailySeries: SnapshotDayPoint[] = []
+  try {
+    const all = await repositories.transactions.list()
+    const ninetyDaysAgo = (() => {
+      const date = new Date()
+      date.setDate(date.getDate() - 90)
+      return date.toISOString().slice(0, 10)
+    })()
+    const byDay = new Map<string, { spentMinor: number; incomeMinor: number; count: number }>()
+    for (const transaction of all) {
+      if (transaction.date < ninetyDaysAgo) continue
+      const bucket = byDay.get(transaction.date) ?? { spentMinor: 0, incomeMinor: 0, count: 0 }
+      if (transaction.amountMinor < 0) bucket.spentMinor += Math.abs(transaction.amountMinor)
+      else bucket.incomeMinor += transaction.amountMinor
+      bucket.count += 1
+      byDay.set(transaction.date, bucket)
+    }
+    dailySeries = [...byDay.entries()]
+      .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([date, bucket]) => ({
+        date,
+        spent: formatMinor(bucket.spentMinor),
+        spentMinor: bucket.spentMinor,
+        income: formatMinor(bucket.incomeMinor),
+        incomeMinor: bucket.incomeMinor,
+        count: bucket.count,
+      }))
+    const toSnapshotRow = (transaction: {
+      id: string
+      date: string
+      description: string
+      amountMinor: number
+      category: string | null
+    }): SnapshotTransaction => ({
+      id: transaction.id,
+      date: transaction.date,
+      description: truncate(transaction.description),
+      amountMinor: transaction.amountMinor,
+      amount: formatMinor(transaction.amountMinor),
+      category: transaction.category,
+    })
+    const byAbs = [...all].toSorted(
+      (left, right) => Math.abs(right.amountMinor) - Math.abs(left.amountMinor),
+    )
+    topTransactions = byAbs.slice(0, MAX_SNAPSHOT_TOP_ROWS).map(toSnapshotRow)
+    const expenses = all.filter((transaction) => transaction.amountMinor < 0)
+    const income = all.filter((transaction) => transaction.amountMinor > 0)
+    const largestExpenseRow = expenses.toSorted(
+      (left, right) => left.amountMinor - right.amountMinor,
+    )[0]
+    const largestIncomeRow = income.toSorted(
+      (left, right) => right.amountMinor - left.amountMinor,
+    )[0]
+    extremes = {
+      largestExpense: largestExpenseRow ? toSnapshotRow(largestExpenseRow) : null,
+      largestIncome: largestIncomeRow ? toSnapshotRow(largestIncomeRow) : null,
+    }
+  } catch {
+    extremes = { largestExpense: null, largestIncome: null }
+    topTransactions = []
+    dailySeries = []
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     transactionCount,
@@ -476,6 +585,9 @@ export async function buildFinanceSnapshot(
     previousSpending,
     budgets,
     netWorth,
+    extremes,
+    topTransactions,
+    dailySeries,
   }
 }
 
