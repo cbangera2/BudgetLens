@@ -431,9 +431,28 @@ function AreaChartBody({
   colors: readonly string[]
 }) {
   const prep = useCartesianPrep(rows, metrics, settings, colors)
+  const gradientPrefix = useId().replaceAll(":", "")
   const definition = useMemo(() => {
-    const fillOpacity =
-      settings.areaFill === "gradient" ? 0.35 : settings.areaFill === "solid" ? 0.18 : 0
+    const metricIndex = new Map(metrics.map((metric, index) => [metric.key, index]))
+    const gradient = settings.areaFill === "gradient"
+    // Per-series linear gradients restore the old renderer's AREA_FILLS look:
+    // strong at the curve fading toward the baseline.
+    const gradients = gradient
+      ? metrics.map((metric, index) => {
+          const color = metric.color ?? colorAt(prep.seriesColors, index)
+          return {
+            id: `${gradientPrefix}-area-${index}`,
+            x1: 0,
+            y1: 0,
+            x2: 0,
+            y2: 1,
+            stops: [
+              { offset: 0, color, opacity: 0.8 },
+              { offset: 1, color, opacity: 0.1 },
+            ],
+          }
+        })
+      : []
     return defineChart({
       marks: [
         areaY(prep.longRows, {
@@ -445,7 +464,16 @@ function AreaChartBody({
           z: "metricKey",
           color: "metricKey",
           key: "id",
-          fillOpacity,
+          ...(gradient
+            ? {
+                fill: (row: LongRow) =>
+                  `url(#${gradientPrefix}-area-${metricIndex.get(row.metricKey) ?? 0})`,
+              }
+            : settings.areaFill === "none"
+              ? { fill: "transparent" as const }
+              : {}),
+          fillOpacity: gradient ? 1 : settings.areaFill === "solid" ? 0.18 : 0,
+          strokeWidth: 2,
         }),
         ...(prep.showLabels
           ? [
@@ -467,10 +495,11 @@ function AreaChartBody({
         y: { scale: scaleLinear, nice: true, grid: prep.yGrid },
       },
       color: { domain: prep.metricKeys, range: prep.seriesColors },
+      gradients,
       svgAnimation: prep.animation,
       tooltip,
     })
-  }, [prep, settings.areaFill, settings.labelColor])
+  }, [prep, metrics, gradientPrefix, settings.areaFill, settings.labelColor])
 
   return <Chart definition={definition} ariaLabel="Area chart" className="h-full min-h-0 w-full" />
 }
@@ -583,7 +612,7 @@ function PieChartBody({
         ]
       }),
     )
-    const slices = pie(inputs, { value: "value" })
+    const slices = pie(inputs, { value: "value", gapAngle: 0.015 })
     const totals = Object.fromEntries(
       metrics.map((metric) => [metric.key, totalForMetric(rows, metric.key)]),
     )
