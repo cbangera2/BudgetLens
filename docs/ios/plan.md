@@ -183,16 +183,16 @@ Native feel is navigation + sheets + touch, not a rewrite. Planned deltas, all r
 
 ## 14. Risks and mitigations
 
-| Risk | Effect | Mitigation |
-|---|---|---|
-| WKWebView storage eviction / scheme-origin change across updates | Looks like data loss | Origin-stability upgrade test as release blocker; first-class manual backup/restore; document Data Protection entitlement |
-| Router deep-link reload fails in bundle | Blank screen on restart/restore | Hash/memory history on native + state-restore test; keep browser history on web |
-| Recharts touch perf on old phones | Janky charts | Disable animation on native, decimate rendered points, virtualize lists; measure on oldest supported phone |
-| dnd-kit reorder unusable on touch | Dashboard/chart reorder feels broken | Replace with simple up/down/move controls or native-friendly drag on small screens; keep dnd-kit on desktop |
-| Apple "just a website" rejection | Submission blocked | Offline-first + Files/Share/Haptics/Biometrics/Keychain integration; honest native value statement |
-| BYOK friction / key phishing appearance | Users abandon assistant | System browser sheet for provider signup docs, paste-once Keychain flow, clear data-leaves-device consent |
-| Snapshot over-sharing | Privacy incident | Keep caps/truncation, consent screen quoting snapshot shape, censored logs, HTTPS-only, no raw file upload |
-| Scope creep to native rewrite | Months lost | Hard gate: v1 is wrapper + adaptive shell; Expo/SwiftUI only if widgets/watch demand it |
+| Risk                                                             | Effect                               | Mitigation                                                                                                                |
+| ---------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| WKWebView storage eviction / scheme-origin change across updates | Looks like data loss                 | Origin-stability upgrade test as release blocker; first-class manual backup/restore; document Data Protection entitlement |
+| Router deep-link reload fails in bundle                          | Blank screen on restart/restore      | Hash/memory history on native + state-restore test; keep browser history on web                                           |
+| Recharts touch perf on old phones                                | Janky charts                         | Disable animation on native, decimate rendered points, virtualize lists; measure on oldest supported phone                |
+| dnd-kit reorder unusable on touch                                | Dashboard/chart reorder feels broken | Replace with simple up/down/move controls or native-friendly drag on small screens; keep dnd-kit on desktop               |
+| Apple "just a website" rejection                                 | Submission blocked                   | Offline-first + Files/Share/Haptics/Biometrics/Keychain integration; honest native value statement                        |
+| BYOK friction / key phishing appearance                          | Users abandon assistant              | System browser sheet for provider signup docs, paste-once Keychain flow, clear data-leaves-device consent                 |
+| Snapshot over-sharing                                            | Privacy incident                     | Keep caps/truncation, consent screen quoting snapshot shape, censored logs, HTTPS-only, no raw file upload                |
+| Scope creep to native rewrite                                    | Months lost                          | Hard gate: v1 is wrapper + adaptive shell; Expo/SwiftUI only if widgets/watch demand it                                   |
 
 ## 15. Open questions (for reviewer)
 
