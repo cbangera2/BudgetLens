@@ -1,30 +1,13 @@
+import { areaY, barX, barY, defineChart, group, lineY, text } from "@tanstack/charts"
+import { pie, polar, radialArc, radialText } from "@tanstack/charts/polar"
+import { Chart } from "@tanstack/charts/react"
+import { scaleBand } from "@tanstack/charts/scales/band"
+import { scaleLinear } from "@tanstack/charts/scales/linear"
+import { scalePoint } from "@tanstack/charts/scales/point"
+import { tooltip } from "@tanstack/charts/tooltip"
 import { useId, useMemo, type ReactNode } from "react"
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  LabelList,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  type PieLabelRenderProps,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  ChartContainer,
-  ChartLegendContent,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart"
 
 export type ChartKind = "bar" | "line" | "area" | "pie"
 export type BarDirection = "vertical" | "horizontal"
@@ -121,43 +104,6 @@ function formatDefault(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)
 }
 
-function pieLabel(
-  props: PieLabelRenderProps,
-  display: ChartLabelDisplay,
-  color: string,
-  position: Exclude<PieLabelPosition, "none">,
-) {
-  const value = props.value
-  const percent = props.percent ?? 0
-  const radius =
-    position === "center"
-      ? 0
-      : position === "inside"
-        ? (props.innerRadius + props.outerRadius) / 2
-        : props.outerRadius + 18
-  const radians = (-(props.midAngle ?? 0) * Math.PI) / 180
-  const x = props.cx + radius * Math.cos(radians)
-  const y = props.cy + radius * Math.sin(radians)
-  const detail =
-    display === "value"
-      ? formatDefault(value)
-      : display === "percent"
-        ? `${(percent * 100).toFixed(1)}%`
-        : `${formatDefault(value)} · ${(percent * 100).toFixed(1)}%`
-  return (
-    <text
-      x={x}
-      y={y}
-      fill={color}
-      textAnchor={position === "center" ? "middle" : x > props.cx ? "start" : "end"}
-      dominantBaseline="central"
-      fontSize={12}
-    >
-      {props.name ?? "Value"}: {detail}
-    </text>
-  )
-}
-
 function AccessibleDataTable({
   title,
   rows,
@@ -222,291 +168,494 @@ function EmptyChart({ message }: { message: string }) {
   )
 }
 
-interface ChartBodyProps {
+interface LongRow {
+  id: string
+  label: string
+  metricKey: string
+  value: number
+}
+
+interface PieSliceInput {
+  id: string
+  label: string
+  value: number
+  metricKey: string
+}
+
+function ChartLegend({
+  metrics,
+  colors,
+  placement,
+}: {
+  metrics: readonly ChartMetric[]
+  colors: readonly string[]
+  placement: ChartLegendPlacement
+}) {
+  if (placement === "hidden" || metrics.length === 0) return null
+  const vertical = placement === "left" || placement === "right"
+  return (
+    <div
+      data-testid="chart-legend"
+      aria-label="Chart legend"
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground ${
+        placement === "top"
+          ? "justify-center pb-1"
+          : placement === "bottom"
+            ? "justify-center pt-1"
+            : vertical
+              ? "flex-col items-start justify-center gap-2"
+              : "justify-center pt-1"
+      }`}
+    >
+      {metrics.map((metric, index) => (
+        <span key={metric.key} className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="size-2.5 rounded-[3px]"
+            style={{ backgroundColor: colorAt(colors, index) }}
+          />
+          {metric.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+interface CartesianPrep {
+  longRows: LongRow[]
+  labeledRows: (LongRow & { labelText: string })[]
+  showLabels: boolean
+  xGrid: boolean
+  yGrid: boolean
+  metricKeys: string[]
+  seriesColors: string[]
+  animation: false | { duration: number }
+}
+
+function useCartesianPrep(
+  rows: readonly ChartDataRow[],
+  metrics: readonly ChartMetric[],
+  settings: ChartPresentationSettings,
+  colors: readonly string[],
+): CartesianPrep {
+  return useMemo(() => {
+    const longRows: LongRow[] = []
+    for (const row of rows) {
+      for (const metric of metrics) {
+        const value = row.values[metric.key]
+        if (value === null || value === undefined || !Number.isFinite(value)) continue
+        longRows.push({
+          id: `${row.id}:${metric.key}`,
+          label: row.label,
+          metricKey: metric.key,
+          value,
+        })
+      }
+    }
+
+    const totals = Object.fromEntries(
+      metrics.map((metric) => [metric.key, totalForMetric(rows, metric.key)]),
+    )
+    const formatters = Object.fromEntries(
+      metrics.map((metric) => [metric.key, metric.formatValue ?? formatDefault]),
+    )
+    const showLabels = settings.labelDisplay !== "none"
+    const labeledRows = showLabels
+      ? longRows.map((row) => ({
+          ...row,
+          labelText: formatLabel(
+            row.value,
+            totals[row.metricKey] ?? 0,
+            settings.labelDisplay,
+            formatters[row.metricKey] ?? formatDefault,
+          ),
+        }))
+      : []
+
+    return {
+      longRows,
+      labeledRows,
+      showLabels,
+      xGrid: settings.grid === "vertical" || settings.grid === "both",
+      yGrid: settings.grid === "horizontal" || settings.grid === "both",
+      metricKeys: metrics.map((metric) => metric.key),
+      seriesColors: metrics.map((metric, index) => metric.color ?? colorAt(colors, index)),
+      animation: settings.animationDuration > 0 ? { duration: settings.animationDuration } : false,
+    }
+  }, [rows, metrics, settings, colors])
+}
+
+function HorizontalBarChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
   rows: readonly ChartDataRow[]
   metrics: readonly ChartMetric[]
   settings: ChartPresentationSettings
   colors: readonly string[]
-  config: ChartConfig
-}
+}) {
+  const prep = useCartesianPrep(rows, metrics, settings, colors)
+  const definition = useMemo(() => {
+    // Grouped bars share one band center, but text marks don't participate in
+    // the group layout. Offset each label vertically onto its own bar so
+    // multi-metric value labels don't collide like unpositioned captions.
+    const renderedHeight =
+      settings.size === "small"
+        ? 200
+        : settings.size === "medium"
+          ? 300
+          : settings.size === "large"
+            ? 400
+            : clampDimension(settings.height, 100, 800)
+    const band = (renderedHeight - 96) / Math.max(1, rows.length)
+    const step = band / Math.max(1, metrics.length)
+    const metricIndex = new Map(metrics.map((metric, index) => [metric.key, index]))
+    return defineChart({
+      marks: [
+        barX(prep.longRows, {
+          x: "value",
+          y: "label",
+          z: "metricKey",
+          color: "metricKey",
+          key: "id",
+          layout: group(),
+          radius: 5,
+        }),
+        ...(prep.showLabels
+          ? [
+              text(prep.labeledRows, {
+                x: "value",
+                y: "label",
+                text: "labelText",
+                key: "id",
+                fill: settings.labelColor,
+                fontSize: 12,
+                anchor: "start",
+                dx: 8,
+                dy: (row) =>
+                  ((metricIndex.get(row.metricKey) ?? 0) - (metrics.length - 1) / 2) * step,
+              }),
+            ]
+          : []),
+      ],
+      scales: {
+        x: { scale: scaleLinear, nice: true, grid: prep.xGrid },
+        y: { scale: () => scaleBand().padding(0.2), grid: prep.yGrid },
+      },
+      color: { domain: prep.metricKeys, range: prep.seriesColors },
+      svgAnimation: prep.animation,
+      tooltip,
+    })
+  }, [prep, settings.labelColor, settings.size, settings.height, rows.length, metrics])
 
-function CartesianChartBody({ rows, metrics, settings, colors, config }: ChartBodyProps) {
-  const gradientId = useId().replaceAll(":", "")
-  const chartData = rows.map((row) => ({ name: row.label, ...row.values }))
-  const totals = Object.fromEntries(
-    metrics.map((metric) => [metric.key, totalForMetric(rows, metric.key)]),
-  )
-  const horizontalBars = settings.kind === "bar" && settings.barDirection === "horizontal"
-  const legendAlign =
-    settings.legend === "left" ? "left" : settings.legend === "right" ? "right" : "center"
-  const sideLegend = settings.legend === "left" || settings.legend === "right"
-  const legendVerticalAlign = sideLegend ? "middle" : settings.legend === "top" ? "top" : "bottom"
-  const common = {
-    responsive: true,
-    data: chartData,
-    style: { width: "100%", height: "100%" },
-    margin: { top: settings.labelDisplay === "none" ? 12 : 28, right: 20, bottom: 8, left: 12 },
-    accessibilityLayer: true,
-  } as const
-  const grid =
-    settings.grid === "none" ? null : (
-      <CartesianGrid
-        horizontal={settings.grid === "horizontal" || settings.grid === "both"}
-        vertical={settings.grid === "vertical" || settings.grid === "both"}
-      />
-    )
-  const axes = horizontalBars ? (
-    <>
-      <XAxis type="number" tickLine={false} axisLine={false} />
-      <YAxis dataKey="name" type="category" width="auto" tickLine={false} axisLine={false} />
-    </>
-  ) : (
-    <>
-      <XAxis dataKey="name" minTickGap={24} tickMargin={8} tickLine={false} axisLine={false} />
-      <YAxis width="auto" tickLine={false} axisLine={false} />
-    </>
-  )
-  const tooltip = (
-    <Tooltip
-      content={<ChartTooltipContent />}
-      cursor={
-        settings.kind === "area"
-          ? false
-          : { fill: "color-mix(in oklab, var(--muted) 65%, transparent)" }
-      }
+  return (
+    <Chart
+      definition={definition}
+      ariaLabel="Horizontal bar chart"
+      className="h-full min-h-0 w-full"
     />
   )
-  const legend =
-    settings.legend === "hidden" ? null : (
-      <Legend
-        content={<ChartLegendContent />}
-        align={legendAlign}
-        verticalAlign={legendVerticalAlign}
-        layout={sideLegend ? "vertical" : "horizontal"}
-      />
-    )
+}
 
-  if (settings.kind === "bar") {
-    return (
-      <ChartContainer config={config} className="h-full min-h-0">
-        <BarChart {...common} layout={horizontalBars ? "vertical" : "horizontal"}>
-          {grid}
-          {axes}
-          {tooltip}
-          {legend}
-          {metrics.map((metric, index) => (
-            <Bar
-              dataKey={metric.key}
-              fill={colorAt(colors, index)}
-              key={metric.key}
-              name={metric.label}
-              radius={horizontalBars ? [0, 5, 5, 0] : [5, 5, 0, 0]}
-              isAnimationActive={settings.animationDuration > 0}
-              animationDuration={settings.animationDuration}
-            >
-              {settings.labelDisplay !== "none" && (
-                <LabelList
-                  position={horizontalBars ? "right" : "top"}
-                  fill={settings.labelColor}
-                  formatter={(value: unknown) =>
-                    formatLabel(
-                      Number(value ?? 0),
-                      totals[metric.key] ?? 0,
-                      settings.labelDisplay,
-                      metric.formatValue ?? formatDefault,
-                    )
-                  }
-                />
-              )}
-            </Bar>
-          ))}
-        </BarChart>
-      </ChartContainer>
-    )
-  }
-
-  if (settings.kind === "area") {
-    return (
-      <ChartContainer config={config} className="h-full min-h-0">
-        <AreaChart {...common}>
-          <defs>
-            {metrics.map((metric, index) => (
-              <linearGradient
-                id={`area-${gradientId}-${index}`}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-                key={metric.key}
-              >
-                <stop offset="5%" stopColor={`var(--color-${metric.key})`} stopOpacity={0.8} />
-                <stop offset="95%" stopColor={`var(--color-${metric.key})`} stopOpacity={0.1} />
-              </linearGradient>
-            ))}
-          </defs>
-          {grid}
-          {axes}
-          {tooltip}
-          {legend}
-          {metrics.map((metric, index) => (
-            <Area
-              dataKey={metric.key}
-              key={metric.key}
-              name={metric.label}
-              type="natural"
-              stroke={`var(--color-${metric.key})`}
-              fill={
-                settings.areaFill === "gradient"
-                  ? `url(#area-${gradientId}-${index})`
-                  : settings.areaFill === "solid"
-                    ? `var(--color-${metric.key})`
-                    : "transparent"
-              }
-              fillOpacity={
-                settings.areaFill === "solid" ? 0.18 : settings.areaFill === "none" ? 0 : 1
-              }
-              strokeWidth={2}
-              connectNulls
-              isAnimationActive={settings.animationDuration > 0}
-              animationDuration={settings.animationDuration}
-            >
-              {settings.labelDisplay !== "none" && (
-                <LabelList
-                  position="top"
-                  fill={settings.labelColor}
-                  formatter={(value: unknown) =>
-                    formatLabel(
-                      Number(value ?? 0),
-                      totals[metric.key] ?? 0,
-                      settings.labelDisplay,
-                      metric.formatValue ?? formatDefault,
-                    )
-                  }
-                />
-              )}
-            </Area>
-          ))}
-        </AreaChart>
-      </ChartContainer>
-    )
-  }
+function VerticalBarChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
+  rows: readonly ChartDataRow[]
+  metrics: readonly ChartMetric[]
+  settings: ChartPresentationSettings
+  colors: readonly string[]
+}) {
+  const prep = useCartesianPrep(rows, metrics, settings, colors)
+  const definition = useMemo(
+    () =>
+      defineChart({
+        marks: [
+          barY(prep.longRows, {
+            x: "label",
+            y: "value",
+            z: "metricKey",
+            color: "metricKey",
+            key: "id",
+            layout: group(),
+            radius: 5,
+          }),
+          ...(prep.showLabels
+            ? [
+                text(prep.labeledRows, {
+                  x: "label",
+                  y: "value",
+                  text: "labelText",
+                  key: "id",
+                  fill: settings.labelColor,
+                  fontSize: 12,
+                  anchor: "middle",
+                  dy: -8,
+                }),
+              ]
+            : []),
+        ],
+        scales: {
+          x: { scale: () => scaleBand().padding(0.2), grid: prep.xGrid },
+          y: { scale: scaleLinear, nice: true, grid: prep.yGrid },
+        },
+        color: { domain: prep.metricKeys, range: prep.seriesColors },
+        svgAnimation: prep.animation,
+        tooltip,
+      }),
+    [prep, settings.labelColor],
+  )
 
   return (
-    <ChartContainer config={config} className="h-full min-h-0">
-      <LineChart {...common}>
-        {grid}
-        {axes}
-        {tooltip}
-        {legend}
-        {metrics.map((metric, index) => (
-          <Line
-            dataKey={metric.key}
-            key={metric.key}
-            name={metric.label}
-            type="monotone"
-            stroke={colorAt(colors, index)}
-            strokeWidth={2.5}
-            dot={{ r: 3, fill: colorAt(colors, index) }}
-            activeDot={{ r: 5 }}
-            connectNulls
-            isAnimationActive={settings.animationDuration > 0}
-            animationDuration={settings.animationDuration}
-          >
-            {settings.labelDisplay !== "none" && (
-              <LabelList
-                position="top"
-                fill={settings.labelColor}
-                formatter={(value: unknown) =>
-                  formatLabel(
-                    Number(value ?? 0),
-                    totals[metric.key] ?? 0,
-                    settings.labelDisplay,
-                    metric.formatValue ?? formatDefault,
-                  )
-                }
-              />
-            )}
-          </Line>
-        ))}
-      </LineChart>
-    </ChartContainer>
+    <Chart
+      definition={definition}
+      ariaLabel="Vertical bar chart"
+      className="h-full min-h-0 w-full"
+    />
   )
 }
 
-function PieChartBody({ rows, metrics, settings, colors, config }: ChartBodyProps) {
-  const slices = metrics.flatMap((metric) => {
-    const metricTotal = totalForMetric(rows, metric.key)
-    return rows.flatMap((row) => {
-      const value = row.values[metric.key]
-      if (value === null || value === undefined) return []
-      return [
-        {
-          id: `${metric.key}:${row.id}`,
-          name: metrics.length === 1 ? row.label : `${row.label} · ${metric.label}`,
-          value: Math.abs(value),
-          originalValue: value,
-          metric,
-          metricTotal,
-        },
-      ]
+function AreaChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
+  rows: readonly ChartDataRow[]
+  metrics: readonly ChartMetric[]
+  settings: ChartPresentationSettings
+  colors: readonly string[]
+}) {
+  const prep = useCartesianPrep(rows, metrics, settings, colors)
+  const definition = useMemo(() => {
+    const fillOpacity =
+      settings.areaFill === "gradient" ? 0.35 : settings.areaFill === "solid" ? 0.18 : 0
+    return defineChart({
+      marks: [
+        areaY(prep.longRows, {
+          x: "label",
+          y: "value",
+          // Explicit zero baseline: areas overlap like the previous renderer
+          // instead of using TanStack's implicit stacking.
+          y1: 0,
+          z: "metricKey",
+          color: "metricKey",
+          key: "id",
+          fillOpacity,
+        }),
+        ...(prep.showLabels
+          ? [
+              text(prep.labeledRows, {
+                x: "label",
+                y: "value",
+                text: "labelText",
+                key: "id",
+                fill: settings.labelColor,
+                fontSize: 12,
+                anchor: "middle",
+                dy: -10,
+              }),
+            ]
+          : []),
+      ],
+      scales: {
+        x: { scale: () => scalePoint().padding(0.2), grid: prep.xGrid },
+        y: { scale: scaleLinear, nice: true, grid: prep.yGrid },
+      },
+      color: { domain: prep.metricKeys, range: prep.seriesColors },
+      svgAnimation: prep.animation,
+      tooltip,
     })
-  })
+  }, [prep, settings.areaFill, settings.labelColor])
 
-  return (
-    <ChartContainer config={config} className="h-full min-h-0">
-      <PieChart
-        responsive
-        style={{ width: "100%", height: "100%" }}
-        margin={{ top: 16, right: 20, bottom: 16, left: 20 }}
-        accessibilityLayer
-      >
-        <Tooltip content={<ChartTooltipContent />} />
-        {settings.legend !== "hidden" && (
-          <Legend
-            align={
-              settings.legend === "left" ? "left" : settings.legend === "right" ? "right" : "center"
-            }
-            verticalAlign={
-              settings.legend === "left" || settings.legend === "right"
-                ? "middle"
-                : settings.legend === "top"
-                  ? "top"
-                  : "bottom"
-            }
-            layout={
-              settings.legend === "left" || settings.legend === "right" ? "vertical" : "horizontal"
-            }
-          />
-        )}
-        <Pie
-          data={slices}
-          dataKey="value"
-          nameKey="name"
-          innerRadius="42%"
-          outerRadius="76%"
-          paddingAngle={1}
-          isAnimationActive={settings.animationDuration > 0}
-          animationDuration={settings.animationDuration}
-          labelLine={settings.labelDisplay !== "none" && settings.pieLabelPosition === "outside"}
-          label={
-            settings.labelDisplay === "none" || settings.pieLabelPosition === "none"
-              ? false
-              : (props: PieLabelRenderProps) =>
-                  pieLabel(
-                    props,
-                    settings.labelDisplay,
-                    settings.labelColor,
-                    settings.pieLabelPosition === "none" ? "outside" : settings.pieLabelPosition,
-                  )
-          }
-        >
-          {slices.map((slice, index) => (
-            <Cell fill={colorAt(colors, index)} key={slice.id} stroke="var(--card)" />
-          ))}
-        </Pie>
-      </PieChart>
-    </ChartContainer>
+  return <Chart definition={definition} ariaLabel="Area chart" className="h-full min-h-0 w-full" />
+}
+
+function LineChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
+  rows: readonly ChartDataRow[]
+  metrics: readonly ChartMetric[]
+  settings: ChartPresentationSettings
+  colors: readonly string[]
+}) {
+  const prep = useCartesianPrep(rows, metrics, settings, colors)
+  const definition = useMemo(
+    () =>
+      defineChart({
+        marks: [
+          lineY(prep.longRows, {
+            x: "label",
+            y: "value",
+            z: "metricKey",
+            color: "metricKey",
+            key: "id",
+            points: true,
+            strokeWidth: 2.5,
+          }),
+          ...(prep.showLabels
+            ? [
+                text(prep.labeledRows, {
+                  x: "label",
+                  y: "value",
+                  text: "labelText",
+                  key: "id",
+                  fill: settings.labelColor,
+                  fontSize: 12,
+                  anchor: "middle",
+                  dy: -10,
+                }),
+              ]
+            : []),
+        ],
+        scales: {
+          x: { scale: () => scalePoint().padding(0.2), grid: prep.xGrid },
+          y: { scale: scaleLinear, nice: true, grid: prep.yGrid },
+        },
+        color: { domain: prep.metricKeys, range: prep.seriesColors },
+        svgAnimation: prep.animation,
+        tooltip,
+      }),
+    [prep, settings.labelColor],
   )
+
+  return <Chart definition={definition} ariaLabel="Line chart" className="h-full min-h-0 w-full" />
+}
+
+function CartesianChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
+  rows: readonly ChartDataRow[]
+  metrics: readonly ChartMetric[]
+  settings: ChartPresentationSettings
+  colors: readonly string[]
+}) {
+  const horizontalBars = settings.kind === "bar" && settings.barDirection === "horizontal"
+  if (horizontalBars) {
+    return (
+      <HorizontalBarChartBody rows={rows} metrics={metrics} settings={settings} colors={colors} />
+    )
+  }
+  if (settings.kind === "bar") {
+    return (
+      <VerticalBarChartBody rows={rows} metrics={metrics} settings={settings} colors={colors} />
+    )
+  }
+  if (settings.kind === "area") {
+    return <AreaChartBody rows={rows} metrics={metrics} settings={settings} colors={colors} />
+  }
+  return <LineChartBody rows={rows} metrics={metrics} settings={settings} colors={colors} />
+}
+
+function PieChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+}: {
+  rows: readonly ChartDataRow[]
+  metrics: readonly ChartMetric[]
+  settings: ChartPresentationSettings
+  colors: readonly string[]
+}) {
+  const definition = useMemo(() => {
+    const inputs: PieSliceInput[] = metrics.flatMap((metric) =>
+      rows.flatMap((row) => {
+        const value = row.values[metric.key]
+        if (value === null || value === undefined || !Number.isFinite(value)) return []
+        return [
+          {
+            id: `${metric.key}:${row.id}`,
+            label: metrics.length === 1 ? row.label : `${row.label} · ${metric.label}`,
+            value: Math.abs(value),
+            metricKey: metric.key,
+          },
+        ]
+      }),
+    )
+    const slices = pie(inputs, { value: "value" })
+    const totals = Object.fromEntries(
+      metrics.map((metric) => [metric.key, totalForMetric(rows, metric.key)]),
+    )
+    const formatters = Object.fromEntries(
+      metrics.map((metric) => [metric.key, metric.formatValue ?? formatDefault]),
+    )
+    const showLabels = settings.labelDisplay !== "none" && settings.pieLabelPosition !== "none"
+    const labeledSlices = showLabels
+      ? slices.map((slice) => ({
+          ...slice,
+          labelText: `${slice.label}: ${formatLabel(
+            slice.value,
+            totals[slice.metricKey] ?? 0,
+            settings.labelDisplay,
+            formatters[slice.metricKey] ?? formatDefault,
+          )}`,
+        }))
+      : []
+    const sliceIds = slices.map((slice) => slice.id)
+    const sliceColors = slices.map((_, index) => colorAt(colors, index))
+    const animation =
+      settings.animationDuration > 0 ? { duration: settings.animationDuration } : false
+    const radiusOffset =
+      settings.pieLabelPosition === "outside"
+        ? 18
+        : settings.pieLabelPosition === "center"
+          ? -56
+          : -28
+
+    return defineChart({
+      marks: [
+        polar({
+          inset: 8,
+          radiusRatio: 0.82,
+          scales: {
+            angle: { scale: scaleLinear().domain([0, Math.PI * 2]) },
+            radius: { scale: scaleLinear().domain([0, 1]) },
+          },
+          marks: [
+            radialArc(slices, {
+              innerRadius: ({ radius }) => radius * 0.42,
+              cornerRadius: 2,
+              color: "id",
+              key: "id",
+              stroke: "var(--card)",
+              strokeWidth: 1,
+            }),
+            ...(showLabels
+              ? [
+                  radialText(labeledSlices, {
+                    angle: "angle",
+                    radius: 1,
+                    text: "labelText",
+                    key: "id",
+                    fill: settings.labelColor,
+                    fontSize: 12,
+                    anchor: settings.pieLabelPosition === "outside" ? "outside" : "middle",
+                    radiusOffset,
+                  }),
+                ]
+              : []),
+          ],
+        }),
+      ],
+      scales: { x: null, y: null },
+      color: { domain: sliceIds, range: sliceColors },
+      svgAnimation: animation,
+      tooltip,
+    })
+  }, [rows, metrics, settings, colors])
+
+  return <Chart definition={definition} ariaLabel="Pie chart" className="h-full min-h-0 w-full" />
 }
 
 export function CustomChartRenderer({
@@ -538,12 +687,6 @@ export function CustomChartRenderer({
   const seriesColors = selectedMetrics.map(
     (metric, index) => metric.color ?? colorAt(colors, index),
   )
-  const config = Object.fromEntries(
-    selectedMetrics.map((metric, index) => [
-      metric.key,
-      { label: metric.label, color: colorAt(seriesColors, index) },
-    ]),
-  ) satisfies ChartConfig
   const height =
     settings.size === "small"
       ? 200
@@ -561,6 +704,9 @@ export function CustomChartRenderer({
       ? "Select at least one metric to display this chart."
       : emptyMessage
   const hasChartData = selectedMetrics.length > 0 && rowsWithValues.length > 0
+  const showTopLegend = settings.legend === "top"
+  const showBottomLegend = settings.legend === "bottom"
+  const showSideLegend = settings.legend === "left" || settings.legend === "right"
 
   return (
     <Card className="pt-0" aria-labelledby={`${generatedId}-title`}>
@@ -584,22 +730,43 @@ export function CustomChartRenderer({
                 minWidth: settings.width.mode === "custom" ? width : undefined,
               }}
             >
-              {settings.kind === "pie" ? (
-                <PieChartBody
-                  rows={rowsWithValues}
-                  metrics={selectedMetrics}
-                  settings={settings}
-                  colors={colors}
-                  config={config}
-                />
-              ) : (
-                <CartesianChartBody
-                  rows={rowsWithValues}
-                  metrics={selectedMetrics}
-                  settings={settings}
-                  colors={seriesColors}
-                  config={config}
-                />
+              {showTopLegend && (
+                <ChartLegend metrics={selectedMetrics} colors={seriesColors} placement="top" />
+              )}
+              <div
+                className={
+                  showSideLegend
+                    ? `flex h-full min-h-0 gap-2 ${settings.legend === "left" ? "flex-row" : "flex-row-reverse"}`
+                    : "h-full min-h-0"
+                }
+              >
+                {showSideLegend && (
+                  <ChartLegend
+                    metrics={selectedMetrics}
+                    colors={seriesColors}
+                    placement={settings.legend}
+                  />
+                )}
+                <div className="h-full min-h-0 flex-1">
+                  {settings.kind === "pie" ? (
+                    <PieChartBody
+                      rows={rowsWithValues}
+                      metrics={selectedMetrics}
+                      settings={settings}
+                      colors={colors}
+                    />
+                  ) : (
+                    <CartesianChartBody
+                      rows={rowsWithValues}
+                      metrics={selectedMetrics}
+                      settings={settings}
+                      colors={seriesColors}
+                    />
+                  )}
+                </div>
+              </div>
+              {showBottomLegend && (
+                <ChartLegend metrics={selectedMetrics} colors={seriesColors} placement="bottom" />
               )}
               <figcaption className="sr-only">
                 {title}. {rowsWithValues.length} data points across {selectedMetrics.length}{" "}

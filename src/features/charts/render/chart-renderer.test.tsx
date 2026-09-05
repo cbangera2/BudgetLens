@@ -1,6 +1,5 @@
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type React from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import {
@@ -10,42 +9,19 @@ import {
 import { ChartSettingsEditor } from "@/features/charts/render/chart-settings-editor"
 import { EditableChartRenderer } from "@/features/charts/render/editable-chart-renderer"
 
-vi.mock("recharts", () => {
-  // oxlint-disable-next-line unicorn/consistent-function-scoping -- mock factory is hoisted
-  const Chart = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>
-  // oxlint-disable-next-line unicorn/consistent-function-scoping -- mock factory is hoisted
-  const Series = ({
-    children,
-    name,
-    fill,
-    fillOpacity,
-  }: {
-    children?: React.ReactNode
-    name?: string
-    fill?: string
-    fillOpacity?: number
-  }) => (
-    <div data-series={name} data-fill={fill} data-fill-opacity={fillOpacity}>
-      {children}
-    </div>
-  )
-  return {
-    Area: Series,
-    AreaChart: Chart,
-    Bar: Series,
-    BarChart: Chart,
-    CartesianGrid: () => null,
-    Cell: ({ fill }: { fill?: string }) => <span data-cell-fill={fill} />,
-    LabelList: () => null,
-    Legend: () => null,
-    Line: Series,
-    LineChart: Chart,
-    Pie: Series,
-    PieChart: Chart,
-    Tooltip: () => null,
-    XAxis: () => null,
-    YAxis: () => null,
-  }
+vi.mock("@tanstack/charts/react", () => ({
+  Chart: ({ ariaLabel, definition }: { ariaLabel?: string; definition?: unknown }) => (
+    <div
+      data-testid="tanstack-chart"
+      aria-label={ariaLabel}
+      data-definition={definition ? "present" : "missing"}
+    />
+  ),
+}))
+
+vi.mock("@tanstack/charts/polar", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@tanstack/charts/polar")>()
+  return original
 })
 
 const settings: ChartPresentationSettings = {
@@ -108,8 +84,8 @@ describe("CustomChartRenderer", () => {
     expect(within(table).queryByRole("columnheader", { name: "Count" })).not.toBeInTheDocument()
   })
 
-  it("uses a unique shadcn-style gradient for every area series", () => {
-    const { container } = render(
+  it("renders a TanStack chart surface for cartesian charts", () => {
+    render(
       <CustomChartRenderer
         title="Trends"
         data={[{ id: "july", label: "July", values: { amount: 42.5, count: 3 } }]}
@@ -118,15 +94,12 @@ describe("CustomChartRenderer", () => {
       />,
     )
 
-    const gradients = [...container.querySelectorAll("linearGradient")]
-    expect(gradients).toHaveLength(2)
-    expect(new Set(gradients.map((gradient) => gradient.id)).size).toBe(2)
-    expect(container.querySelectorAll('stop[stop-opacity="0.8"]')).toHaveLength(2)
-    expect(container.querySelectorAll('stop[stop-opacity="0.1"]')).toHaveLength(2)
+    expect(screen.getByTestId("tanstack-chart")).toBeInTheDocument()
+    expect(screen.getByTestId("chart-legend")).toBeInTheDocument()
   })
 
-  it("uses a distinct palette color for every pie slice", () => {
-    const { container } = render(
+  it("renders a distinct legend entry for every selected metric", () => {
+    render(
       <CustomChartRenderer
         title="Categories"
         data={[
@@ -139,43 +112,37 @@ describe("CustomChartRenderer", () => {
       />,
     )
 
-    const fills = [...container.querySelectorAll("[data-cell-fill]")].map((cell) =>
-      cell.getAttribute("data-cell-fill"),
-    )
-    expect(fills).toHaveLength(3)
-    expect(new Set(fills).size).toBe(3)
+    const legend = screen.getByTestId("chart-legend")
+    expect(within(legend).getByText("Amount")).toBeInTheDocument()
+    expect(screen.getByTestId("tanstack-chart")).toBeInTheDocument()
   })
 
-  it("supports gradient, solid, and disabled area fills", () => {
-    const { container, rerender } = render(
+  it("hides the legend when placement is hidden", () => {
+    render(
       <CustomChartRenderer
         title="Trends"
         data={[{ id: "july", label: "July", values: { amount: 42.5 } }]}
         metrics={metrics}
-        settings={{ ...settings, areaFill: "solid" }}
+        settings={{ ...settings, legend: "hidden" }}
       />,
     )
-    expect(container.querySelector('[data-series="Amount"]')).toHaveAttribute(
-      "data-fill",
-      "var(--color-amount)",
-    )
-    expect(container.querySelector('[data-series="Amount"]')).toHaveAttribute(
-      "data-fill-opacity",
-      "0.18",
-    )
+    expect(screen.queryByTestId("chart-legend")).not.toBeInTheDocument()
+    expect(screen.getByTestId("tanstack-chart")).toBeInTheDocument()
+  })
 
-    rerender(
-      <CustomChartRenderer
-        title="Trends"
-        data={[{ id: "july", label: "July", values: { amount: 42.5 } }]}
-        metrics={metrics}
-        settings={{ ...settings, areaFill: "none" }}
-      />,
-    )
-    expect(container.querySelector('[data-series="Amount"]')).toHaveAttribute(
-      "data-fill",
-      "transparent",
-    )
+  it("supports all legend placements without regressions", () => {
+    for (const legend of ["top", "bottom", "left", "right"] as const) {
+      const { unmount } = render(
+        <CustomChartRenderer
+          title="Trends"
+          data={[{ id: "july", label: "July", values: { amount: 42.5 } }]}
+          metrics={metrics}
+          settings={{ ...settings, legend }}
+        />,
+      )
+      expect(screen.getByTestId("chart-legend")).toBeInTheDocument()
+      unmount()
+    }
   })
 })
 

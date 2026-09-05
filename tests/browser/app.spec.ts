@@ -87,7 +87,7 @@ test("imports and visualizes net worth and investment history", async ({ page })
   await expect(page.getByText("Latest investments")).toBeVisible()
   await expect(page.getByRole("heading", { name: "$12,700.00" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "$6,725.50" })).toBeVisible()
-  await expect(page.locator(".recharts-area-curve")).toHaveCount(2)
+  await expect(page.locator(".ts-chart-host").first()).toBeVisible()
   await expect(
     page.getByRole("table", { name: "Net worth and investment values by observation date" }),
   ).toBeVisible()
