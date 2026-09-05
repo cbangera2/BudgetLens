@@ -26,6 +26,7 @@ import {
   type BudgetProposal,
 } from "@/features/assistant/data-tools"
 import { Markdown } from "@/features/assistant/markdown"
+import { ModelSelect } from "@/features/assistant/model-select"
 import {
   ASSISTANT_PRESETS,
   ASSISTANT_SETTINGS_KEY,
@@ -101,20 +102,7 @@ interface HarnessModelOption {
   id: string
   name: string
   provider: string
-}
-
-function groupModelsByProvider(
-  models: HarnessModelOption[],
-): Array<{ provider: string; models: HarnessModelOption[] }> {
-  const groups = new Map<string, HarnessModelOption[]>()
-  for (const model of models) {
-    const list = groups.get(model.provider) ?? []
-    list.push(model)
-    groups.set(model.provider, list)
-  }
-  return [...groups.entries()]
-    .toSorted(([left], [right]) => left.localeCompare(right))
-    .map(([provider, list]) => ({ provider, models: list }))
+  free?: boolean
 }
 
 function summarizeToolOutput(name: string, output: unknown): string {
@@ -201,6 +189,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           id: entry.id,
           name: typeof entry.name === "string" ? entry.name : entry.id,
           provider: typeof entry.provider === "string" ? entry.provider : "other",
+          ...(entry.free === true ? { free: true as const } : {}),
         })
       }
       setHarnessModels(models)
@@ -447,39 +436,20 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           </label>
           {settings.provider === "opencode-harness" ? (
             <div className="grid gap-1">
-              <label className="font-medium" htmlFor="assistant-model">
+              <span id="assistant-model-label" className="font-medium">
                 Opencode model
-              </label>
+              </span>
               {harnessModels && !customModel ? (
-                <select
-                  id="assistant-model"
-                  className="h-9 rounded-xl border border-input bg-background px-2"
+                <ModelSelect
+                  models={harnessModels}
                   value={settings.model}
-                  onChange={(event) => {
-                    if (event.target.value === "__custom") {
-                      setCustomModel(true)
-                      return
-                    }
-                    updateSettings({ model: event.target.value })
-                  }}
-                >
-                  {!harnessModels.some((model) => model.id === settings.model) && (
-                    <option value={settings.model}>{settings.model}</option>
-                  )}
-                  {groupModelsByProvider(harnessModels).map((group) => (
-                    <optgroup key={group.provider} label={group.provider}>
-                      {group.models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  <option value="__custom">Custom id…</option>
-                </select>
+                  onChange={(id) => updateSettings({ model: id })}
+                  onCustom={() => setCustomModel(true)}
+                />
               ) : (
                 <Input
                   id="assistant-model"
+                  aria-labelledby="assistant-model-label"
                   value={settings.model}
                   onChange={(event) => updateSettings({ model: event.target.value })}
                   placeholder="provider/model"

@@ -2,8 +2,6 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import { createServer } from "node:net"
 
 import { chat } from "@tanstack/ai"
-import { claudeCodeText } from "@tanstack/ai-claude-code"
-import { codexText } from "@tanstack/ai-codex"
 import { opencodeText } from "@tanstack/ai-opencode"
 import { defineSandbox, defineWorkspace, localSource, withSandbox } from "@tanstack/ai-sandbox"
 import { localProcessSandbox } from "@tanstack/ai-sandbox-local-process"
@@ -119,6 +117,7 @@ export interface HarnessModelOption {
   id: string
   name: string
   provider: string
+  free: boolean
 }
 
 interface DrainedTurn {
@@ -380,6 +379,7 @@ function parseProviderModels(payload: unknown): HarnessModelOption[] {
         id: fullId.includes("/") ? fullId : `${provider}/${fullId}`,
         name,
         provider,
+        free: /(^|[/:_-])free([/:_-]|$)/i.test(fullId),
       })
     }
   }
