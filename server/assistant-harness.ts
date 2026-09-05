@@ -365,18 +365,24 @@ function parseProviderModels(payload: unknown): HarnessModelOption[] {
   const list: unknown = isRecord(payload) ? (payload.providers ?? payload.all) : undefined
   if (!Array.isArray(list)) return []
   const models: HarnessModelOption[] = []
+  const seen = new Set<string>()
   for (const entry of list) {
     if (!isRecord(entry) || typeof entry.id !== "string") continue
     const provider = entry.id
     if (!isRecord(entry.models)) continue
     for (const [key, value] of Object.entries(entry.models)) {
       const fullId = isRecord(value) && typeof value.id === "string" ? value.id : key
+      const id = fullId.includes("/") ? fullId : `${provider}/${fullId}`
+      // Mirror providers can list the same model id; first (sorted) provider wins
+      // so ids stay unique for selection keys.
+      if (seen.has(id)) continue
+      seen.add(id)
       const name = isRecord(value) && typeof value.name === "string" ? value.name : fullId
       const toolcall =
         isRecord(value) && isRecord(value.capabilities) && value.capabilities.toolcall === true
       if (!toolcall) continue
       models.push({
-        id: fullId.includes("/") ? fullId : `${provider}/${fullId}`,
+        id,
         name,
         provider,
         free: /(^|[/:_-])free([/:_-]|$)/i.test(fullId),
