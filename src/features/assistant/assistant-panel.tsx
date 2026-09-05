@@ -335,7 +335,10 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(() => {
-    window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(settings))
+    // Never persist API keys to clear-text storage: they stay in memory only
+    // and must be re-entered each session.
+    const persistedSettings: AssistantSettings = { ...settings, apiKey: "" }
+    window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
   }, [settings])
 
   useEffect(() => {
@@ -1216,7 +1219,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 />
               </label>
               <label className="grid gap-1" htmlFor="assistant-key">
-                <span className="font-medium">API key (optional)</span>
+                <span className="font-medium">API key (optional, kept for this session only)</span>
                 <Input
                   id="assistant-key"
                   type="password"
