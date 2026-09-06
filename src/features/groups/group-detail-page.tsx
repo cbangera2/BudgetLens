@@ -18,6 +18,7 @@ import {
   type ChartMetric,
 } from "@/features/charts/render"
 import { formatMoney } from "@/features/dashboard/format"
+import { SettleUpSection } from "@/features/settling/settle-up-section"
 
 import { calculateGroupSummary, groupContributionMinor } from "./calculations"
 import { GroupEditorCard, groupColorHex } from "./group-form"
@@ -274,6 +275,8 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
           </CardContent>
         </Card>
       )}
+
+      <SettleUpSection transactions={members} />
 
       <Card aria-labelledby="group-filter-title">
         <CardHeader className="sr-only">
