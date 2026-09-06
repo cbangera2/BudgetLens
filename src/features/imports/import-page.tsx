@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react"
 
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -17,6 +18,8 @@ import {
   type ImportLimits,
   type ImportPreview,
 } from "@/features/imports/types"
+import { RulesSection } from "@/features/rules/rules-section"
+import { useTransactionRules } from "@/features/rules/store"
 
 function kindLabel(kind: ImportBatch["kind"]): string {
   if (kind === "bundle") return "BudgetLens bundle"
@@ -25,6 +28,14 @@ function kindLabel(kind: ImportBatch["kind"]): string {
   if (kind === "wealthBreakdown") return "Net worth breakdown"
   if (kind === "wealthAccounts") return "Wealth accounts"
   return "Transactions"
+}
+
+function formatPreviewAmountMinor(amountMinor: number): string {
+  const sign = amountMinor < 0 ? "-" : ""
+  const absolute = Math.abs(amountMinor)
+  const dollars = Math.floor(absolute / 100).toLocaleString("en-US")
+  const cents = (absolute % 100).toString().padStart(2, "0")
+  return `${sign}$${dollars}.${cents}`
 }
 
 interface ReadableImportFile {
@@ -102,14 +113,31 @@ export function ImportPage() {
   const [status, setStatus] = useState("")
   const [importError, setImportError] = useState("")
   const [busy, setBusy] = useState(false)
+  const [rules, ruleActions] = useTransactionRules()
+  const [categoryOverrides, setCategoryOverrides] = useState<Record<number, string>>({})
 
   useEffect(() => {
     void repositories.imports.list().then(setHistory)
   }, [])
 
-  async function selectFiles(files: File[], policy = duplicatePolicy) {
+  function previewWithOverrides(source: ImportPreview): ImportPreview {
+    const indices = Object.keys(categoryOverrides)
+    if (indices.length === 0) return source
+    return {
+      ...source,
+      transactions: source.transactions.map((draft, index) => {
+        const override = categoryOverrides[index]
+        if (override === undefined) return draft
+        const trimmed = override.trim()
+        return { ...draft, category: trimmed ? trimmed : null }
+      }),
+    }
+  }
+
+  async function selectFiles(files: File[], policy = duplicatePolicy, effectiveRules = rules) {
     setPreview(null)
     setCollection(null)
+    setCategoryOverrides({})
     setResultFailures([])
     setStatus("")
     setImportError("")
@@ -135,8 +163,15 @@ export function ImportPage() {
         }
         setStatus("Reading and validating the selected file…")
         setSelectedFile(file)
-        const next = await importService.preview(await file.text(), file.name, "skip", policy)
+        const next = await importService.preview(
+          await file.text(),
+          file.name,
+          "skip",
+          policy,
+          effectiveRules,
+        )
         setPreview(next)
+        setCategoryOverrides({})
         setStatus(
           next.duplicateFile && next.duplicatePolicy === "skip"
             ? "This exact file was already imported. Nothing will be written."
@@ -150,7 +185,7 @@ export function ImportPage() {
         setStatus(`Parsing ${read.inputs.length.toLocaleString()} readable file(s)…`)
         const parsed =
           read.inputs.length > 0
-            ? await importService.previewMany(read.inputs, policy)
+            ? await importService.previewMany(read.inputs, policy, effectiveRules)
             : {
                 previews: [],
                 failures: [],
@@ -215,8 +250,10 @@ export function ImportPage() {
           selectedFile.name,
           policy,
           duplicatePolicy,
+          rules,
         ),
       )
+      setCategoryOverrides({})
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "The preview could not be updated.")
     } finally {
@@ -228,7 +265,10 @@ export function ImportPage() {
     if (!preview) return
     setBusy(true)
     try {
-      const receipt = await importService.commit(preview)
+      const receipt = await importService.commit(previewWithOverrides(preview))
+      setHistory(await repositories.imports.list())
+      setPreview(null)
+      setCategoryOverrides({})
       setHistory(await repositories.imports.list())
       setPreview(null)
       setStatus(
@@ -243,7 +283,7 @@ export function ImportPage() {
 
   async function changeDuplicatePolicy(policy: DuplicatePolicy) {
     setDuplicatePolicy(policy)
-    if (selectedFiles.length > 0) await selectFiles(selectedFiles, policy)
+    if (selectedFiles.length > 0) await selectFiles(selectedFiles, policy, rules)
   }
 
   async function deleteImportBatch() {
@@ -343,6 +383,8 @@ export function ImportPage() {
         </CardContent>
       </Card>
 
+      <RulesSection rules={rules} actions={ruleActions} />
+
       {resultFailures.length > 0 ? (
         <Card className="border-destructive/50" aria-labelledby="import-result-errors">
           <CardHeader>
@@ -427,6 +469,9 @@ export function ImportPage() {
                           : item.issues.length > 0
                             ? `${item.issues.length.toLocaleString()} invalid row(s)`
                             : "Ready"}
+                        {(item.ruleAppliedCount ?? 0) > 0
+                          ? ` · ${(item.ruleAppliedCount ?? 0).toLocaleString()} row${(item.ruleAppliedCount ?? 0) === 1 ? "" : "s"} matched`
+                          : ""}
                       </td>
                     </tr>
                   ))}
@@ -461,6 +506,10 @@ export function ImportPage() {
                 Cancel
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Transaction rules were applied automatically to transaction files. Open a single file
+              to review per-row categories before confirming.
+            </p>
           </CardContent>
         </Card>
       ) : null}
@@ -531,6 +580,101 @@ export function ImportPage() {
               </fieldset>
             ) : null}
 
+            {preview.transactions.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="font-medium">Transaction categories</h3>
+                {(preview.ruleAppliedCount ?? 0) > 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {(preview.ruleAppliedCount ?? 0).toLocaleString()} row
+                    {(preview.ruleAppliedCount ?? 0) === 1 ? "" : "s"} matched a transaction rule.
+                    Categories can still be edited per row before confirming.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No transaction rules matched. Categories can still be edited per row before
+                    confirming.
+                  </p>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <caption className="sr-only">Transaction preview with rule categories</caption>
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-2 pr-4" scope="col">
+                          Date
+                        </th>
+                        <th className="py-2 pr-4" scope="col">
+                          Description
+                        </th>
+                        <th className="py-2 pr-4" scope="col">
+                          Amount
+                        </th>
+                        <th className="py-2 pr-4" scope="col">
+                          Category
+                        </th>
+                        <th className="py-2" scope="col">
+                          Rule
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.transactions.slice(0, 100).map((draft, index) => {
+                        const application = preview.ruleApplications?.[index]
+                        const matched = Boolean(application?.matchedRuleId)
+                        const value = categoryOverrides[index] ?? draft.category ?? ""
+                        return (
+                          <tr
+                            className="border-b"
+                            // oxlint-disable-next-line no-array-index-key -- Preview rows may be exact duplicates; source order is the identity.
+                            key={`${draft.date}-${draft.description}-${index}`}
+                          >
+                            <td className="py-2 pr-4 whitespace-nowrap">{draft.date}</td>
+                            <td className="py-2 pr-4">{draft.description || "—"}</td>
+                            <td className="py-2 pr-4 whitespace-nowrap">
+                              {formatPreviewAmountMinor(draft.amountMinor)}
+                            </td>
+                            <td className="py-2 pr-4">
+                              <Input
+                                aria-label={`Category for row ${index + 1} ${draft.description}`}
+                                className="h-8 min-w-32"
+                                autoComplete="off"
+                                value={value}
+                                disabled={busy}
+                                onChange={(event) =>
+                                  setCategoryOverrides((current) => ({
+                                    ...current,
+                                    [index]: event.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="py-2">
+                              {matched ? (
+                                <span className="inline-flex flex-col gap-1">
+                                  <Badge variant="secondary">Rule applied</Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    Was: {application?.originalCategory || "—"}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {preview.transactions.length > 100 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Showing 100 of {preview.transactions.length.toLocaleString()} rows. Remaining
+                    rows keep their rule-applied categories.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {preview.issues.length ? (
               <div>
                 <h3 className="font-medium">Rows that will be skipped</h3>
@@ -561,7 +705,10 @@ export function ImportPage() {
                 type="button"
                 variant="outline"
                 disabled={busy}
-                onClick={() => setPreview(null)}
+                onClick={() => {
+                  setPreview(null)
+                  setCategoryOverrides({})
+                }}
               >
                 Cancel
               </Button>
