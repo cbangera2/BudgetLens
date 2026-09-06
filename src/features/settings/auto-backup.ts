@@ -131,7 +131,9 @@ export async function maybeRunAutoBackup(deps: AutoBackupDeps): Promise<AutoBack
     try {
       await deps.saveTimestamp(deps.nowMs)
     } catch {
-      // The file is written; a timestamp failure just retries next suspend.
+      // The file is written but the throttle state is unchanged, so report
+      // non-success and let the next suspend rewrite the same file.
+      return "skipped-error"
     }
     return "backed-up"
   } catch {

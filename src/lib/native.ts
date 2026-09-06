@@ -192,35 +192,35 @@ export async function readAutoBackupLastTimestamp(): Promise<number | null> {
     const parsed = Number(value)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
   } catch {
+    // A failed read fails safe: the orchestrator treats null as "run".
     return null
   }
 }
 
-/** Best-effort persist of the last auto-backup time. Never throws. */
+/**
+ * Persist the last auto-backup time. No-op on web. Rejects when the native
+ * write fails so the orchestrator can skip the "backed-up" outcome and
+ * preserve the prior throttle state (the backup file is simply rewritten on
+ * the next suspend). Invalid timestamps return silently without writing.
+ */
 export async function writeAutoBackupLastTimestamp(nowMs: number): Promise<void> {
   if (!isNative()) return
-  try {
-    if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || nowMs <= 0) return
-    await Preferences.set({ key: AUTO_BACKUP_LAST_KEY, value: String(Math.floor(nowMs)) })
-  } catch {
-    // Best-effort; the next suspend simply retries.
-  }
+  if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || nowMs <= 0) return
+  await Preferences.set({ key: AUTO_BACKUP_LAST_KEY, value: String(Math.floor(nowMs)) })
 }
 
 /**
  * Overwrite Documents/budgetlens-auto-backup.json. No-op on web
- * (unattended downloads are unreliable/blocked). Never throws.
+ * (unattended downloads are unreliable/blocked). Rejects when the native
+ * write fails so the caller skips advancing the throttle timestamp; the
+ * suspend orchestrator catches this and resolves "skipped-error".
  */
 export async function writeAutoBackupFile(contents: string): Promise<void> {
   if (!isNative()) return
-  try {
-    await Filesystem.writeFile({
-      path: AUTO_BACKUP_FILENAME,
-      data: contents,
-      directory: Directory.Documents,
-      encoding: Encoding.UTF8,
-    })
-  } catch {
-    // Best-effort; suspend must never break the UI.
-  }
+  await Filesystem.writeFile({
+    path: AUTO_BACKUP_FILENAME,
+    data: contents,
+    directory: Directory.Documents,
+    encoding: Encoding.UTF8,
+  })
 }

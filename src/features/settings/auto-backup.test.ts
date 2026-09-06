@@ -235,7 +235,8 @@ describe("auto-backup orchestrator", () => {
       }),
     ).resolves.toBe("skipped-error")
 
-    // Timestamp failures still count the file as written.
+    // Timestamp failures report non-success so the prior throttle state stands;
+    // the next suspend rewrites the same file.
     await expect(
       maybeRunAutoBackup({
         isNativeShell: true,
@@ -248,7 +249,7 @@ describe("auto-backup orchestrator", () => {
           throw new Error("prefs locked")
         },
       }),
-    ).resolves.toBe("backed-up")
+    ).resolves.toBe("skipped-error")
   })
 
   it("skips when disabled", async () => {
