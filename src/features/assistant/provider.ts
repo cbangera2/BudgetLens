@@ -154,6 +154,12 @@ export interface AssistantSettings {
    * persisted.
    */
   rememberKey: boolean
+  /**
+   * Explicit opt-in before the first hosted send (any non-loopback,
+   * non-harness provider). Persisted once approved; revoke by toggling the
+   * provider or clearing site data. Local-only providers never need it.
+   */
+  hostedConsent: boolean
 }
 
 export const ASSISTANT_SETTINGS_KEY = "budgetlens.assistant.v1"
@@ -182,6 +188,7 @@ export function defaultSettingsFor(provider: AssistantProviderId): AssistantSett
     apiKey: "",
     thinking: DEFAULT_THINKING_LEVEL,
     rememberKey: isTauriSync() || isNativeCapacitorSync(),
+    hostedConsent: false,
   }
 }
 
@@ -231,6 +238,7 @@ export function readAssistantSettings(storage: Pick<Storage, "getItem">): Assist
         typeof parsed.rememberKey === "boolean"
           ? parsed.rememberKey
           : isTauriSync() || isNativeCapacitorSync(),
+      hostedConsent: parsed.hostedConsent === true,
     }
   } catch {
     return fallback
@@ -543,6 +551,19 @@ export function isLocalBaseURL(baseURL: string): boolean {
   } catch {
     return baseURL.includes("localhost") || baseURL.includes("127.0.0.1")
   }
+}
+
+/**
+ * Whether sending with these settings requires explicit hosted-data consent
+ * first: any non-loopback, non-harness provider without a recorded opt-in.
+ * Local-only providers never need it.
+ */
+export function needsHostedConsent(
+  settings: Pick<AssistantSettings, "provider" | "baseURL" | "hostedConsent">,
+): boolean {
+  if (settings.hostedConsent) return false
+  if (settings.provider === "opencode-harness") return false
+  return !isLocalBaseURL(settings.baseURL)
 }
 
 /**

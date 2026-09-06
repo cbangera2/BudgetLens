@@ -1,6 +1,6 @@
 import { useLiveQuery } from "dexie-react-hooks"
 import { Download, Laptop, Moon, ShieldCheck, Sun, Trash2, Upload } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 import { useTheme } from "@/app/theme-provider"
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { database } from "@/db/database"
 import { repositories } from "@/db/repositories"
+import { readAppLockMode, writeAppLockMode, type AppLockMode } from "@/features/security/app-lock"
 import {
   type BackupPreview,
   clearAllData,
@@ -19,7 +20,13 @@ import {
 } from "@/features/settings/backup"
 import { DesktopUpdateCard } from "@/features/settings/desktop-update-card"
 import { cn } from "@/lib/cn"
-import { backupFilename, shareBackupFile } from "@/lib/native"
+import {
+  backupFilename,
+  checkBiometrics,
+  isNative,
+  shareBackupFile,
+  type BiometricsStatus,
+} from "@/lib/native"
 
 const themes = [
   { value: "light", label: "Light", icon: Sun },
@@ -44,12 +51,25 @@ function describeRestorePreview(preview: BackupPreview): string {
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const [confirmation, setConfirmation] = useState("")
+  const [isNativeShell] = useState(() => isNative())
+  const [lockMode, setLockMode] = useState<AppLockMode>(() => readAppLockMode(window.localStorage))
+  const [biometrics, setBiometrics] = useState<BiometricsStatus | null>(null)
   const [restoreName, setRestoreName] = useState<string | null>(null)
   const [restorePreview, setRestorePreview] = useState<BackupPreview | null>(null)
   const [restorePayload, setRestorePayload] = useState<unknown>(null)
   const [restoreConfirmation, setRestoreConfirmation] = useState("")
   const [restoreError, setRestoreError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!isNativeShell) return () => undefined
+    let cancelled = false
+    void checkBiometrics().then((status) => {
+      if (!cancelled) setBiometrics(status)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isNativeShell])
   const counts = useLiveQuery(async () => {
     const [transactions, wealth, wealthBreakdown, wealthAccounts, imports, groups] =
       await Promise.all([
@@ -156,7 +176,7 @@ export function SettingsPage() {
         <CardHeader>
           <CardTitle>Appearance</CardTitle>
           <CardDescription>Choose how BudgetLens looks on this device.</CardDescription>
-        </CardHeader>
+        </CardHeader>{" "}
         <CardContent className="grid gap-3 sm:grid-cols-3">
           {themes.map(({ value, label, icon: Icon }) => (
             <button
@@ -175,6 +195,38 @@ export function SettingsPage() {
           ))}
         </CardContent>
       </Card>
+
+      {isNativeShell ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>App lock</CardTitle>
+            <CardDescription>
+              Require Face ID or the device passcode to open your finances on this device.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={lockMode === "biometric"}
+                onChange={(event) => {
+                  const next: AppLockMode = event.target.checked ? "biometric" : "off"
+                  writeAppLockMode(window.localStorage, next)
+                  setLockMode(next)
+                }}
+              />
+              <span>Lock app with Face ID or passcode</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {biometrics === null
+                ? "Checking device capabilities…"
+                : biometrics.available
+                  ? "Biometric unlock is available on this device."
+                  : "No biometrics enrolled — the device passcode will be offered instead."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

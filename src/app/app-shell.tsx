@@ -23,6 +23,7 @@ import { AssistantFab, AssistantPanel } from "@/features/assistant/assistant-pan
 import { ASSISTANT_OPEN_KEY } from "@/features/assistant/provider"
 import { DemoBanner } from "@/features/demo/demo-banner"
 import { ensureDemoData } from "@/features/demo/demo-seed"
+import { AppLockGate } from "@/features/security/app-lock-gate"
 
 const navigation = [
   { to: "/", label: "Overview", icon: BarChart3 },
@@ -90,98 +91,100 @@ export function AppShell() {
   const assistantToggleLabel = assistantOpen ? "Close assistant" : "Open assistant"
 
   return (
-    <div className="flex min-h-svh flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-              B
-            </span>
-            <span>BudgetLens</span>
-          </Link>
-          <div className="flex items-center gap-1">
-            <Button
-              variant={assistantOpen ? "secondary" : "ghost"}
-              size="icon"
-              aria-label={assistantToggleLabel}
-              title={assistantToggleLabel}
-              aria-expanded={assistantOpen}
-              onClick={() => setAssistantOpen((open) => !open)}
-            >
-              {assistantOpen ? (
-                <PanelRightClose className="size-5" aria-hidden="true" />
-              ) : (
-                <PanelRightOpen className="size-5" aria-hidden="true" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Toggle color theme"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              <Sun className="hidden size-5 dark:block" aria-hidden="true" />
-              <Moon className="size-5 dark:hidden" aria-hidden="true" />
-            </Button>
+    <AppLockGate>
+      <div className="flex min-h-svh flex-col bg-background text-foreground">
+        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+            <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
+              <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
+                B
+              </span>
+              <span>BudgetLens</span>
+            </Link>
+            <div className="flex items-center gap-1">
+              <Button
+                variant={assistantOpen ? "secondary" : "ghost"}
+                size="icon"
+                aria-label={assistantToggleLabel}
+                title={assistantToggleLabel}
+                aria-expanded={assistantOpen}
+                onClick={() => setAssistantOpen((open) => !open)}
+              >
+                {assistantOpen ? (
+                  <PanelRightClose className="size-5" aria-hidden="true" />
+                ) : (
+                  <PanelRightOpen className="size-5" aria-hidden="true" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Toggle color theme"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                <Sun className="hidden size-5 dark:block" aria-hidden="true" />
+                <Moon className="size-5 dark:hidden" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
+        </header>
+        <DemoBanner />
+        <div
+          className={`mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 py-6 transition-[grid-template-columns] sm:px-6 ${
+            sidebarCollapsed ? "lg:grid-cols-[3.5rem_1fr]" : "lg:grid-cols-[13rem_1fr]"
+          }`}
+        >
+          <nav aria-label="Primary" className="overflow-x-auto lg:sticky lg:top-22 lg:self-start">
+            <div
+              className={`mb-2 hidden items-center lg:flex ${
+                sidebarCollapsed ? "justify-center" : "justify-end"
+              }`}
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={sidebarToggleLabel}
+                title={sidebarToggleLabel}
+                aria-expanded={!sidebarCollapsed}
+                onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="size-4" aria-hidden="true" />
+                ) : (
+                  <PanelLeftClose className="size-4" aria-hidden="true" />
+                )}
+              </Button>
+            </div>
+            <ul className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
+              {navigation.map(({ to, label, icon: Icon }) => (
+                <li key={to}>
+                  <Link
+                    to={to}
+                    activeOptions={{ exact: to === "/" }}
+                    aria-label={sidebarCollapsed ? label : undefined}
+                    title={sidebarCollapsed ? label : undefined}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&.active]:bg-accent [&.active]:text-foreground ${
+                      sidebarCollapsed ? "lg:justify-center" : ""
+                    }`}
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className={sidebarCollapsed ? "lg:sr-only" : undefined}>{label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <main id="main-content" className="min-w-0">
+            <Outlet />
+          </main>
         </div>
-      </header>
-      <DemoBanner />
-      <div
-        className={`mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 py-6 transition-[grid-template-columns] sm:px-6 ${
-          sidebarCollapsed ? "lg:grid-cols-[3.5rem_1fr]" : "lg:grid-cols-[13rem_1fr]"
-        }`}
-      >
-        <nav aria-label="Primary" className="overflow-x-auto lg:sticky lg:top-22 lg:self-start">
-          <div
-            className={`mb-2 hidden items-center lg:flex ${
-              sidebarCollapsed ? "justify-center" : "justify-end"
-            }`}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={sidebarToggleLabel}
-              title={sidebarToggleLabel}
-              aria-expanded={!sidebarCollapsed}
-              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="size-4" aria-hidden="true" />
-              ) : (
-                <PanelLeftClose className="size-4" aria-hidden="true" />
-              )}
-            </Button>
-          </div>
-          <ul className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
-            {navigation.map(({ to, label, icon: Icon }) => (
-              <li key={to}>
-                <Link
-                  to={to}
-                  activeOptions={{ exact: to === "/" }}
-                  aria-label={sidebarCollapsed ? label : undefined}
-                  title={sidebarCollapsed ? label : undefined}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&.active]:bg-accent [&.active]:text-foreground ${
-                    sidebarCollapsed ? "lg:justify-center" : ""
-                  }`}
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className={sidebarCollapsed ? "lg:sr-only" : undefined}>{label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <main id="main-content" className="min-w-0">
-          <Outlet />
-        </main>
+        {assistantOpen ? (
+          <AssistantPanel onClose={() => setAssistantOpen(false)} />
+        ) : (
+          <AssistantFab onOpen={() => setAssistantOpen(true)} />
+        )}
+        <AppFooter />
       </div>
-      {assistantOpen ? (
-        <AssistantPanel onClose={() => setAssistantOpen(false)} />
-      ) : (
-        <AssistantFab onOpen={() => setAssistantOpen(true)} />
-      )}
-      <AppFooter />
-    </div>
+    </AppLockGate>
   )
 }
