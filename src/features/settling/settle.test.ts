@@ -167,11 +167,11 @@ describe("settleGroupTransactions", () => {
     expect(result.transfers).toEqual([])
   })
 
-  it("falls back to You for blank account names", () => {
+  it.each([null, "", "   "])("falls back to You for blank account names (%p)", (accountName) => {
     const result = settleGroupTransactions([
       buildTransaction({
         id: "a1",
-        accountName: null,
+        accountName,
         amountMinor: -6_000,
         shared: true,
         shareCount: 2,
