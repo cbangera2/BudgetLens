@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { database } from "@/db/database"
 import { repositories } from "@/db/repositories"
+import { NotificationsSettingsCard } from "@/features/notifications/notifications-toggle"
 import { readAppLockMode, writeAppLockMode, type AppLockMode } from "@/features/security/app-lock"
 import { readAutoBackupEnabled, writeAutoBackupEnabled } from "@/features/settings/auto-backup"
 import {
@@ -261,6 +262,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <NotificationsSettingsCard />
 
       <Card>
         <CardHeader>
