@@ -50,12 +50,11 @@ jobs:
           # vite.config.ts uses GITHUB_ACTIONS to set base="/BudgetLens/" automatically.
           # Override with VITE_BASE=/ for a custom domain.
           GITHUB_ACTIONS: "true"
-          # Baked shared key for demo mode (free models only, enforced in-app).
-          # Runs on main builds only (this workflow fires on push to main).
-          # Missing/empty secret = demo preset hidden, app behaves as before.
-          VITE_OPENROUTER_DEMO_KEY: ${{ secrets.OPENROUTER_KEY }}
-          # Relay origin (Cloudflare Worker). Empty until the human first
-          # deploy sets the secret; while empty, demo uses the direct path.
+          # Demo mode runs behind the Cloudflare relay (no secret in the
+          # bundle). The baked-key direct path (VITE_OPENROUTER_DEMO_KEY) is
+          # intentionally not set here: the key stays server-side only, so
+          # enforcement is unbypassable. If the relay URL is ever unset,
+          # the demo preset hides and the app behaves as before.
           VITE_ASSISTANT_RELAY_URL: ${{ secrets.VITE_ASSISTANT_RELAY_URL }}
 
       - name: Prepare Pages artifact (SPA fallback + disable Jekyll)
