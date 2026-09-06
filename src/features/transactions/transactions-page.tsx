@@ -14,6 +14,9 @@ import type { Transaction, TransactionDraft } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
+import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
+import { useTransferFlags } from "@/features/transfers/store"
+import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
 
 import {
   defaultTransactionFilters,
@@ -88,6 +91,12 @@ export function TransactionsPageContent() {
     setFilters((current) => ({ ...current, ...patch }))
 
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups])
+  const transferFlags = useTransferFlags()
+  const flaggedTransferIds = useMemo(() => {
+    const pairs = detectTransferPairs(transactions ?? [])
+    const ids = transferPairIds(pairs)
+    return new Set([...ids].filter((id) => !transferFlags.dismissedIds.has(id)))
+  }, [transactions, transferFlags.dismissedIds])
 
   function toggleRow(
     id: string,
@@ -429,6 +438,8 @@ export function TransactionsPageContent() {
         </Card>
       )}
 
+      <TransfersSection transactions={transactions} flagActions={transferFlags} />
+
       <Card>
         <CardHeader>
           <CardTitle>Activity</CardTitle>
@@ -526,7 +537,9 @@ export function TransactionsPageContent() {
                         </td>
                         <th scope="row" className="p-2 font-medium md:p-3">
                           {transaction.description}
-                          {(group || transaction.shared) && (
+                          {(group ||
+                            transaction.shared ||
+                            flaggedTransferIds.has(transaction.id)) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
                               {group && (
                                 <Badge variant="outline" className="max-w-40 truncate">
@@ -536,6 +549,7 @@ export function TransactionsPageContent() {
                               {transaction.shared && (
                                 <Badge variant="secondary">shared ÷{transaction.shareCount}</Badge>
                               )}
+                              {flaggedTransferIds.has(transaction.id) && <TransferBadge />}
                             </span>
                           )}
                         </th>
