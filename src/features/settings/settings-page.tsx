@@ -19,6 +19,7 @@ import {
 } from "@/features/settings/backup"
 import { DesktopUpdateCard } from "@/features/settings/desktop-update-card"
 import { cn } from "@/lib/cn"
+import { backupFilename, shareBackupFile } from "@/lib/native"
 
 const themes = [
   { value: "light", label: "Light", icon: Sun },
@@ -73,14 +74,8 @@ export function SettingsPage() {
     setBusy(true)
     try {
       const backup = await createBackup(repositories)
-      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `budgetlens-backup-${new Date().toISOString().slice(0, 10)}.json`
-      link.click()
-      URL.revokeObjectURL(url)
-      toast.success("Backup downloaded")
+      await shareBackupFile(backupFilename(), JSON.stringify(backup, null, 2))
+      toast.success("Backup exported")
     } catch {
       toast.error("Could not create the backup")
     } finally {

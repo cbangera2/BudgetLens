@@ -184,7 +184,9 @@ Resolved during scaffolding (verified on this machine; device confirmation still
 - iOS builds use `VITE_BASE=/` (`pnpm build:ios`); synced bundle verified to emit absolute `/assets/...` URLs that resolve on the custom scheme. GitHub Pages keeps `/BudgetLens/`.
 - Router on native: hash history + basepath `/`, extending the Tauri `isTauriSync()` pattern with `isNativeCapacitorSync()` (`src/lib/isNative.ts`, detects the WKWebView bridge; unit-tested both ways). Citation base-stripping parity test still owed (Spike 1).
 - `ios/` platform generated via `cap add ios` and synced via `cap sync ios` (CocoaPods + Xcode present); `ios/` stays gitignored, only config + scripts committed.
-- Open-in plist keys (`CFBundleURLTypes`, `CFBundleDocumentTypes`), Keychain plugin pin, nutrition-label wording: still open.
+- Open-in plist keys (`CFBundleURLTypes`, `CFBundleDocumentTypes`), nutrition-label wording: still open.
+- Native plugins pinned and synced (2026-09-05): `@capacitor/filesystem@8.1.3`, `@capacitor/share@8.0.1`, `@capacitor/haptics@8.0.2`, `@capacitor/preferences@8.0.1`, `@capacitor/keyboard@8.0.5`, `@aparajita/capacitor-secure-storage@8.0.0`, `@aparajita/capacitor-biometric-auth@10.0.0`. No official `@capacitor/secure-storage-plugin` or `@capacitor-community/biometrics` exists — the aparajita pair is the maintained path. `src/lib/native.ts` is the only module allowed to import them; file picking stays DOM (WKWebView summons Files/iCloud natively) until open-in handling lands.
+- Keychain decision: `KeychainAccess.whenUnlockedThisDeviceOnly` for assistant keys — no iCloud migration, re-enter after device restore. Face ID gate is settings-configurable (policy: off by default; exact options with the settings UI commit).
 
 Device-verified on iPhone 15 Simulator, iOS 17.0, Xcode 26.6 (2026-09-05, scratch diagnostics screen, screenshots on file):
 
