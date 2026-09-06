@@ -1,0 +1,3 @@
+Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Provider,Labels,Notes
+2026-03-01,Settling Cabin,-120.00,Lodging,Debit,Alice,Checking,Synthetic Bank,,
+2026-03-02,Settling Groceries,-60.00,Groceries,Debit,Bob,Checking,Synthetic Bank,,
