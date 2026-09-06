@@ -130,7 +130,7 @@ describe("requestChatTurn tool fallback (web transport)", () => {
     expect(calls[1]).not.toHaveProperty("tools")
   })
 
-  it("does not retry non-tool errors", async () => {
+  it("retries server errors, then surfaces them without tool fallback", async () => {
     const mock = stubFetch(() => errorResponse(500, "boom"))
     await expect(
       requestChatTurn({
@@ -142,6 +142,74 @@ describe("requestChatTurn tool fallback (web transport)", () => {
         tools,
       }),
     ).rejects.toThrow("Provider 500")
+    expect(mock).toHaveBeenCalledTimes(3)
+  })
+
+  it("recovers when a retry succeeds", async () => {
+    let calls = 0
+    stubFetch(() => {
+      calls += 1
+      return calls === 1 ? errorResponse(500, "boom") : jsonResponse(chatPayload("recovered"))
+    })
+    const turn = await requestChatTurn({
+      baseURL: "https://x.test/v1",
+      apiKey: "",
+      model: "m",
+      system: "s",
+      history: [{ role: "user", content: "hi" }],
+      tools,
+    })
+    expect(turn.content).toBe("recovered")
+  })
+
+  it("does not retry rate limits or client errors", async () => {
+    const mock = stubFetch(() => errorResponse(429, "slow down"))
+    await expect(
+      requestChatTurn({
+        baseURL: "https://x.test/v1",
+        apiKey: "",
+        model: "m",
+        system: "s",
+        history: [{ role: "user", content: "hi" }],
+        tools: [],
+      }),
+    ).rejects.toThrow("Provider 429")
+    expect(mock).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries dropped connections", async () => {
+    let calls = 0
+    stubFetch(() => {
+      calls += 1
+      if (calls === 1) return Promise.reject(new TypeError("fetch failed"))
+      return jsonResponse(chatPayload("reconnected"))
+    })
+    const turn = await requestChatTurn({
+      baseURL: "https://x.test/v1",
+      apiKey: "",
+      model: "m",
+      system: "s",
+      history: [{ role: "user", content: "hi" }],
+      tools,
+    })
+    expect(turn.content).toBe("reconnected")
+  })
+
+  it("stays aborted instead of retrying", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const mock = stubFetch(() => errorResponse(500, "boom"))
+    await expect(
+      requestChatTurn({
+        baseURL: "https://x.test/v1",
+        apiKey: "",
+        model: "m",
+        system: "s",
+        history: [{ role: "user", content: "hi" }],
+        tools,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("Aborted")
     expect(mock).toHaveBeenCalledTimes(1)
   })
 })

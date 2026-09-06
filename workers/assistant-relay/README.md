@@ -11,6 +11,10 @@ carries no secret once the app points at this Worker.
 - Server-side enforcement: the shared allowlist from
   `src/features/assistant/demo-models.ts` plus per-IP fixed-window rate
   limiting (in-memory `Map`, 30 req/min; no KV yet).
+- Upstream retries: 429/5xx from OpenRouter retry up to 3 attempts total,
+  honoring `Retry-After` (capped at 10s) with exponential backoff + jitter.
+  Other statuses pass straight through. The app's own transport also retries
+  dropped connections and 5xx (never 4xx/429/aborts).
 - `GET /healthz` returns `{ "ok": true }` with no key (monitoring).
 - CORS: `https://cbangera2.github.io` plus `http://localhost:*` for dev,
   via `ALLOWED_ORIGINS`.

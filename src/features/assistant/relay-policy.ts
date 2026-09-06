@@ -86,3 +86,30 @@ export function buildCorsHeaders(
   if (!origin || !isOriginAllowed(origin, allowedOrigins)) return {}
   return { "access-control-allow-origin": origin, vary: "Origin" }
 }
+
+export const UPSTREAM_MAX_ATTEMPTS = 3
+export const UPSTREAM_MAX_RETRY_AFTER_MS = 10_000
+export const UPSTREAM_RETRY_BASE_MS = 500
+export const UPSTREAM_RETRY_CAP_MS = 5_000
+
+/** Retryable upstream statuses: rate-limited or server-side failure. */
+export function isRetryableUpstreamStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599)
+}
+
+/** Parse a Retry-After header (seconds) into ms, or null when absent/unusable. */
+export function parseRetryAfterMs(value: string | null | undefined): number | null {
+  if (!value) return null
+  const seconds = Number.parseInt(value.trim(), 10)
+  if (!Number.isFinite(seconds) || seconds < 0) return null
+  return seconds * 1_000
+}
+
+/**
+ * Backoff before upstream attempt `attempt` (0-based retry index): honors the
+ * server's Retry-After when present (capped), else exponential base.
+ */
+export function upstreamRetryDelayMs(attempt: number, retryAfterMs: number | null): number {
+  if (retryAfterMs !== null) return Math.min(retryAfterMs, UPSTREAM_MAX_RETRY_AFTER_MS)
+  return Math.min(UPSTREAM_RETRY_BASE_MS * 2 ** attempt, UPSTREAM_RETRY_CAP_MS)
+}

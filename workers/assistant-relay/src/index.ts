@@ -2,7 +2,11 @@ import { isDemoModelAllowed } from "../../../src/features/assistant/demo-models"
 import {
   buildCorsHeaders,
   createRateLimiter,
+  isRetryableUpstreamStatus,
   parseAllowedOrigins,
+  parseRetryAfterMs,
+  UPSTREAM_MAX_ATTEMPTS,
+  upstreamRetryDelayMs,
 } from "../../../src/features/assistant/relay-policy"
 
 // BudgetLens demo relay: keeps the OpenRouter key server-side so the Pages
@@ -56,6 +60,79 @@ function requestModel(raw: string): unknown {
     return isRecord(parsed) ? parsed.model : undefined
   } catch {
     return undefined
+  }
+}
+
+function abortError(): DOMException {
+  return new DOMException("Aborted", "AbortError")
+}
+
+/** Sleep that stays abortable so client disconnects stop the retry loop. */
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(abortError())
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(abortError())
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+}
+
+interface UpstreamResult {
+  response: Response
+  attempts: number
+}
+
+/**
+ * POST to OpenRouter with retries on 429/5xx (honoring Retry-After, capped).
+ * Status is known before any body is piped, so retrying is safe for both
+ * streaming and non-streaming bodies. Exhausted retries fall through to the
+ * normal status/body passthrough.
+ */
+async function fetchUpstream(
+  raw: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<UpstreamResult> {
+  let attempt = 0
+  for (;;) {
+    let upstream: Response
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      upstream = await fetch(OPENROUTER_CHAT_URL, {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: raw,
+        signal,
+      })
+    } catch (error) {
+      if (
+        (error instanceof DOMException && error.name === "AbortError") ||
+        attempt + 1 >= UPSTREAM_MAX_ATTEMPTS
+      ) {
+        throw error
+      }
+      attempt += 1
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      await delay(upstreamRetryDelayMs(attempt - 1, null) + Math.floor(Math.random() * 250), signal)
+      continue
+    }
+    if (!isRetryableUpstreamStatus(upstream.status) || attempt + 1 >= UPSTREAM_MAX_ATTEMPTS) {
+      return { response: upstream, attempts: attempt + 1 }
+    }
+    const retryAfterMs = parseRetryAfterMs(upstream.headers.get("retry-after"))
+    await upstream.body?.cancel().catch(() => undefined)
+    attempt += 1
+    // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+    await delay(
+      upstreamRetryDelayMs(attempt - 1, retryAfterMs) + Math.floor(Math.random() * 250),
+      signal,
+    )
   }
 }
 
@@ -118,13 +195,11 @@ export default {
 
     const started = Date.now()
     let upstream: Response
+    let attempts = 1
     try {
-      upstream = await fetch(OPENROUTER_CHAT_URL, {
-        method: "POST",
-        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: raw,
-        signal: request.signal,
-      })
+      const result = await fetchUpstream(raw, apiKey, request.signal)
+      upstream = result.response
+      attempts = result.attempts
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         return new Response(null, { status: 499, headers: cors })
@@ -134,7 +209,13 @@ export default {
     }
 
     console.log(
-      JSON.stringify({ event: "chat", ip, status: upstream.status, ms: Date.now() - started }),
+      JSON.stringify({
+        event: "chat",
+        ip,
+        status: upstream.status,
+        attempts,
+        ms: Date.now() - started,
+      }),
     )
     // Pass OpenRouter's status/body through; pipe the stream untouched.
     const headers = new Headers(cors)
