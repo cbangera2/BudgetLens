@@ -17,8 +17,10 @@
 
 import { BiometricAuth } from "@aparajita/capacitor-biometric-auth"
 import { KeychainAccess, SecureStorage } from "@aparajita/capacitor-secure-storage"
+import type { PermissionState } from "@capacitor/core"
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem"
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics"
+import { LocalNotifications } from "@capacitor/local-notifications"
 import { Preferences } from "@capacitor/preferences"
 import { Share } from "@capacitor/share"
 
@@ -223,4 +225,105 @@ export async function writeAutoBackupFile(contents: string): Promise<void> {
     directory: Directory.Documents,
     encoding: Encoding.UTF8,
   })
+}
+
+// On-device budget + bill reminders via @capacitor/local-notifications.
+//
+// Local notifications only — never remote push (no Apple Developer account,
+// no server). Web paths no-op so jsdom tests, desktop builds, and GitHub
+// Pages stay green with zero native runtime. Errors propagate (except where
+// noted) so the scheduler in features/notifications can report a
+// skipped-error status and degrade silently in the UI.
+
+export interface ReminderNotification {
+  /** Stable engine key, e.g. "budget:Groceries:2026-09:80". Stored in extra. */
+  key: string
+  title: string
+  body: string
+}
+
+export interface PendingReminderInfo {
+  id: number
+  key: string | null
+}
+
+/**
+ * Stable numeric id for an engine key. The plugin requires 32-bit int ids;
+ * djb2 folded into 1..2_147_483_647 keeps them positive and deterministic so
+ * re-deriving the same trigger never duplicates a pending notification.
+ */
+export function reminderNumericId(key: string): number {
+  let hash = 5381
+  for (let index = 0; index < key.length; index += 1) {
+    hash = ((hash * 33) ^ (key.charCodeAt(index) & 0xff)) | 0
+  }
+  return (Math.abs(hash) % 2_147_483_646) + 1
+}
+
+/** Notification display permission. "denied" on web so callers stay dormant. */
+export async function checkReminderPermission(): Promise<PermissionState> {
+  if (!isNative()) return "denied"
+  const status = await LocalNotifications.checkPermissions()
+  return status.display
+}
+
+/**
+ * Request display permission. Call ONLY when the user enables reminders
+ * (interruptive by nature). Web resolves "denied" without touching plugins.
+ */
+export async function requestReminderPermission(): Promise<PermissionState> {
+  if (!isNative()) return "denied"
+  const status = await LocalNotifications.requestPermissions()
+  return status.display
+}
+
+/**
+ * Schedule reminders for immediate delivery (computed triggers are already
+ * due: a crossed threshold or a charge days away). No-op on web. Rejects when
+ * the native schedule fails so the scheduler can skip persisting fired keys.
+ */
+export async function scheduleReminderNotifications(
+  reminders: readonly ReminderNotification[],
+): Promise<void> {
+  if (!isNative()) return
+  if (reminders.length === 0) return
+  await LocalNotifications.schedule({
+    notifications: reminders.map((reminder) => ({
+      id: reminderNumericId(reminder.key),
+      title: reminder.title,
+      body: reminder.body,
+      extra: { reminderKey: reminder.key },
+    })),
+  })
+}
+
+/**
+ * Cancel the given pending ids, or every pending notification when ids is
+ * omitted (toggle-off path). No-op on web. Rejects on native failure.
+ */
+export async function cancelReminderNotifications(ids?: readonly number[]): Promise<void> {
+  if (!isNative()) return
+  if (ids === undefined) {
+    await LocalNotifications.cancelAll()
+    return
+  }
+  if (ids.length === 0) return
+  await LocalNotifications.cancel({ notifications: ids.map((id) => ({ id })) })
+}
+
+/** Pending notifications with our engine keys recovered from extra. Web: []. */
+export async function listPendingReminderKeys(): Promise<PendingReminderInfo[]> {
+  if (!isNative()) return []
+  const pending = await LocalNotifications.getPending()
+  return pending.notifications.map((notification) => ({
+    id: notification.id,
+    key: reminderKeyOf(notification.extra),
+  }))
+}
+
+function reminderKeyOf(extra: unknown): string | null {
+  if (typeof extra !== "object" || extra === null) return null
+  if (!("reminderKey" in extra)) return null
+  const key: unknown = extra.reminderKey
+  return typeof key === "string" ? key : null
 }
