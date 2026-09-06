@@ -173,7 +173,7 @@ jobs:
           echo "$ASSETS" | jq -r '.[].name'
           gh release download "$TAG" -R "$REPO" --pattern "*.sig" --clobber --dir "$WORK"
           url_for() {
-            echo "$ASSETS" | jq -r --arg n "$1" '.[] | select(.name == $n) | .browserDownloadUrl // empty'
+            echo "$ASSETS" | jq -r --arg n "$1" '.[] | select(.name == $n) | .url // empty'
           }
           DARWIN_URL="$(url_for "$DARWIN_BIN")"
           WIN_URL="$(url_for "$WIN_BIN")"
