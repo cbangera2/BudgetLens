@@ -52,8 +52,8 @@ required.
 
 ## Desktop app
 
-One-click builds for macOS (Apple Silicon + Intel) and Windows ship from GitHub Releases with
-in-app auto-update. Linux is out of scope for v1.
+One-click builds for macOS (Apple Silicon) and Windows ship from GitHub Releases with
+in-app auto-update. Intel Macs and Linux are out of scope for v1.
 
 - Download the latest `app-v*` release asset and launch. The v1 builds are unsigned: macOS may
   need System Settings → Privacy & Security → Allow, and Windows may show `Unknown publisher` →

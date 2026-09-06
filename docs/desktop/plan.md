@@ -51,7 +51,7 @@ Reference OSS running this exact shape: Jan (local/cloud LLM chat, closest to ou
 - No on-device LLM bundled in the installer.
 - No IndexedDB-to-SQLite migration. Dexie stays; request `navigator.storage.persist()`, check the result, nudge JSON backup when not granted; keep JSON backup/restore.
 - No mobile shipping in this plan. Mobile is a second shell (Capacitor per `docs/ios/plan.md`), reusing the same `dist/`. Intentional divergence: desktop defaults to `ollama` (localhost reachable), iOS hides localhost presets and defaults to hosted — document both.
-- No universal macOS binary. Ship split `aarch64` + `x86_64`.
+- No universal macOS binary and no Intel leg. Ship Apple Silicon only (owner call 2026-09-06): one `.dmg`, cleaner matrix.
 - No Linux binary in v1 (owner call 2026-09-06: Linux users out of scope). Ship mac + Windows only; Linux deferred to later (baseline when revived: `ubuntu-22.04` + WebKitGTK 4.1). No Linux QA, no `.deb`/`.AppImage` in v1 `latest.json`.
 - No paid signing in v1. Ship unsigned with documented Gatekeeper/SmartScreen bypass; add signing in v1.1 (see §9).
 - No file-association handling in v1 (opening a CSV with the app does not import it — explicitly deferred). Single-instance is implemented: a second launch focuses the running window. Window floor: `title`, `minWidth` ~1024 for the sidebar shell.
@@ -106,7 +106,7 @@ Phase-1 checklist (all required before first `tauri build`):
 - Desktop binary has no history fallback. Rule (same as iOS plan): **desktop = hash history now**; leave iOS's hash-vs-memory question to that plan.
 - Implementation: in `src/app/router.tsx`, `import { createHashHistory } from "@tanstack/react-router"`, pass `history: isTauriSync() ? createHashHistory() : createHistory()` to `createRouter`, force `basepath="/"` under Tauri. Gate on the §2 runtime check, not a build flag, so one `dist/` serves both. Regression test: same route tree builds in both modes.
 - Harness probes (`assistant-panel.tsx:352-369` `/api/models`, and `/api/chat` send) must be gated to non-Tauri packaged builds only — under `http://tauri.localhost` the relative fetch resolves against the custom scheme and hangs until the 6s abort on every launch when the harness preset is selected.
-- Release workflow must force `VITE_BASE=/` for desktop (Pages uses `/BudgetLens/`). GitHub runners always set `GITHUB_ACTIONS=true`, so `beforeBuildCommand: pnpm build` WILL leak the Pages base into `dist/index.html` (`src="/BudgetLens/assets/…"`) without the override → blank window on all 4 artifacts. Keep `env: VITE_BASE=/` in `release.yml` AND add a post-build assertion: `grep -q '/BudgetLens/' dist/index.html && exit 1`.
+- Release workflow must force `VITE_BASE=/` for desktop (Pages uses `/BudgetLens/`). GitHub runners always set `GITHUB_ACTIONS=true`, so `beforeBuildCommand: pnpm build` WILL leak the Pages base into `dist/index.html` (`src="/BudgetLens/assets/…"`) without the override → blank window on both artifacts. Keep `env: VITE_BASE=/` in `release.yml` AND add a post-build assertion: `grep -q '/BudgetLens/' dist/index.html && exit 1`.
 
 ### 3.3 Assistant: direct-provider path in the binary
 
@@ -143,14 +143,13 @@ Keep the exact provider model (`provider.ts:25-82`) and tool loop (`requestChatT
 ### 4.1 New workflow: `release.yml` (tag-triggered, NOT on every PR)
 
 - Trigger: **unified to `app-v*` everywhere**: `push: tags: ["app-v*"]`, `tagName: app-v__VERSION__` (so `app-v1.0.0` → version `1.0.0`). PRs keep today's fast `ci.yml`; desktop never slows PRs. Reserve the pattern in Phase 0.
-- Permissions: `contents: write` (else `Resource not accessible` on upload).
-- Matrix (`fail-fast: false`, v1 = mac + Windows only, Linux deferred):
+- Permissions: workflow `contents: read`, `contents: write` on the build job only (else `Resource not accessible` on upload).
+- Matrix (`fail-fast: false`, v1 = Apple-Silicon mac + Windows only; Intel + Linux deferred):
   - `macos-latest --target aarch64-apple-darwin`
-  - `macos-latest --target x86_64-apple-darwin` (ARM runner cross-compiling — needs explicit target install step)
   - `windows-latest`
 - Steps per leg: checkout (pinned SHA, like existing workflows) → `pnpm/action-setup` (pinned, `run_install: false`, respects `packageManager: pnpm@11.15.1`) → `setup-node` (**Node 24** to match `ci.yml`/`deploy.yml`, `cache: pnpm`) → `pnpm install --frozen-lockfile` → Rust toolchain (**pinned version**, not floating `stable`, with mac targets) → `rust-cache` (pinned SHA, `workspaces: ./src-tauri -> target`) → `tauri-action` (pinned SHA, v1 line) with `tagName: app-v__VERSION__`, `releaseDraft: true`, `includeUpdaterJson: true` (NOT `uploadUpdaterJson`), `args: ${{ matrix.args }}`. Prerelease/beta legs use `prerelease: true` + `includeUpdaterJson: false` so betas never clobber `latest.json`.
 - Env: `GITHUB_TOKEN`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (if the key has one), `VITE_BASE=/`, plus the §3.2 post-build assertion (`grep -q '/BudgetLens/' dist/index.html && exit 1`).
-- Post-matrix validation job (required, fails the workflow instead of shipping silently): `jq` assert `version == tag`, `pub_date` ISO8601, `platforms` contains all three v1 entries (`darwin-aarch64`, `darwin-x86_64`, `windows-x86_64`), every URL + `.sig` exists (HEAD 200).
+- Post-matrix validation job (required, fails the workflow instead of shipping silently): `jq` assert `version == tag`, `pub_date` ISO8601, `platforms` contains both v1 entries (`darwin-aarch64`, `windows-x86_64`), every URL + `.sig` exists (HEAD 200).
 - Commit `Cargo.lock`; run `cargo audit`/`cargo deny` in `release.yml`.
 - Keep Pages `deploy.yml` untouched. Desktop (`app-v*`) and Pages (branch push) never share a tag that overwrites `latest.json` with a non-updater release. Publish the draft only after ALL legs green; `latest.json` must list every arch or that arch gets no update.
 - Rollback runbook: never mutate a published `latest.json` in place; roll forward with an `app-vN+1` hotfix; `allowDowngrades` stays off.
@@ -181,12 +180,12 @@ Keep the exact provider model (`provider.ts:25-82`) and tool loop (`requestChatT
 
 Wall-clock for a tagged release ≈ slowest matrix leg ≈ **~6-10min warm (estimate, mac+Windows only)**. PRs are unaffected (no desktop on PR).
 
-Keep it fast: release-only trigger, always `rust-cache`, split (not universal) mac targets, defer `lto=true / codegen-units=1 / panic=abort` size opts until size matters (they roughly double Rust time), `fail-fast: false` so one OS flake doesn't kill the rest.
+Keep it fast: release-only trigger, always `rust-cache`, single mac target, defer `lto=true / codegen-units=1 / panic=abort` size opts until size matters (they roughly double Rust time), `fail-fast: false` so one OS flake doesn't kill the rest.
 
 ## 6. App UX for updates + first run
 
 - Settings → `Check for Updates` button + silent startup check with opt-out toggle. Silent check fails quiet offline (no error toast every launch); surface errors only on manual check. Use `check()` → show `version/notes/pub_date` → `downloadAndInstall(progress)` → prompt `Restart now / Later` → `relaunch()` (required mac, auto-quit Windows). Render notes with the existing dependency-free Markdown renderer — never raw HTML. Handle `204 No Content` (no update), `404` (release still Draft — tell user to wait, not "broken").
-- Staged rollouts: static `latest.json` has no %-rollout. Emulate: `releaseDraft:true` → QA on all 3 v1 artifacts → publish; ship betas as `prerelease:true` with `includeUpdaterJson: false` (never overwrite `latest.json`); separate beta channel only if demand appears (second endpoint + runtime channel switch, or CrabNebula Cloud).
+- Staged rollouts: static `latest.json` has no %-rollout. Emulate: `releaseDraft:true` → QA on both v1 artifacts → publish; ship betas as `prerelease:true` with `includeUpdaterJson: false` (never overwrite `latest.json`); separate beta channel only if demand appears (second endpoint + runtime channel switch, or CrabNebula Cloud).
 - First-run assistant doctor (see §3.3.5): provider defaults to `ollama` on desktop (offline, free — owner-confirmed local-first default); hosted keys behind explicit consent + keychain-remembered by default with `[Forget]`/opt-out; `Test key` before save. Schedule the import-wizard copy + Settings JSON backup→restore as the _supported_ browser→desktop migration (not a callout).
 - One-click download surface: `Releases/latest` page + README badge + (optional) landing link on the Pages site. Do not auto-redirect Pages users to desktop — origins differ, IDB does not migrate without the JSON backup step (call it out).
 
@@ -201,7 +200,7 @@ Keep it fast: release-only trigger, always `rust-cache`, split (not universal) m
 ## 8. Testing plan
 
 - Keep all existing gates green (`format:check`, `lint`, `typecheck`, `test`, `test:browser`, `build`).
-- New manual matrix per release candidate (all 3 v1 artifacts: mac-aarch64, mac-x86_64, Windows): install, import 20-file mix, budgets/groups/charts, backup → clear → restore, assistant turn on Ollama + hosted, + offline launch.
+- New manual matrix per release candidate (both v1 artifacts: mac-aarch64, Windows): install, import 20-file mix, budgets/groups/charts, backup → clear → restore, assistant turn on Ollama + hosted, + offline launch.
 - Updater e2e: install vN-1 → publish vN draft → publish → assert `check()` offers vN, progress shows, relaunch lands on vN, IDB intact. Test missing-arch `latest.json` (that arch must report no-update, not error) and Draft-404 copy. Include the §4.1 `latest.json` jq validation in CI.
 - Failure drills: wrong key (401 copy), Ollama down (doctor copy), direct-fetch 403 CORS (origins copy — fallback path only), LM Studio CORS off (toggle copy), offline startup (quiet, no toast). No Linux secret-daemon drill in v1.
 - Compat matrix for §3.3.6: Ollama vs LM Studio vs bridge, with/without `tools` fields.
@@ -213,7 +212,7 @@ Keep it fast: release-only trigger, always `rust-cache`, split (not universal) m
 - **Phase 1 — shell (1-2 days):** `src-tauri/` init (`identifier`, `category`, `targets`, `main` label, `useHttpsScheme: false`, `webview2InstallMode`, icons, `Cargo.lock`), `VITE_BASE=/` + assertion, hash-history gate (`createHashHistory`, `basepath="/"`), `isTauri.ts` + `llmClient`/`desktop` adapters, `vite server.strictPort`, new npm scripts (`tauri`, `tauri:dev`, `tauri:build`, `build:desktop`), `navigator.storage.persist()` + check, `tauri dev` + `tauri build` locally on one OS.
 - **Phase 2 — assistant transport (1-2 days):** Rust proxy command (SSRF/timeout contract) + keyring get/set/delete, `/models` per-provider listing + cache + `Custom…` + `Test key`, probe + doctor copy, minimal-body + tool-fallback, OpenRouter headers, privacy badges, harness gates. Harness stays dev-only.
 - **Phase 3 — release lane (half day):** `release.yml` matrix + pinned SHAs + caches, `includeUpdaterJson` split (stable true / prerelease false), draft → QA → publish drill, `latest.json` jq validation, `cargo audit`/`deny`.
-- **Phase 4 — hardening (as needed):** local e2e matrix (3 v1 artifacts), unsigned-bypass docs, README badge, migration wizard UI, optional PWA rehearsal.
+- **Phase 4 — hardening (as needed):** local e2e matrix (both v1 artifacts), unsigned-bypass docs, README badge, migration wizard UI, optional PWA rehearsal.
 - **v1.1 — signing:** Apple cert + notarization + Windows Trusted Signing; then size opts (`lto` etc.) if wanted. Explicitly deferred: file-association, `dialog`+`fs` picker upgrade, Linux port.
 
 ## 10. Alternatives considered (and why deferred)
