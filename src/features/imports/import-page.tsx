@@ -168,7 +168,7 @@ export function ImportPage() {
           file.name,
           "skip",
           policy,
-          ...(effectiveRules.length > 0 ? [effectiveRules] : []),
+          effectiveRules,
         )
         setPreview(next)
         setCategoryOverrides({})
@@ -185,11 +185,7 @@ export function ImportPage() {
         setStatus(`Parsing ${read.inputs.length.toLocaleString()} readable file(s)…`)
         const parsed =
           read.inputs.length > 0
-            ? await importService.previewMany(
-                read.inputs,
-                policy,
-                ...(effectiveRules.length > 0 ? [effectiveRules] : []),
-              )
+            ? await importService.previewMany(read.inputs, policy, effectiveRules)
             : {
                 previews: [],
                 failures: [],
@@ -254,7 +250,7 @@ export function ImportPage() {
           selectedFile.name,
           policy,
           duplicatePolicy,
-          ...(rules.length > 0 ? [rules] : []),
+          rules,
         ),
       )
       setCategoryOverrides({})

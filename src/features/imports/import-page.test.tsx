@@ -231,6 +231,7 @@ describe("ImportPage", () => {
     expect(mocks.previewMany).toHaveBeenCalledWith(
       [{ content: "{}", sourceName: "readable.json" }],
       "skip",
+      [],
     )
     expect(screen.getByText("unreadable.json")).toBeInTheDocument()
     expect(screen.getByText("The file could not be read.")).toBeInTheDocument()
@@ -256,6 +257,7 @@ describe("ImportPage", () => {
         { content: "{}", sourceName: "two.json" },
       ],
       "skip",
+      [],
     )
     expect(screen.getByLabelText("CSV or JSON files")).toHaveAttribute("aria-invalid", "false")
   })
