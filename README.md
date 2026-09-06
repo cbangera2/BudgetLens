@@ -37,13 +37,16 @@ export a JSON backup from Settings first, then restore it where you're going.
 - Import net-worth, investment, breakdown-segment, and account-source histories independently.
 - Search, filter, sort, add, edit, and delete transactions; bulk-assign them to named groups with
   shared-cost splits.
+- Set import rules that auto-categorize matching transactions on the way in.
+- Spot recurring subscriptions and monthly burn.
 - Track monthly or yearly category budgets.
 - Rearrange dashboard modules and build custom charts (bar, donut, area) with your own metrics,
   filters, and styling.
 - Ask the built-in assistant about your finances. It defaults to local Ollama
   (`ollama serve` + `ollama pull qwen2.5:7b`) so nothing leaves your machine; hosted keys are kept
   in the OS keychain, and every answer is labeled local or cloud.
-- Back up everything to JSON or wipe local data from Settings.
+- Back up everything to JSON (desktop and mobile back up automatically on suspend) or wipe
+  local data from Settings.
 
 ## Import formats
 
@@ -80,7 +83,9 @@ Zod, Oxlint/Oxfmt, Vitest, Playwright, Tauri (desktop). See [CONTRIBUTING.md](CO
 - Desktop apps for macOS (Apple Silicon) and Windows with signed in-app auto-update.
 - Local-first assistant: Ollama and OpenAI-compatible providers, OS-keychain keys, local/cloud
   badges, and approval-gated writes.
-- Transaction groups with shared-cost splits, golden demo data, iOS shell groundwork.
+- Transaction groups with shared-cost splits, import rules, subscription detection with
+  monthly burn, golden demo data, first-run onboarding, automatic backup on suspend, mobile
+  shell pass, iOS shell groundwork.
 - One-file BudgetLens bundle imports, multi-file previews with failure isolation, dated
   asset/debt breakdown and account-source imports, removable import batches.
 
