@@ -155,3 +155,188 @@ textarea {
 .typing-dot:nth-child(3) {
   animation-delay: 0.3s;
 }
+
+/* ------------------------------------------------------------------ */
+/* Mobile shell pass (tabs, sheets, safe areas). Desktop is unchanged: */
+/* every rule below is scoped to small viewports, coarse pointers, or  */
+/* hover-less devices, or is a no-op where safe-area insets are zero.  */
+/* ------------------------------------------------------------------ */
+
+:root {
+  --mobile-tabbar-height: 3.5rem;
+}
+
+/* Room for the home indicator / notch. env() is 0px without a safe area,
+   so this is a no-op on desktop. */
+body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Toaster / tab-bar collision, CSS only (app.tsx owns the Toaster).
+   Sonner positions bottom toasts with --offset-bottom on wider screens and
+   --mobile-offset-bottom at 600px and below; lifting both keeps toasts above
+   the tab bar plus the home indicator. The `body` prefix outranks Sonner's
+   own selectors regardless of stylesheet order. */
+@media (max-width: 1023.98px) {
+  body [data-sonner-toaster][data-y-position="bottom"] {
+    --offset-bottom: calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+    --mobile-offset-bottom: calc(
+      var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px) + 0.75rem
+    );
+  }
+
+  /* Assistant entry point floats above the tab bar instead of behind it.
+     The .fixed qualifier keeps this off the header's static toggle button,
+     which shares the accessible name. */
+  button[aria-label="Open assistant"].fixed {
+    bottom: calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+  }
+}
+
+/* Assistant panel as a bottom sheet on phones. Scoped to the default
+   (non-fullscreen) window via `.inset-x-4` so fullscreen keeps its layout
+   and the `sm:` desktop rules are untouched. */
+@media (max-width: 639.98px) {
+  .assistant-window.inset-x-4 {
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    /* Tailwind v4 implements inset-x-* with the logical property. */
+    inset-inline: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    border-bottom-width: 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Sheets slide; the desktop scale-pop would jitter full-bleed geometry. */
+    animation: none !important;
+    /* svh, not dvh: dynamic units track the URL bar, so scrolling the sheet
+       would resize it mid-gesture and slide targets out from under fingers
+       and automation hit tests. */
+    height: min(40rem, calc(100svh - 6rem)) !important;
+    max-height: calc(100svh - 3rem) !important;
+  }
+
+  .assistant-window.inset-x-4 > header {
+    padding-top: 1.5rem;
+  }
+
+  .assistant-window.inset-x-4::before {
+    content: "";
+    position: absolute;
+    top: 0.5rem;
+    left: 50%;
+    width: 2.5rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--border);
+    transform: translateX(-50%);
+  }
+
+  /* NOTE: page dialogs (transaction form, dashboard modules, chart editors)
+     intentionally keep their centered card layout on small viewports. A
+     bottom-docked sheet puts their action rows in the floating-overlay zone
+     and forces the mobile visual viewport to pan on reveal, which defeats
+     hit testing; the sheet treatment stays scoped to the assistant panel,
+     the filters card, and the More menu. */
+}
+
+/* Transactions filter card docks like a bottom sheet while scrolling on
+   small viewports and stays a static card on desktop. Hooked with :has()
+   because the markup lives in the transactions feature, which this shell
+   must not edit. */
+@media (max-width: 1023.98px) {
+  /*
+   * Reveal clearance for page-level scrolls. The tab bar and assistant FAB
+   * float over bottom content by design; scroll-padding lifts reveal targets
+   * above them. Unlike scroll-margin it never extends the target itself, so
+   * it cannot push reveals past the visual viewport edge (which invalidates
+   * hit testing on mobile). Dialog scrollports are untouched on purpose.
+   */
+  html {
+    scroll-padding-bottom: calc(
+      var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px) + 5rem
+    );
+  }
+
+  #main-content section:has(#transaction-search) {
+    position: sticky;
+    bottom: calc(var(--mobile-tabbar-height) + env(safe-area-inset-bottom, 0px) + 0.5rem);
+    z-index: 30;
+    /* svh, not dvh: keeps the docked height stable while scrolling. */
+    max-height: 44svh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 1rem;
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.12);
+    scroll-margin-bottom: calc(var(--mobile-tabbar-height) + 1rem);
+  }
+}
+
+/* 44pt minimum touch targets on touch-first devices, scoped to shell-owned
+   surfaces (tab bar, More sheet, assistant, filters). Page dialogs keep
+   their owners' sizing so reveal geometry stays stable. */
+@media (pointer: coarse) {
+  nav[aria-label="Primary"] a,
+  nav[aria-label="Primary"] button,
+  #mobile-more-sheet a,
+  #mobile-more-sheet button,
+  .assistant-window button,
+  .assistant-window a,
+  #main-content section:has(#transaction-search) button,
+  #main-content section:has(#transaction-search) a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  #main-content section:has(#transaction-search) input,
+  #main-content section:has(#transaction-search) select,
+  .assistant-window input,
+  .assistant-window select,
+  .assistant-window textarea {
+    min-height: 44px;
+    /* 16px floors stop iOS auto-zooming into fields. */
+    font-size: 16px;
+  }
+
+  /* Recharts animates on rAF (see chart-animation.ts for the real switch);
+     this damps any CSS-driven motion inside charts on touch devices. */
+  .recharts-wrapper *,
+  .recharts-surface * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* No hover-only affordances on touch: labels are always visible in the tab
+   bar by construction; this also neutralizes hover zoom/dim leftovers in
+   shell surfaces where :hover can stick after a tap. */
+@media (hover: none) {
+  button[aria-label="Open assistant"].fixed {
+    transform: none !important;
+  }
+}
+
+/* Wrapping chart legends: long series names wrap instead of overflowing on
+   narrow screens. Applies everywhere; harmless on desktop. */
+.recharts-legend-wrapper {
+  max-width: 100% !important;
+}
+
+.recharts-legend-wrapper .recharts-default-legend {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: center;
+  gap: 0.25rem 0.75rem;
+  max-width: 100%;
+}
+
+.recharts-legend-wrapper .recharts-legend-item {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+.recharts-legend-wrapper .recharts-legend-item-text {
+  overflow-wrap: anywhere;
+}
