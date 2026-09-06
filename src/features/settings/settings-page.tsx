@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { database } from "@/db/database"
 import { repositories } from "@/db/repositories"
 import { readAppLockMode, writeAppLockMode, type AppLockMode } from "@/features/security/app-lock"
+import { readAutoBackupEnabled, writeAutoBackupEnabled } from "@/features/settings/auto-backup"
 import {
   type BackupPreview,
   clearAllData,
@@ -54,6 +55,13 @@ export function SettingsPage() {
   const [isNativeShell] = useState(() => isNative())
   const [lockMode, setLockMode] = useState<AppLockMode>(() => readAppLockMode(window.localStorage))
   const [biometrics, setBiometrics] = useState<BiometricsStatus | null>(null)
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
+    try {
+      return readAutoBackupEnabled(window.localStorage, isNativeShell)
+    } catch {
+      return isNativeShell
+    }
+  })
   const [restoreName, setRestoreName] = useState<string | null>(null)
   const [restorePreview, setRestorePreview] = useState<BackupPreview | null>(null)
   const [restorePayload, setRestorePayload] = useState<unknown>(null)
@@ -223,6 +231,32 @@ export function SettingsPage() {
                 : biometrics.available
                   ? "Biometric unlock is available on this device."
                   : "No biometrics enrolled — the device passcode will be offered instead."}
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isNativeShell ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Automatic backup</CardTitle>
+            <CardDescription>Keep a daily JSON copy without thinking about it.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoBackupEnabled}
+                onChange={(event) => {
+                  const next = event.target.checked
+                  writeAutoBackupEnabled(window.localStorage, next)
+                  setAutoBackupEnabled(next)
+                }}
+              />
+              <span>Back up automatically when the app suspends</span>
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Native only: overwrites budgetlens-auto-backup.json in Documents at most once per day.
             </p>
           </CardContent>
         </Card>

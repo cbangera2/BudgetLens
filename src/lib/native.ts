@@ -19,6 +19,7 @@ import { BiometricAuth } from "@aparajita/capacitor-biometric-auth"
 import { KeychainAccess, SecureStorage } from "@aparajita/capacitor-secure-storage"
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem"
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics"
+import { Preferences } from "@capacitor/preferences"
 import { Share } from "@capacitor/share"
 
 import { isNativeCapacitorSync } from "@/lib/isNative"
@@ -164,4 +165,62 @@ export async function requestBiometricUnlock(reason: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// Automatic daily backup on suspend (native only).
+//
+// Single overwritten file, no rotation bloat. Timestamp persistence uses
+// Preferences (string millis); the enabled toggle lives in localStorage
+// (see features/settings/auto-backup.ts). Everything here is best-effort
+// and web-safe: web paths no-op so unattended downloads never fire.
+
+/** Single auto-backup file in Documents, overwritten on every run. */
+export const AUTO_BACKUP_FILENAME = "budgetlens-auto-backup.json"
+
+/** Preferences key holding the last auto-backup epoch millis. */
+export const AUTO_BACKUP_LAST_KEY = "budgetlens.auto-backup.last"
+
+/** Minimum age of the last auto-backup before another one runs (24h). */
+export const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+/** Last auto-backup epoch millis, or null when never/invalid. Never throws. */
+export async function readAutoBackupLastTimestamp(): Promise<number | null> {
+  if (!isNative()) return null
+  try {
+    const { value } = await Preferences.get({ key: AUTO_BACKUP_LAST_KEY })
+    if (value === null) return null
+    const parsed = Number(value)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  } catch {
+    // A failed read fails safe: the orchestrator treats null as "run".
+    return null
+  }
+}
+
+/**
+ * Persist the last auto-backup time. No-op on web. Rejects when the native
+ * write fails so the orchestrator can skip the "backed-up" outcome and
+ * preserve the prior throttle state (the backup file is simply rewritten on
+ * the next suspend). Invalid timestamps return silently without writing.
+ */
+export async function writeAutoBackupLastTimestamp(nowMs: number): Promise<void> {
+  if (!isNative()) return
+  if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || nowMs <= 0) return
+  await Preferences.set({ key: AUTO_BACKUP_LAST_KEY, value: String(Math.floor(nowMs)) })
+}
+
+/**
+ * Overwrite Documents/budgetlens-auto-backup.json. No-op on web
+ * (unattended downloads are unreliable/blocked). Rejects when the native
+ * write fails so the caller skips advancing the throttle timestamp; the
+ * suspend orchestrator catches this and resolves "skipped-error".
+ */
+export async function writeAutoBackupFile(contents: string): Promise<void> {
+  if (!isNative()) return
+  await Filesystem.writeFile({
+    path: AUTO_BACKUP_FILENAME,
+    data: contents,
+    directory: Directory.Documents,
+    encoding: Encoding.UTF8,
+  })
 }
