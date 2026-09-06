@@ -1,8 +1,12 @@
 import type { CapacitorConfig } from "@capacitor/cli"
 
 const config: CapacitorConfig = {
-  // Shared with the Tauri desktop shell (src-tauri/tauri.conf.json).
-  // Same bundle id across platforms enables shared Keychain access.
+  // Same identifier string as the Tauri desktop shell
+  // (src-tauri/tauri.conf.json) for brand consistency. This does NOT share
+  // Keychain items across platforms: iOS Keychain sharing additionally needs
+  // a shared Team ID plus keychain-access-groups entitlements, which are not
+  // configured. iOS keys are written fresh via SecureStorage and never read
+  // Tauri-created items.
   appId: "com.cbangera2.budgetlens",
   appName: "BudgetLens",
   webDir: "dist",

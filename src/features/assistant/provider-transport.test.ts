@@ -214,8 +214,7 @@ describe("requestChatTurn tool fallback (web transport)", () => {
   })
 })
 
-describe("rememberKey setting", () => {
-  it("defaults to false on web and parses stored values", () => {
+describe("rememberKey setting", () => {  it("defaults to false on web and parses stored values", () => {
     expect(readAssistantSettings(memoryStorage()).rememberKey).toBe(false)
     const storage = {
       getItem: () => JSON.stringify({ provider: "openai", rememberKey: true, apiKey: "x" }),
@@ -224,5 +223,31 @@ describe("rememberKey setting", () => {
     expect(parsed.rememberKey).toBe(true)
     // Keys themselves are never trusted from storage shape beyond a string.
     expect(parsed.apiKey).toBe("x")
+  })
+})
+
+describe("requestChatTurn abort compatibility (no AbortSignal.any)", () => {
+  it("propagates a pre-aborted signal as AbortError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
+        // Mimic spec fetch: an already-aborted signal rejects immediately.
+        if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
+        return jsonResponse(chatPayload("late"))
+      }),
+    )
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      requestChatTurn({
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey: "test",
+        model: "openai/gpt-5-mini",
+        system: "diag",
+        history: [{ role: "user", content: "hi" }],
+        tools: [],
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(DOMException)
   })
 })
