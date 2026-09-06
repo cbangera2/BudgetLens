@@ -25,6 +25,20 @@ import {
   type DuplicatePolicy,
   type WealthConflictPolicy,
 } from "@/features/imports/types"
+import { applyTransactionRulesToDrafts } from "@/features/rules/matcher"
+import {
+  loadTransactionRulesFromDefaultStorage,
+  type TransactionRule,
+} from "@/features/rules/model"
+
+function resolveTransactionRules(explicit?: readonly TransactionRule[]): TransactionRule[] {
+  if (explicit) return [...explicit]
+  try {
+    return loadTransactionRulesFromDefaultStorage()
+  } catch {
+    return []
+  }
+}
 
 function identifier(): string {
   return globalThis.crypto.randomUUID()
@@ -87,8 +101,19 @@ export class ImportService {
     sourceName: string,
     wealthPolicy: WealthConflictPolicy = "skip",
     duplicatePolicy: DuplicatePolicy = "skip",
+    rules?: readonly TransactionRule[],
   ): Promise<ImportPreview> {
     const parsed = await parseImportContent(content, sourceName)
+    const effectiveRules = resolveTransactionRules(rules)
+    const ruleResult = applyTransactionRulesToDrafts(effectiveRules, parsed.transactions)
+    const ruleTransactions = ruleResult.applied
+    const ruleApplications = ruleTransactions.map((_, index) => ({
+      originalCategory: ruleResult.originalCategories[index] ?? null,
+      matchedRuleId: ruleResult.matchedRuleIds[index] ?? null,
+    }))
+    const ruleAppliedCount = ruleResult.matchedRuleIds.filter(
+      (id): id is string => id !== null,
+    ).length
     const effectiveDuplicatePolicy: DuplicatePolicy =
       parsed.kind === "transactions" || parsed.kind === "bundle" ? duplicatePolicy : "skip"
     const duplicateFile =
@@ -102,7 +127,7 @@ export class ImportService {
         await Promise.all((await this.db.transactions.toArray()).map(transactionFingerprint)),
       )
       const transactionFingerprints = await Promise.all(
-        parsed.transactions.map(transactionFingerprint),
+        ruleTransactions.map(transactionFingerprint),
       )
       for (const fingerprint of transactionFingerprints) {
         if (existingTransactions.has(fingerprint)) {
@@ -183,7 +208,7 @@ export class ImportService {
       const existing = new Set(
         await Promise.all((await this.db.transactions.toArray()).map(transactionFingerprint)),
       )
-      const fingerprints = await Promise.all(parsed.transactions.map(transactionFingerprint))
+      const fingerprints = await Promise.all(ruleTransactions.map(transactionFingerprint))
       for (const fingerprint of fingerprints) {
         if (existing.has(fingerprint)) {
           duplicateCount += 1
@@ -264,18 +289,22 @@ export class ImportService {
 
     return {
       ...parsed,
+      transactions: ruleTransactions,
       duplicateFile,
       duplicateCount,
       replacementCount,
       importableCount,
       duplicatePolicy: effectiveDuplicatePolicy,
       wealthPolicy,
+      ruleApplications,
+      ruleAppliedCount,
     }
   }
 
   async previewMany(
     files: ImportFileInput[],
     duplicatePolicy: DuplicatePolicy = "skip",
+    rules?: readonly TransactionRule[],
   ): Promise<ImportCollectionPreview> {
     if (files.length === 0) throw new Error("Select at least one CSV or JSON file.")
     if (files.length > DEFAULT_IMPORT_LIMITS.maxFiles) {
@@ -314,13 +343,20 @@ export class ImportService {
     const knownFileHashes = new Set(
       (await this.db.imports.toArray()).map((batch) => batch.sourceHash),
     )
+    const effectiveRules = resolveTransactionRules(rules)
 
     for (const file of files) {
       const sourceName = sanitizeImportSourceName(file.sourceName)
       try {
         // Sequential work keeps the displayed duplicate counts deterministic across files.
         // oxlint-disable-next-line no-await-in-loop
-        const preview = await this.preview(file.content, sourceName, "skip", duplicatePolicy)
+        const preview = await this.preview(
+          file.content,
+          sourceName,
+          "skip",
+          duplicatePolicy,
+          effectiveRules,
+        )
         let duplicateCount = 0
         let importableCount = 0
 

@@ -41,6 +41,11 @@ export interface ParsedImport {
   issues: ImportIssue[]
 }
 
+export interface ImportRuleApplication {
+  originalCategory: string | null
+  matchedRuleId: string | null
+}
+
 export interface ImportPreview extends ParsedImport {
   duplicateFile: boolean
   duplicateCount: number
@@ -48,6 +53,8 @@ export interface ImportPreview extends ParsedImport {
   importableCount: number
   duplicatePolicy: DuplicatePolicy
   wealthPolicy: WealthConflictPolicy
+  ruleApplications?: ImportRuleApplication[]
+  ruleAppliedCount?: number
 }
 
 export interface ImportDeletionReceipt {
