@@ -443,3 +443,81 @@ export async function readStagedWidgetSnapshot(): Promise<string | null> {
     return null
   }
 }
+
+// Receipt photos (feature: src/features/receipts/*). Images live OUTSIDE the
+// Dexie finance tables and JSON backups so backups stay small; native bytes
+// live in the app-data directory while web bytes use OPFS with an IndexedDB
+// fallback (see features/receipts/storage.ts). Thumbnails arrive here already
+// downscaled to JPEG (see features/receipts/downscale.ts).
+
+/** Receipt thumbnails under the app-data directory, keyed by content hash. */
+const RECEIPT_FILE_FOLDER = "receipts"
+
+function receiptFilePath(hash: string): string {
+  return `${RECEIPT_FILE_FOLDER}/${hash}.jpg`
+}
+
+function base64ToReceiptBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+/**
+ * Persist a downscaled receipt thumbnail in the app-data directory. No-op on
+ * web. Rejects when the native write fails so the caller can surface an
+ * attach error instead of recording a reference with no bytes behind it.
+ */
+export async function writeReceiptFile(hash: string, base64Data: string): Promise<void> {
+  if (!isNative()) return
+  try {
+    await Filesystem.mkdir({
+      path: RECEIPT_FILE_FOLDER,
+      directory: Directory.Data,
+      recursive: true,
+    })
+  } catch {
+    // The folder already exists on repeat captures.
+  }
+  await Filesystem.writeFile({
+    path: receiptFilePath(hash),
+    data: base64Data,
+    directory: Directory.Data,
+  })
+}
+
+/**
+ * Read a receipt thumbnail, or null when missing/unreadable. Never throws.
+ */
+export async function readReceiptFile(hash: string): Promise<Blob | null> {
+  if (!isNative()) return null
+  try {
+    const result = await Filesystem.readFile({
+      path: receiptFilePath(hash),
+      directory: Directory.Data,
+    })
+    if (result.data instanceof Blob) return result.data
+    if (typeof result.data === "string" && result.data.length > 0) {
+      return new Blob([base64ToReceiptBytes(result.data)], { type: "image/jpeg" })
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Best-effort delete of a receipt thumbnail. Missing files are already gone.
+ * Never throws.
+ */
+export async function deleteReceiptFile(hash: string): Promise<void> {
+  if (!isNative()) return
+  try {
+    await Filesystem.deleteFile({ path: receiptFilePath(hash), directory: Directory.Data })
+  } catch {
+    // Missing files are already gone.
+  }
+}
