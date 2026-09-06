@@ -1,10 +1,22 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 const fixture = path.resolve(directory, "../fixtures/settling-shared.csv")
+
+async function markSharedInGroup(page: Page, description: string, groupName: string) {
+  await page.getByRole("button", { name: `Edit ${description}` }).click()
+  const dialog = page.getByRole("dialog", { name: `Edit ${description}` })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel("Group (optional)").selectOption({ label: groupName })
+  const shared = dialog.getByLabel("Shared (split cost)")
+  if (!(await shared.isChecked())) await shared.check()
+  await dialog.getByLabel("Divide by").fill("2")
+  await dialog.getByRole("button", { name: "Save changes" }).click()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+}
 
 test("group settling suggests exact paybacks for a shared group", async ({ page }) => {
   await page.goto("/imports")
@@ -23,19 +35,9 @@ test("group settling suggests exact paybacks for a shared group", async ({ page 
   await page.goto("/transactions")
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Settling Cabin" })).toBeVisible()
-  await page.getByLabel("Select Settling Cabin").check()
-  await page.getByLabel("Select Settling Groceries").check()
-
-  await page.getByLabel("Add to group").click()
-  await page.getByRole("option", { name: "Settling Trip" }).click()
-  await expect(page.getByText("2 of").first())
-    .toBeHidden({ timeout: 1_000 })
-    .catch(() => {})
-
-  await page.getByLabel("Select Settling Cabin").check()
-  await page.getByLabel("Select Settling Groceries").check()
-  await page.getByLabel("Sharing").click()
-  await page.getByRole("option", { name: /Shared ÷2/ }).click()
+  await markSharedInGroup(page, "Settling Cabin", "Settling Trip")
+  await markSharedInGroup(page, "Settling Groceries", "Settling Trip")
+  await expect(page.getByText("shared ÷2")).toHaveCount(2)
 
   await page.goto("/groups")
   await page
