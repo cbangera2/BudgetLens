@@ -237,11 +237,10 @@ jobs:
               echo "::error::platform $platform missing url or signature in latest.json."
               exit 1
             fi
-            CODE="$(curl -sSL -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" "$URL")"
-            if [ "$CODE" != "200" ] && [ "$CODE" != "302" ]; then
-              echo "::error::platform $platform URL $URL returned HTTP $CODE."
-              exit 1
-            fi
-            echo "OK $platform -> HTTP $CODE"
+            # NOTE: no download check here. Draft asset URLs render as
+            # untagged-<sha> and 404 until publish (verified 2026-09-06), so a
+            # draft-stage download probe can never pass. Downloadability is
+            # proven after publish instead.
+            echo "OK $platform -> url + signature present"
           done
           echo "latest.json valid for $TAG."
