@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { shareFile } from "@/lib/native"
+import { downloadFile, shareFile } from "@/lib/native"
 
 const png = () => new Blob(["synthetic-png-bytes"], { type: "image/png" })
 
@@ -95,5 +95,13 @@ describe("shareFile binary helper", () => {
 
     expect(outcome).toBe("copied")
     expect(written).toHaveLength(1)
+  })
+
+  it("downloadFile downloads directly without share or clipboard", () => {
+    const { clicked } = mockDownload()
+
+    downloadFile("budgetlens-year-review-2025.png", png())
+
+    expect(clicked).toEqual(["budgetlens-year-review-2025.png"])
   })
 })

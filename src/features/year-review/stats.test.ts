@@ -170,4 +170,16 @@ describe("year-review stats", () => {
     expect(defaultReviewYear(transactions, 2026)).toBe(2025)
     expect(defaultReviewYear([], 2026)).toBe(2026)
   })
+
+  it("includes wealth-only years in the picker and default selection", () => {
+    const transactions = [buildTransaction({ id: "a", date: "2024-12-31" })]
+    const wealth = [
+      buildWealthSnapshot({ id: "start", date: "2025-01-31", valueMinor: 10_000_00 }),
+      buildWealthSnapshot({ id: "end", date: "2025-12-31", valueMinor: 12_000_00 }),
+    ]
+
+    expect(availableReviewYears(transactions, 2026, wealth)).toEqual([2026, 2025, 2024])
+    expect(defaultReviewYear(transactions, 2026, wealth)).toBe(2025)
+    expect(defaultReviewYear([], 2026, wealth)).toBe(2025)
+  })
 })

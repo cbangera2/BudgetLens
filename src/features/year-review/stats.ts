@@ -37,34 +37,53 @@ function parseYearOf(date: string): number | null {
   return Number.isInteger(year) ? year : null
 }
 
+function collectDataYears(
+  transactions: readonly Transaction[],
+  wealth: readonly WealthSnapshot[],
+): number[] {
+  const years: number[] = []
+  for (const transaction of transactions) {
+    const year = parseYearOf(transaction.date)
+    if (year !== null) years.push(year)
+  }
+  for (const snapshot of wealth) {
+    const year = parseYearOf(snapshot.date)
+    if (year !== null) years.push(year)
+  }
+  return years
+}
+
 /**
  * Default picker selection: the most recent year present in data (the current
  * year is often still empty), falling back to the current year when empty.
+ * Wealth-only years count so a net-worth review stays reachable.
  */
 export function defaultReviewYear(
   transactions: readonly Transaction[],
   currentYear = new Date().getFullYear(),
+  wealth: readonly WealthSnapshot[] = [],
 ): number {
   let latest: number | null = null
-  for (const transaction of transactions) {
-    const year = parseYearOf(transaction.date)
-    if (year !== null && (latest === null || year > latest)) latest = year
+  for (const year of collectDataYears(transactions, wealth)) {
+    if (latest === null || year > latest) latest = year
   }
   return latest ?? currentYear
 }
 
 /**
  * Years selectable in the year-in-review picker: the current year plus every
- * year present in transaction dates, newest first, with no hardcoding.
+ * year present in transaction or wealth-snapshot dates, newest first, with no
+ * hardcoding. Wealth-only years are included so the net-worth delta review
+ * stays selectable.
  */
 export function availableReviewYears(
   transactions: readonly Transaction[],
   currentYear = new Date().getFullYear(),
+  wealth: readonly WealthSnapshot[] = [],
 ): number[] {
   const years = new Set<number>([currentYear])
-  for (const transaction of transactions) {
-    const year = parseYearOf(transaction.date)
-    if (year !== null) years.add(year)
+  for (const year of collectDataYears(transactions, wealth)) {
+    years.add(year)
   }
   return [...years].toSorted((left, right) => right - left)
 }

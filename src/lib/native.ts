@@ -541,6 +541,15 @@ function downloadBlobOnWeb(filename: string, blob: Blob): void {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * Download a binary file directly without invoking any share sheet or
+ * clipboard. No-op where the DOM is unavailable (notably the native shell,
+ * where sharing is the only way bytes leave the app).
+ */
+export function downloadFile(filename: string, blob: Blob): void {
+  downloadBlobOnWeb(filename, blob)
+}
+
 async function blobToBase64(blob: Blob): Promise<string> {
   const buffer = await blob.arrayBuffer()
   const bytes = new Uint8Array(buffer)

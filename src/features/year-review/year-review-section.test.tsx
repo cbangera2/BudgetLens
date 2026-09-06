@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { buildTransaction, buildWealthSnapshot } from "@/test/factories"
 
@@ -15,6 +15,26 @@ vi.mock("./card-canvas", async (importOriginal) => {
     ),
   }
 })
+
+vi.mock("@/lib/native", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/native")>()
+  return {
+    ...original,
+    isNative: vi.fn<() => boolean>(() => false),
+    shareFile: vi.fn<(filename: string, blob: Blob, title?: string) => Promise<"downloaded">>(
+      async () => "downloaded",
+    ),
+    downloadFile: vi.fn<(filename: string, blob: Blob) => void>(() => undefined),
+  }
+})
+
+async function nativeMocks() {
+  const native = await import("@/lib/native")
+  return {
+    shareFile: vi.mocked(native.shareFile),
+    downloadFile: vi.mocked(native.downloadFile),
+  }
+}
 
 const transactions = [
   buildTransaction({ id: "prior", date: "2024-11-02", amountMinor: -8_000, category: "Rent" }),
@@ -35,6 +55,10 @@ const wealth = [
 ]
 
 describe("YearReviewSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -51,31 +75,29 @@ describe("YearReviewSection", () => {
     expect(screen.getByRole("button", { name: "Share year in review" })).toBeInTheDocument()
   })
 
-  it("exports a PNG download when sharing from the web fallback", async () => {
-    vi.stubGlobal("navigator", {})
-    vi.stubGlobal("ClipboardItem", undefined)
-    const created: Blob[] = []
-    vi.stubGlobal("URL", {
-      createObjectURL: (blob: Blob): string => {
-        created.push(blob)
-        return "blob:mock"
-      },
-      revokeObjectURL: (): void => {},
-    })
-    const clicked: string[] = []
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
-      function (this: HTMLAnchorElement) {
-        clicked.push(this.download)
-      },
-    )
+  it("shares through the share sheet without downloading", async () => {
+    const { shareFile, downloadFile } = await nativeMocks()
 
     render(<YearReviewSection transactions={transactions} wealth={wealth} />)
     fireEvent.click(screen.getByRole("button", { name: "Share year in review" }))
 
     await waitFor(() => {
-      expect(clicked).toEqual(["budgetlens-year-review-2025.png"])
+      expect(shareFile).toHaveBeenCalledTimes(1)
     })
-    expect(created).toHaveLength(1)
-    expect(created[0]?.type).toBe("image/png")
+    expect(shareFile.mock.calls[0]?.[0]).toBe("budgetlens-year-review-2025.png")
+    expect(downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("downloads directly without the share flow", async () => {
+    const { shareFile, downloadFile } = await nativeMocks()
+
+    render(<YearReviewSection transactions={transactions} wealth={wealth} />)
+    fireEvent.click(screen.getByRole("button", { name: "Download PNG" }))
+
+    await waitFor(() => {
+      expect(downloadFile).toHaveBeenCalledTimes(1)
+    })
+    expect(downloadFile.mock.calls[0]?.[0]).toBe("budgetlens-year-review-2025.png")
+    expect(shareFile).not.toHaveBeenCalled()
   })
 })

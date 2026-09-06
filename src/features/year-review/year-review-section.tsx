@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
 import type { Transaction, WealthSnapshot } from "@/domain/models"
-import { shareFile } from "@/lib/native"
+import { downloadFile, isNative, shareFile } from "@/lib/native"
 
 import { exportYearReviewPng, yearReviewFilename } from "./card-canvas"
 import { availableReviewYears, buildYearReviewStats, defaultReviewYear } from "./stats"
@@ -23,8 +23,13 @@ export function YearReviewSection({
   transactions: readonly Transaction[]
   wealth: readonly WealthSnapshot[]
 }) {
-  const years = useMemo(() => availableReviewYears(transactions), [transactions])
-  const [selectedYear, setSelectedYear] = useState<number>(() => defaultReviewYear(transactions))
+  const years = useMemo(
+    () => availableReviewYears(transactions, new Date().getFullYear(), wealth),
+    [transactions, wealth],
+  )
+  const [selectedYear, setSelectedYear] = useState<number>(() =>
+    defaultReviewYear(transactions, new Date().getFullYear(), wealth),
+  )
   const [busy, setBusy] = useState<"idle" | "sharing" | "downloading">("idle")
   const year = years.includes(selectedYear) ? selectedYear : (years[0] ?? selectedYear)
 
@@ -37,11 +42,15 @@ export function YearReviewSection({
     setBusy(mode === "share" ? "sharing" : "downloading")
     try {
       const blob = await exportYearReviewPng(stats)
-      const outcome = await shareFile(
-        yearReviewFilename(stats.year),
-        blob,
-        `BudgetLens ${stats.year} in review`,
-      )
+      const filename = yearReviewFilename(stats.year)
+      // Download PNG always downloads on web (never a share sheet or clipboard
+      // copy); inside the native shell the share sheet is the only way out.
+      if (mode === "download" && !isNative()) {
+        downloadFile(filename, blob)
+        toast.success("Year-in-review image downloaded")
+        return
+      }
+      const outcome = await shareFile(filename, blob, `BudgetLens ${stats.year} in review`)
       if (outcome === "downloaded") toast.success("Year-in-review image downloaded")
       else if (outcome === "copied") toast.success("Year-in-review image copied to clipboard")
       else toast.success("Year-in-review shared")
