@@ -10,6 +10,11 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",
+    // Run browser tests as returning users with a clean store: the onboarding
+    // seed gate skips demo seeding unless the recorded choice is "demo", so no
+    // kill-switch env var is needed. Specs that exercise first-run onboarding
+    // opt out via `test.use({ storageState: { cookies: [], origins: [] } })`.
+    storageState: "./tests/browser/storage-state.json",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
@@ -20,9 +25,5 @@ export default defineConfig({
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: {
-      // Tests import their own fixtures and expect an empty database.
-      VITE_DISABLE_DEMO_DATA: "true",
-    },
   },
 })

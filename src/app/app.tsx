@@ -3,6 +3,7 @@ import { Toaster } from "sonner"
 
 import { router } from "@/app/router"
 import { ThemeProvider } from "@/app/theme-provider"
+import { OnboardingGate } from "@/features/onboarding/onboarding-gate"
 
 export function App() {
   return (
@@ -13,7 +14,9 @@ export function App() {
       >
         Skip to main content
       </a>
-      <RouterProvider router={router} />
+      <OnboardingGate>
+        <RouterProvider router={router} />
+      </OnboardingGate>
       <Toaster richColors position="bottom-right" />
     </ThemeProvider>
   )
