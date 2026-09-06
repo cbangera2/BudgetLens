@@ -230,7 +230,7 @@ describe("settleGroupTransactions", () => {
         expect(Number.isInteger(transfer.amountMinor)).toBe(true)
       }
       expect(result.transfers.length).toBeLessThanOrEqual(Math.max(0, result.memberCount - 1))
-      void computeSettlementBalances
+      expect(computeSettlementBalances(transactions)).toEqual(result.balances)
     }
   })
 })
