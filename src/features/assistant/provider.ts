@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core"
 
 import {
+  DEMO_DIRECT_BASE_URL,
+  DEMO_PROVIDER_ID,
+  isDemoModeAvailable,
+  isDemoRequest,
+} from "@/features/assistant/demo-endpoint"
+import { DEMO_DEFAULT_MODEL, isDemoModelAllowed } from "@/features/assistant/demo-models"
+import {
   DEFAULT_THINKING_LEVEL,
   THINKING_LEVELS,
   type ThinkingLevel,
@@ -14,6 +21,7 @@ export type AssistantProviderId =
   | "lmstudio"
   | "openrouter"
   | "openai"
+  | "openrouter-demo"
   | "custom"
 
 export interface AssistantProviderPreset {
@@ -75,6 +83,14 @@ export const ASSISTANT_PRESETS: readonly AssistantProviderPreset[] = [
     hint: "Data leaves your machine. Prefer local for sensitive finances.",
   },
   {
+    id: DEMO_PROVIDER_ID,
+    label: "Demo (free models, shared key)",
+    baseURL: DEMO_DIRECT_BASE_URL,
+    model: DEMO_DEFAULT_MODEL,
+    needsKey: false,
+    hint: "Zero setup: shared key, free models only. Your finance snapshot is sent to OpenRouter.",
+  },
+  {
     id: "custom",
     label: "Custom OpenAI-compatible",
     baseURL: "http://localhost:4000/v1",
@@ -83,6 +99,16 @@ export const ASSISTANT_PRESETS: readonly AssistantProviderPreset[] = [
     hint: "vLLM, LiteLLM proxy, or anything speaking /chat/completions.",
   },
 ]
+
+/**
+ * Presets the user may pick right now. The demo preset is hidden unless a
+ * demo key was baked in at build time (VITE_OPENROUTER_DEMO_KEY), so local
+ * dev without the key behaves exactly as before.
+ */
+export function visibleAssistantPresets(): readonly AssistantProviderPreset[] {
+  if (isDemoModeAvailable()) return ASSISTANT_PRESETS
+  return ASSISTANT_PRESETS.filter((preset) => preset.id !== DEMO_PROVIDER_ID)
+}
 
 export interface AssistantSettings {
   provider: AssistantProviderId
@@ -138,6 +164,16 @@ function asText(value: unknown, fallback: string): string {
   return typeof value === "string" && value ? value : fallback
 }
 
+/**
+ * Persistable copy of settings: API keys never touch clear-text storage.
+ * localStorage keeps settings with the key blanked; on desktop the OS
+ * keychain holds remembered keys. This also guarantees the baked demo key
+ * (resolved at send time, never stored in settings) can't leak into storage.
+ */
+export function toPersistableSettings(settings: AssistantSettings): AssistantSettings {
+  return { ...settings, apiKey: "" }
+}
+
 export function readAssistantSettings(storage: Pick<Storage, "getItem">): AssistantSettings {
   const fallback = defaultSettingsFor("opencode-bridge")
   try {
@@ -145,7 +181,13 @@ export function readAssistantSettings(storage: Pick<Storage, "getItem">): Assist
     if (!raw) return fallback
     const parsed: unknown = JSON.parse(raw) as unknown
     if (!isRecord(parsed)) return fallback
-    const provider = isAssistantProviderId(parsed.provider) ? parsed.provider : fallback.provider
+    const storedProvider = isAssistantProviderId(parsed.provider) ? parsed.provider : null
+    // A stored demo selection from a keyed build (e.g. Pages) means nothing in
+    // a keyless build (local dev): fall back so behavior is exactly as before.
+    const provider =
+      storedProvider === DEMO_PROVIDER_ID && !isDemoModeAvailable()
+        ? fallback.provider
+        : (storedProvider ?? fallback.provider)
     const preset = presetFor(provider)
     return {
       provider,
@@ -232,6 +274,20 @@ function extractContent(payload: unknown): string {
 
 export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
 
+/**
+ * Free-model allowlist gate: whenever the shared demo key is active, reject
+ * anything but an allowlisted ":free" id. The baked key is extractable from
+ * the JS bundle, so this (plus the capped OpenRouter key) is what keeps theft
+ * harmless. Single choke point: both requestChatTurn and sendToolResults go
+ * through postChatCompletions.
+ */
+function assertDemoModelAllowed(baseURL: string, apiKey: string, model: string): void {
+  if (!isDemoRequest(baseURL, apiKey) || isDemoModelAllowed(model)) return
+  throw new Error(
+    `Demo mode only allows free models (got ${JSON.stringify(model)}). Pick one of the allowlisted :free models.`,
+  )
+}
+
 function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs)
   return signal ? AbortSignal.any([signal, timeout]) : timeout
@@ -275,6 +331,7 @@ async function postChatCompletions(options: {
   signal?: AbortSignal
   timeoutMs?: number
 }): Promise<unknown> {
+  assertDemoModelAllowed(options.baseURL, options.apiKey, options.model)
   // Desktop binary: route through the Rust proxy (no WebView Origin, so no
   // CORS preflight; keys stay out of the JS bundle when remembered).
   if (isTauriSync()) {
