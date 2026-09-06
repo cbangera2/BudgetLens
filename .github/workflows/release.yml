@@ -227,10 +227,17 @@ jobs:
           # NOTE: the releases/tags/{tag} API 404s on draft releases, so read
           # the draft through `gh release view`, which resolves drafts by tag.
           # This job has no checkout, so every gh call names the repo with -R.
-          if ! gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq . > /dev/null; then
-            echo "::error::no release found for tag $TAG."
-            exit 1
-          fi
+          # The lookup can flake right after uploads; retry before failing.
+          for attempt in 1 2 3; do
+            if gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq . > /dev/null 2>&1; then
+              break
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::no release found for tag $TAG."
+              exit 1
+            fi
+            sleep 15
+          done
           gh release download "$TAG" -R "${{ github.repository }}" --pattern "latest.json" --clobber --dir .
           cat latest.json
 
