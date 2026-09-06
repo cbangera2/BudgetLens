@@ -50,6 +50,10 @@ jobs:
           # vite.config.ts uses GITHUB_ACTIONS to set base="/BudgetLens/" automatically.
           # Override with VITE_BASE=/ for a custom domain.
           GITHUB_ACTIONS: "true"
+          # Baked shared key for demo mode (free models only, enforced in-app).
+          # Runs on main builds only (this workflow fires on push to main).
+          # Missing/empty secret = demo preset hidden, app behaves as before.
+          VITE_OPENROUTER_DEMO_KEY: ${{ secrets.OPENROUTER_KEY }}
 
       - name: Prepare Pages artifact (SPA fallback + disable Jekyll)
         run: |

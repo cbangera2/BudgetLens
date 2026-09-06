@@ -41,6 +41,16 @@ import {
   type DeleteTransactionProposal,
   type RecategorizeProposal,
 } from "@/features/assistant/data-tools"
+import {
+  DEMO_PROVIDER_ID,
+  isDemoModeAvailable,
+  resolveDemoEndpoint,
+} from "@/features/assistant/demo-endpoint"
+import {
+  DEMO_DEFAULT_MODEL,
+  DEMO_MODEL_ALLOWLIST,
+  isDemoModelAllowed,
+} from "@/features/assistant/demo-models"
 import { HistorySearch } from "@/features/assistant/history-search"
 import { Markdown } from "@/features/assistant/markdown"
 import { MessageActions } from "@/features/assistant/message-actions"
@@ -56,6 +66,8 @@ import {
   readAssistantSettings,
   requestChatTurn,
   sendToolResults,
+  toPersistableSettings,
+  visibleAssistantPresets,
   type AssistantProviderId,
   type AssistantSettings,
 } from "@/features/assistant/provider"
@@ -357,7 +369,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     // API keys never touch clear-text storage: localStorage keeps settings
     // with the key blanked. On desktop the keychain holds remembered keys.
-    const persistedSettings: AssistantSettings = { ...settings, apiKey: "" }
+    // Demo credentials resolve at send time from the build env, never here.
+    const persistedSettings: AssistantSettings = toPersistableSettings(settings)
     try {
       window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
     } catch {
@@ -675,6 +688,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => () => modelsAbortRef.current?.abort(), [])
 
   async function loadDirectModels(): Promise<void> {
+    // Demo models come from the fixed allowlist, not the provider listing.
+    if (settings.provider === DEMO_PROVIDER_ID) return
     modelsAbortRef.current?.abort()
     const controller = new AbortController()
     modelsAbortRef.current = controller
@@ -795,14 +810,22 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     controller: AbortController,
   ): Promise<void> {
     setContextSummary("live tools · 5 capped Dexie queries")
+    // Demo mode resolves its shared key at send time: the key is baked into
+    // the build env and never stored in settings or storage.
+    const demo = settings.provider === DEMO_PROVIDER_ID ? resolveDemoEndpoint() : null
+    if (settings.provider === DEMO_PROVIDER_ID && !demo) {
+      throw new Error("Demo mode is not configured in this build (missing demo key).")
+    }
+    const baseURL = demo?.baseURL ?? settings.baseURL
+    const apiKey = demo?.apiKey ?? settings.apiKey
     try {
       citeRowsRef.current = rowsFromSnapshot(await buildFinanceSnapshot(repositories))
     } catch {
       citeRowsRef.current = []
     }
     const turn = await requestChatTurn({
-      baseURL: settings.baseURL,
-      apiKey: settings.apiKey,
+      baseURL,
+      apiKey,
       model: settings.model,
       system: ASSISTANT_SYSTEM_PROMPT,
       history,
@@ -870,8 +893,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     }
 
     const finalAnswer = await sendToolResults({
-      baseURL: settings.baseURL,
-      apiKey: settings.apiKey,
+      baseURL,
+      apiKey,
       model: settings.model,
       system: ASSISTANT_SYSTEM_PROMPT,
       history,
@@ -1019,6 +1042,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   }
 
   const preset = ASSISTANT_PRESETS.find((item) => item.id === settings.provider)
+  const isDemoActive = settings.provider === DEMO_PROVIDER_ID && isDemoModeAvailable()
 
   const sizeWidthClass =
     layout.size === "s" ? "sm:w-[22rem]" : layout.size === "l" ? "sm:w-[32rem]" : "sm:w-[26rem]"
@@ -1101,7 +1125,14 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           <Bot className="size-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">Assistant</p>
+          <p className="flex items-center gap-2 truncate text-sm font-semibold">
+            Assistant
+            {isDemoActive && (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                Demo mode
+              </span>
+            )}
+          </p>
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span
               aria-hidden="true"
@@ -1171,6 +1202,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           <X className="size-4" aria-hidden="true" />
         </Button>
       </header>
+
+      {isDemoActive && (
+        <p className="border-b px-4 py-1.5 text-[11px] text-muted-foreground">
+          Demo mode: your finance snapshot is sent to OpenRouter on a shared key. Free models only.
+        </p>
+      )}
 
       {contextSummary && (
         <p
@@ -1263,7 +1300,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 if (isAssistantProviderId(event.target.value)) selectProvider(event.target.value)
               }}
             >
-              {ASSISTANT_PRESETS.map((item) => (
+              {visibleAssistantPresets().map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.label}
                 </option>
@@ -1361,53 +1398,73 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <div className="grid gap-1">
-              <label className="grid gap-1" htmlFor="assistant-model">
-                <span className="font-medium">Model</span>
-                {directModels ? (
+              {isDemoActive ? (
+                <label className="grid gap-1" htmlFor="assistant-model">
+                  <span className="font-medium">Model (free only, shared key)</span>
                   <select
                     id="assistant-model"
                     className="h-9 rounded-xl border border-input bg-background px-2"
-                    value={settings.model}
+                    value={isDemoModelAllowed(settings.model) ? settings.model : DEMO_DEFAULT_MODEL}
                     onChange={(event) => updateSettings({ model: event.target.value })}
                   >
-                    {!directModels.includes(settings.model) && (
-                      <option value={settings.model}>{settings.model} (custom)</option>
-                    )}
-                    {directModels.map((id) => (
+                    {DEMO_MODEL_ALLOWLIST.map((id) => (
                       <option key={id} value={id}>
                         {id}
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <Input
-                    id="assistant-model"
-                    value={settings.model}
-                    onChange={(event) => updateSettings({ model: event.target.value })}
-                  />
-                )}
-              </label>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full"
-                  disabled={directModelsLoading}
-                  onClick={() => {
-                    void loadDirectModels()
-                  }}
-                >
-                  {directModelsLoading
-                    ? "Loading…"
-                    : directModels
-                      ? "Reload models"
-                      : "Load models"}
-                </Button>
-                {directModels && (
-                  <span className="text-muted-foreground">{directModels.length} models</span>
-                )}
-              </div>
+                </label>
+              ) : (
+                <label className="grid gap-1" htmlFor="assistant-model">
+                  <span className="font-medium">Model</span>
+                  {directModels ? (
+                    <select
+                      id="assistant-model"
+                      className="h-9 rounded-xl border border-input bg-background px-2"
+                      value={settings.model}
+                      onChange={(event) => updateSettings({ model: event.target.value })}
+                    >
+                      {!directModels.includes(settings.model) && (
+                        <option value={settings.model}>{settings.model} (custom)</option>
+                      )}
+                      {directModels.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="assistant-model"
+                      value={settings.model}
+                      onChange={(event) => updateSettings({ model: event.target.value })}
+                    />
+                  )}
+                </label>
+              )}
+              {!isDemoActive && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={directModelsLoading}
+                    onClick={() => {
+                      void loadDirectModels()
+                    }}
+                  >
+                    {directModelsLoading
+                      ? "Loading…"
+                      : directModels
+                        ? "Reload models"
+                        : "Load models"}
+                  </Button>
+                  {directModels && (
+                    <span className="text-muted-foreground">{directModels.length} models</span>
+                  )}
+                </div>
+              )}
               {directModelsError && <p className="text-muted-foreground">{directModelsError}</p>}
               {isDesktop && isLocalBaseURL(settings.baseURL) && probeStatus === "checking" && (
                 <p className="text-muted-foreground">Checking local server…</p>
@@ -1445,7 +1502,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                 )}
             </div>
           )}
-          {settings.provider !== "opencode-harness" && (
+          {settings.provider !== "opencode-harness" && !isDemoActive && (
             <>
               <label className="grid gap-1" htmlFor="assistant-base-url">
                 <span className="font-medium">Base URL (OpenAI-compatible)</span>
