@@ -172,8 +172,12 @@ jobs:
           echo "Visible assets:"
           echo "$ASSETS" | jq -r '.[].name'
           gh release download "$TAG" -R "$REPO" --pattern "*.sig" --clobber --dir "$WORK"
+          # Deterministic tag-bound URLs: the API renders draft asset URLs as
+          # untagged-<sha> (404 until publish, verified 2026-09-06), so never
+          # copy URLs from the API for the manifest. This canonical form is
+          # what GitHub serves after publish.
           url_for() {
-            echo "$ASSETS" | jq -r --arg n "$1" '.[] | select(.name == $n) | .url // empty'
+            printf 'https://github.com/%s/releases/download/%s/%s' "$REPO" "$TAG" "$1"
           }
           DARWIN_URL="$(url_for "$DARWIN_BIN")"
           WIN_URL="$(url_for "$WIN_BIN")"
