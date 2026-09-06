@@ -12,8 +12,12 @@
 // lists both "tools" and "tool_choice" in supported_parameters. The assistant
 // depends on tool_calls, so a non-tool model would silently break it.
 // Re-verify before rotating DEMO_DEFAULT_MODEL.
+//
+// Default is MiniMax M3: the most headroom on OpenRouter's free shared pool
+// (GLM 5.2 and Gemma 4 both hit upstream 429s during live relay verification
+// on 2026-09-06; M3 answered 200 on the first try).
 
-export const DEMO_DEFAULT_MODEL = "z-ai/glm-5.2:free"
+export const DEMO_DEFAULT_MODEL = "minimax/minimax-m3:free"
 
 export const DEMO_MODEL_ALLOWLIST: readonly string[] = [
   "cohere/north-mini-code:free",
