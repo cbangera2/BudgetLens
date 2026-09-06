@@ -1,44 +1,24 @@
 # BudgetLens
 
-BudgetLens is a private, local-first dashboard for exploring transaction, net-worth, and
-investment-history exports from
-[Credit Karma Extractor](https://github.com/cbangera2/CreditKarmaExtractor).
+A private, local-first dashboard for exploring transaction, net-worth, and investment-history
+exports from [Credit Karma Extractor](https://github.com/cbangera2/CreditKarmaExtractor).
 
-Financial data stays in the browser's IndexedDB storage. BudgetLens has no account system,
-analytics, application server, or database service, and it does not upload imported files.
+**[Try the live demo](https://cbangera2.github.io/BudgetLens/) · [Download the desktop app](https://github.com/cbangera2/BudgetLens/releases) · [Report an issue](https://github.com/cbangera2/BudgetLens/issues)**
+
+Financial data stays on your device. No account system, analytics, application server, or database
+service — imported files are never uploaded.
 
 ![BudgetLens overview with synthetic demo data: stat modules, filters, custom-chart builder, and the assistant button at bottom right](docs/images/budgetlens-dashboard.jpg)
 
 _The screenshot contains invented demo data only._
 
-## What you can do
+## Get started
 
-- Import a complete one-file BudgetLens JSON bundle, current or legacy transaction CSVs, or up to
-  20 Credit Karma transaction JSON responses at once.
-- Preview every import, skip duplicate transactions by default, continue when one selected file fails,
-  and remove the records associated with a completed import batch.
-- Import `Date,Net Worth` and `Date,Investment Value` histories independently.
-- Import dated net-worth breakdown and account-source snapshots from Credit Karma Extractor.
-- Compare net worth, investments, assets, debts, five breakdown segments, and available account
-  sources over 1M, 3M, 6M, YTD, 1Y, or all available history.
-- Search, filter, sort, add, edit, and delete transactions.
-- Group transactions into named groups (a vacation, a project, an event) and see what each group
-  really cost, with per-category and running-cost analytics.
-- Mark transactions as shared so group analytics count your share (÷2 by default, up to ÷10) when
-  someone reimburses part of the cost.
-- Select multiple transactions at once to bulk-assign them to a group or toggle shared splits.
-- Track monthly or yearly category budgets.
-- Rearrange, hide, and restore overview modules.
-- Create and reorder saved charts with configurable metrics, filters, chart types, palettes, labels,
-  legends, dimensions, and animation.
-- Edit every built-in chart and choose gradient, solid, or unfilled area styling.
-- Use styled chart controls, calendar date pickers, color selection, a compact filter bar, a
-  collapsible desktop sidebar, and light, dark, or system appearance.
-- Download a local JSON backup or permanently clear browser data from Settings.
-
-## Run locally
-
-Prerequisites: Node.js 22 or newer and [pnpm](https://pnpm.io/).
+- **Web:** open the [live demo](https://cbangera2.github.io/BudgetLens/) — nothing to install.
+- **Desktop:** download the latest release for macOS (Apple Silicon) or Windows. Updates install
+  themselves from Settings. Builds are unsigned for now: on macOS right-click → Open (or allow it
+  in Privacy & Security); on Windows choose `More info` → `Run anyway`.
+- **From source:** requires Node.js 22+ and [pnpm](https://pnpm.io/).
 
 ```bash
 git clone https://github.com/cbangera2/BudgetLens.git
@@ -47,89 +27,40 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open the URL printed by Vite. No environment variables, PostgreSQL server, or Docker daemon are
-required.
+Moving between browser, desktop, or machines? Data lives in a separate local store per origin, so
+export a JSON backup from Settings first, then restore it where you're going.
 
-## Desktop app
+## What you can do
 
-One-click builds for macOS (Apple Silicon) and Windows ship from GitHub Releases with
-in-app auto-update. Intel Macs and Linux are out of scope for v1.
+- Import transaction CSVs, Credit Karma JSON responses (up to 20 files at once), or one versioned
+  BudgetLens JSON bundle — with previews, duplicate skipping, and per-file failure isolation.
+- Import net-worth, investment, breakdown-segment, and account-source histories independently.
+- Search, filter, sort, add, edit, and delete transactions; bulk-assign them to named groups with
+  shared-cost splits.
+- Set import rules that auto-categorize matching transactions on the way in.
+- Spot recurring subscriptions and monthly burn.
+- Track monthly or yearly category budgets.
+- Rearrange dashboard modules and build custom charts (bar, donut, area) with your own metrics,
+  filters, and styling.
+- Ask the built-in assistant about your finances. It defaults to local Ollama
+  (`ollama serve` + `ollama pull qwen2.5:7b`) so nothing leaves your machine; hosted keys are kept
+  in the OS keychain, and every answer is labeled local or cloud.
+- Back up everything to JSON (desktop and mobile back up automatically on suspend) or wipe
+  local data from Settings.
 
-- Download the latest `app-v*` release asset and launch. The v1 builds are unsigned: macOS may
-  need System Settings → Privacy & Security → Allow, and Windows may show `Unknown publisher` →
-  `More info` → `Run anyway`.
-- Browser data does not migrate automatically (the app is a different origin). In the browser go
-  to Settings → download a JSON backup, then restore it via Imports in the app.
-- The assistant defaults to local Ollama: install it, run `ollama serve`, then
-  `ollama pull qwen2.5:7b`. Hosted API keys are remembered in the OS keychain by default (use
-  Forget in the assistant settings to opt out), and `localhost` providers never send data off
-  the machine.
+## Import formats
 
-## Import data
+Transaction CSVs require `Date` and `Amount`, plus optional `Description`, `Category`,
+`Transaction Type`, `Account Name`, `Account Type`, `Provider`, `Labels`, and `Notes` (legacy
+`Store/Vendor` and `Type` headers still work). Wealth histories use `Date,Net Worth` or
+`Date,Investment Value`; dated breakdown snapshots use `As Of,Section,Segment,Balance,Descriptor`.
+Always review the in-app preview before confirming an import.
 
-### Transactions
+## Privacy
 
-Transaction CSVs require `Date` and `Amount`. They may also include `Description`, `Category`,
-`Transaction Type`, `Account Name`, `Account Type`, `Provider`, `Labels`, and `Notes`. Legacy
-`Store/Vendor` and `Type` headers remain supported.
-
-Select up to 20 CSV and JSON files together. BudgetLens detects and validates each file independently,
-so one invalid file does not prevent other valid files from being imported. The versioned BudgetLens
-bundle contains transactions, net-worth history, investment history, the current category breakdown,
-and current account sources in one JSON file.
-
-Duplicate transaction rows are skipped by default. You can intentionally include them when needed.
-Each successful import is recorded as metadata, without retaining the original file contents, and
-can later be removed as an isolated batch.
-
-### Net worth and investments
-
-Wealth imports use one of these exact shapes:
-
-```csv
-Date,Net Worth
-2026-01-31,12345.67
-```
-
-```csv
-Date,Investment Value
-2026-01-31,6500.25
-```
-
-Review the detected type, duplicate policy, conflicts, and row counts before confirming an import.
-
-Current snapshot exports from Credit Karma Extractor use these additional shapes:
-
-```csv
-As Of,Section,Segment,Balance,Descriptor
-2026-07-29T12:00:00.000Z,assets,cash,1200.50,2 accounts
-2026-07-29T12:00:00.000Z,debts,creditCards,500.25,3 accounts
-```
-
-```csv
-As Of,Account Type,Source Label,Balance,Descriptor
-2026-07-29T12:00:00.000Z,investments,Synthetic Brokerage,8000.00,Connected
-```
-
-Import snapshots from different dates to build segment and account histories. Same-date conflicts
-can be kept or replaced explicitly, and removing an import removes only its associated rows.
-
-## Privacy and backups
-
-Browser storage is local to the current browser profile and site origin. Clearing site data can
-remove it, so download a JSON backup before clearing browser storage or changing environments.
-Backups contain financial data and should be stored privately.
-
-Never commit real financial exports, HAR files, credentials, generated backups, browser databases,
-or screenshots containing personal data.
-
-## Migration from the legacy app
-
-BudgetLens 1.0 is a clean local-first rewrite. Data from the previous Next.js/PostgreSQL application
-is not migrated automatically. Re-import your Credit Karma exports into the new browser app.
-
-Browser data is tied to the exact site origin. Changing the hostname, port, or deployment URL creates
-a separate local data store, so export a backup before moving environments.
+Storage is local to the current browser profile or app install — clearing site data removes it, so
+keep a JSON backup somewhere private. Never commit real exports, credentials, backups, or
+screenshots with personal data.
 
 ## Development
 
@@ -138,69 +69,33 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm test:coverage
 pnpm build
 pnpm test:browser
-pnpm audit --prod --audit-level high
 ```
 
-Browser tests cover desktop Chromium and an iPhone-sized viewport. All committed CSV and JSON
-fixtures are synthetic. To privately check a local export without printing or copying its contents
-into the repository:
-
-```bash
-BUDGETLENS_REAL_EXPORT_PATH=/private/path/net-worth.csv \
-  pnpm test -- src/features/imports/local-export-compatibility.test.ts
-
-BUDGETLENS_REAL_TRANSACTION_EXPORT_PATH=/private/path/transactions.csv \
-  pnpm test -- src/features/imports/local-export-compatibility.test.ts
-```
-
-### Stack
-
-- React 19, TypeScript, Vite, and TanStack Router
-- Tailwind CSS and current shadcn/ui-style open-code components
-- Recharts 3 with the shadcn chart composition pattern
-- Dexie and IndexedDB for versioned local persistence
-- Papa Parse and Zod for CSV and JSON parsing and validation
-- Oxlint with type-aware rules and Oxfmt
-- Vitest and Playwright
-
-CI uses focused quality, browser, CodeQL, and dependency-review workflows with least-privilege
-permissions and pinned actions. The rewrite architecture and acceptance criteria are documented in
-[docs/REVAMP_PLAN.md](docs/REVAMP_PLAN.md).
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Keep changes focused, add tests for new behavior, run the
-checks above, and use synthetic fixtures only. Pull requests should state which checks were automated
-and which flows were manually tested.
+Stack: React 19, TypeScript, Vite, TanStack Router, Tailwind, Recharts, Dexie/IndexedDB, Papa Parse,
+Zod, Oxlint/Oxfmt, Vitest, Playwright, Tauri (desktop). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Changelog
 
-### Unreleased
+### 1.1.0
 
-- Added atomic one-file BudgetLens bundle imports for transactions and every supported wealth data
-  group.
-- Added mixed CSV/JSON multi-file previews with per-file failure isolation and cross-file duplicate
-  detection.
-- Added dated asset/debt breakdown and account-source imports, versioned local storage, backups,
-  summary metrics, editable charts, accessible tables, and import-batch removal.
+- Desktop apps for macOS (Apple Silicon) and Windows with signed in-app auto-update.
+- Local-first assistant: Ollama and OpenAI-compatible providers, OS-keychain keys, local/cloud
+  badges, and approval-gated writes.
+- Transaction groups with shared-cost splits, import rules, subscription detection with
+  monthly burn, golden demo data, first-run onboarding, automatic backup on suspend, mobile
+  shell pass, iOS shell groundwork.
+- One-file BudgetLens bundle imports, multi-file previews with failure isolation, dated
+  asset/debt breakdown and account-source imports, removable import batches.
 
 ### 1.0.0 — July 2026
 
-- Replaced Next.js, PostgreSQL, Prisma, Docker, npm, and ESLint with a static Vite, pnpm, Oxlint,
-  and Oxfmt application.
-- Moved persistence into versioned browser-local IndexedDB storage with backups and destructive
-  action confirmations.
-- Added net-worth and investment-history imports, summaries, charts, ranges, and accessible tables.
-- Added resilient multi-file JSON importing, duplicate policies, per-file failures, and removable
-  import batches.
-- Preserved and expanded transaction management, category analysis, budgets, dashboard
-  customization, themes, and responsive navigation.
-- Added editable built-in and custom charts using current Recharts and shadcn chart patterns.
-- Added component, domain, import, accessibility, and desktop/mobile browser coverage with hardened
-  CI.
+- Local-first rewrite: static Vite + pnpm + Oxlint/Oxfmt replacing Next.js, PostgreSQL, Prisma,
+  Docker, npm, and ESLint.
+- Versioned browser-local IndexedDB storage with backups and destructive-action confirmations.
+- Net-worth and investment imports, summaries, charts, ranges, and accessible tables.
+- Transaction management, budgets, dashboard customization, themes, responsive navigation.
 
 Earlier development history remains available in Git.
 
