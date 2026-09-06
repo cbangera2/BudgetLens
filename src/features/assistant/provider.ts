@@ -533,7 +533,7 @@ function isRetryableToolError(error: unknown): boolean {
 
 function isLoopbackHost(host: string): boolean {
   const bare = host.toLowerCase().replace(/^\[|\]$/g, "")
-  return bare === "localhost" || bare === "127.0.0.1" || bare === "::1"
+  return bare === "localhost" || bare === "::1" || bare.startsWith("127.")
 }
 
 /** True for loopback base URLs (desktop Ollama/LM Studio/bridge): data stays local. */

@@ -703,6 +703,16 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   async function loadDirectModels(): Promise<void> {
     // Demo models come from the fixed allowlist, not the provider listing.
     if (settings.provider === DEMO_PROVIDER_ID) return
+    // Model listing sends the key to the configured URL — same transport
+    // policy as chat turns.
+    if (isNative) {
+      const blocked = describeNativeBlock(settings)
+      if (blocked) {
+        setDirectModels(null)
+        setDirectModelsError(blocked)
+        return
+      }
+    }
     modelsAbortRef.current?.abort()
     const controller = new AbortController()
     modelsAbortRef.current = controller
@@ -822,6 +832,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     history: Array<{ role: "user" | "assistant"; content: string }>,
     controller: AbortController,
   ): Promise<void> {
+    // Transport boundary: handleSend pre-checks, but regeneration and future
+    // callers funnel through here — enforce on every turn, not just on send.
+    if (isNative) {
+      const blocked = describeNativeBlock(settings)
+      if (blocked) throw new Error(blocked)
+    }
     setContextSummary("live tools · 5 capped Dexie queries")
     // Demo mode resolves its shared key at send time: the key is baked into
     // the build env and never stored in settings or storage.

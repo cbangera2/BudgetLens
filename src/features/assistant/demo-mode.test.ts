@@ -311,6 +311,9 @@ describe("native iOS shell transport lockdown", () => {
     expect(
       describeNativeBlock({ provider: "custom", baseURL: "http://localhost:4000/v1" }),
     ).toMatch(/local servers/i)
+    expect(describeNativeBlock({ provider: "custom", baseURL: "https://127.0.0.2/v1" })).toMatch(
+      /local servers/i,
+    )
     expect(
       describeNativeBlock({ provider: "custom", baseURL: "http://192.168.1.5:4000/v1" }),
     ).toMatch(/HTTPS/i)
