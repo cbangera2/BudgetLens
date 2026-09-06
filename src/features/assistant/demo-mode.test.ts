@@ -174,6 +174,32 @@ describe("demo request path", () => {
   })
 })
 
+describe("demo relay switchover", () => {
+  it("prefers the relay URL with no key when set", () => {
+    vi.stubEnv("VITE_ASSISTANT_RELAY_URL", "https://relay.test/")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    expect(resolveDemoEndpoint()).toEqual({ baseURL: "https://relay.test", apiKey: "" })
+    expect(isDemoModeAvailable()).toBe(true)
+  })
+
+  it("treats relay traffic as demo traffic (client allowlist still applies)", () => {
+    vi.stubEnv("VITE_ASSISTANT_RELAY_URL", "https://relay.test")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", "")
+    expect(isDemoRequest("https://relay.test", "")).toBe(true)
+    expect(isDemoRequest("https://relay.test/", "")).toBe(true)
+    expect(isDemoRequest("https://other.test", "")).toBe(false)
+  })
+
+  it("keeps direct baked-key behavior when the relay URL is unset", () => {
+    vi.stubEnv("VITE_ASSISTANT_RELAY_URL", "")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    expect(resolveDemoEndpoint()).toEqual({
+      baseURL: DEMO_DIRECT_BASE_URL,
+      apiKey: SYNTHETIC_DEMO_KEY,
+    })
+  })
+})
+
 describe("demo key storage hygiene", () => {
   it("never persists keys (demo or BYOK) to storage-shaped settings", () => {
     vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
