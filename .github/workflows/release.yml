@@ -89,7 +89,9 @@ jobs:
           releaseBody: See the assets below to download. Draft — publish only after all legs are green and validation passes.
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          # This tauri-action line uses `uploadUpdaterJson` (not
+          # `includeUpdaterJson`, which it silently ignores).
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}
 
       - name: Assert no Pages base leaked into desktop bundle
@@ -139,13 +141,13 @@ jobs:
           EXPECTED_VERSION="${TAG#app-v}"
           echo "Tag: $TAG (expect version $EXPECTED_VERSION)"
 
-          RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG")"
-          UPLOAD_URL="$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name == "latest.json") | .url')"
-          if [ -z "$UPLOAD_URL" ] || [ "$UPLOAD_URL" = "null" ]; then
-            echo "::error::latest.json not found on release $TAG — updater would offer nothing."
+          # NOTE: the releases/tags/{tag} API 404s on draft releases, so read
+          # the draft through `gh release view`, which resolves drafts by tag.
+          if ! gh release view "$TAG" --json assets --jq . > /dev/null; then
+            echo "::error::no release found for tag $TAG."
             exit 1
           fi
-          gh api -H "Accept: application/octet-stream" "$UPLOAD_URL" > latest.json
+          gh release download "$TAG" --pattern "latest.json" --clobber --dir .
           cat latest.json
 
           VERSION="$(jq -r '.version' latest.json)"
