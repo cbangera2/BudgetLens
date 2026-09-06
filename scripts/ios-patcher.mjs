@@ -304,8 +304,11 @@ export function buildQuickActionItemsValue() {
 /**
  * Ensure both static shortcut items exist in the host app Info.plist. A
  * missing key is inserted at the top level; a present key keeps every
- * existing entry and only appends absent BudgetLens types. Re-running is a
- * no-op once both type strings are present.
+ * existing entry and only appends absent BudgetLens types. Both the
+ * presence check and the insertion point are scoped to the shortcut array
+ * itself (see {@link shortcutArraySpan}), so same-looking strings elsewhere
+ * in the plist and nested arrays (e.g. UIApplicationShortcutItemUserInfo
+ * values) are ignored. Re-running is a no-op once both items are present.
  * @param {string} plistXml
  * @returns {TextEdit}
  */
@@ -313,12 +316,31 @@ export function ensureQuickActionShortcutItems(plistXml) {
   if (!plistXml.includes(`<key>${QUICK_ACTIONS_PLIST_KEY}</key>`)) {
     return ensureTopLevelDictKey(plistXml, QUICK_ACTIONS_PLIST_KEY, buildQuickActionItemsValue())
   }
+  const keyTag = `<key>${QUICK_ACTIONS_PLIST_KEY}</key>`
+  const span = shortcutArraySpan(plistXml, plistXml.indexOf(keyTag) + keyTag.length)
+  const body = plistXml.slice(span.open, span.close)
   const missing = QUICK_ACTION_ITEMS.filter(
-    (item) => !plistXml.includes(`<string>${item.type}</string>`),
+    (item) => !body.includes(`<string>${item.type}</string>`),
   )
   if (missing.length === 0) return { text: plistXml, changed: false }
-  const keyTag = `<key>${QUICK_ACTIONS_PLIST_KEY}</key>`
-  const afterKey = plistXml.indexOf(keyTag) + keyTag.length
+  const insertion = missing.map(quickActionItemXml).join("\n")
+  return {
+    text: `${plistXml.slice(0, span.close)}${insertion}\n${plistXml.slice(span.close)}`,
+    changed: true,
+  }
+}
+
+/**
+ * Span of the UIApplicationShortcutItems array value: its `<array` open to
+ * the matching `</array>` close. Depth-counted like
+ * {@link topLevelDictCloseIndex} so nested arrays (e.g. a shortcut item's
+ * UIApplicationShortcutItemUserInfo values) stay inside the span instead of
+ * being mistaken for the array end.
+ * @param {string} plistXml
+ * @param {number} afterKey index just past the `<key>` tag
+ * @returns {{ open: number, close: number }}
+ */
+export function shortcutArraySpan(plistXml, afterKey) {
   const arrayOpen = plistXml.indexOf("<array", afterKey)
   const headTag = /^\s*<([A-Za-z]+)[\s>]/.exec(plistXml.slice(afterKey))
   if (arrayOpen === -1 || !headTag || headTag[1] !== "array") {
@@ -326,13 +348,16 @@ export function ensureQuickActionShortcutItems(plistXml) {
       `ios-patcher: ${QUICK_ACTIONS_PLIST_KEY} exists but is not an <array>; fix it by hand.`,
     )
   }
-  const arrayClose = plistXml.indexOf("</array>", arrayOpen)
-  if (arrayClose === -1) throw new Error("ios-patcher: unbalanced <array> in Info.plist.")
-  const insertion = missing.map(quickActionItemXml).join("\n")
-  return {
-    text: `${plistXml.slice(0, arrayClose)}${insertion}\n${plistXml.slice(arrayClose)}`,
-    changed: true,
+  const token = /<\/?array(?=[\s>])/g
+  token.lastIndex = arrayOpen
+  let depth = 0
+  let match = token.exec(plistXml)
+  while (match) {
+    depth += match[0].startsWith("</") ? -1 : 1
+    if (depth === 0) return { open: arrayOpen, close: match.index }
+    match = token.exec(plistXml)
   }
+  throw new Error("ios-patcher: unbalanced <array> in Info.plist.")
 }
 
 /**

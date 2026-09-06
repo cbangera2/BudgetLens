@@ -27,6 +27,7 @@ import {
   planProjectEdits,
   quickActionItemXml,
   quickActionSceneDelegateBlock,
+  shortcutArraySpan,
 } from "../../../scripts/ios-patcher.mjs"
 
 const PATCHER_PATH = path.resolve(process.cwd(), "scripts", "ios-patcher.mjs")
@@ -168,6 +169,53 @@ describe("quick-actions plist entries", () => {
       `\t<key>UIApplicationShortcutItems</key>\n\t<string>nope</string>\n</dict>`,
     )
     expect(() => ensureQuickActionShortcutItems(bad)).toThrow(/not an <array>/)
+  })
+
+  it("ignores same-looking strings outside the shortcut array", () => {
+    // The add type appears in an unrelated top-level key (e.g. a pasted
+    // identifier list), while the shortcut array itself only holds budgets.
+    // A plist-wide check would wrongly conclude the shortcut exists.
+    const base = ensureQuickActionShortcutItems(INFO_PLIST).text
+    const topClose = base.lastIndexOf("</dict>")
+    const withDecoy = `${base.slice(0, topClose)}\t<key>PreviousIdentifiers</key>\n\t<array><string>${QUICK_ACTION_ADD_TYPE}</string></array>\n${base.slice(topClose)}`
+    const budgetsOnly = withDecoy.replace(
+      new RegExp(
+        `\\s*<dict>\\s*<key>UIApplicationShortcutItemType</key>\\s*<string>${QUICK_ACTION_ADD_TYPE}</string>[\\s\\S]*?</dict>`,
+      ),
+      "",
+    )
+    expect(budgetsOnly).not.toContain("Add transaction")
+
+    const merged = ensureQuickActionShortcutItems(budgetsOnly)
+    expect(merged.changed).toBe(true)
+    const keyTag = "<key>UIApplicationShortcutItems</key>"
+    const span = shortcutArraySpan(merged.text, merged.text.indexOf(keyTag) + keyTag.length)
+    const spanBody = merged.text.slice(span.open, span.close)
+    expect(spanBody).toContain(QUICK_ACTION_ADD_TYPE)
+    expect(spanBody).toContain(QUICK_ACTION_BUDGETS_TYPE)
+    // The add item is restored exactly once inside the shortcut array.
+    expect(spanBody.split(QUICK_ACTION_ADD_TYPE)).toHaveLength(2)
+    expect(ensureQuickActionShortcutItems(merged.text).changed).toBe(false)
+  })
+
+  it("inserts after nested UserInfo arrays instead of inside them", () => {
+    const withUserInfo = ensureQuickActionShortcutItems(INFO_PLIST).text.replace(
+      `<key>UIApplicationShortcutItemIconType</key>`,
+      `<key>UIApplicationShortcutItemUserInfo</key>\n\t\t<dict><key>ids</key><array><string>x</string></array></dict>\n\t\t<key>UIApplicationShortcutItemIconType</key>`,
+    )
+    const budgetsOnly = withUserInfo.replace(
+      new RegExp(
+        `\\s*<dict>\\s*<key>UIApplicationShortcutItemType</key>\\s*<string>${QUICK_ACTION_BUDGETS_TYPE}</string>[\\s\\S]*?</dict>`,
+      ),
+      "",
+    )
+    const merged = ensureQuickActionShortcutItems(budgetsOnly)
+    expect(merged.changed).toBe(true)
+    // The new budgets dict lands after the nested UserInfo array closes.
+    const nestedClose = merged.text.indexOf("<array><string>x</string></array>")
+    expect(nestedClose).toBeGreaterThan(-1)
+    expect(merged.text.indexOf(QUICK_ACTION_BUDGETS_TYPE)).toBeGreaterThan(nestedClose)
+    expect(ensureQuickActionShortcutItems(merged.text).changed).toBe(false)
   })
 })
 

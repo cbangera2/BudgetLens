@@ -75,6 +75,10 @@ export declare function buildWidgetExtensionPlist(): string
 export declare function quickActionItemXml(item: QuickActionItem): string
 export declare function buildQuickActionItemsValue(): string
 export declare function ensureQuickActionShortcutItems(plistXml: string): TextEdit
+export declare function shortcutArraySpan(
+  plistXml: string,
+  afterKey: number,
+): { open: number; close: number }
 export declare function quickActionSceneDelegateBlock(): string
 export declare function ensureSceneDelegateQuickActions(source: string): TextEdit
 export declare function upsertMarkedBlock(text: string, section: string, inner: string): TextEdit
