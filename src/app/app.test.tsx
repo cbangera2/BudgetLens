@@ -1,9 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach } from "vitest"
 
 import { App } from "@/app/app"
 import { SIDEBAR_PREFERENCE_KEY } from "@/app/app-shell"
+import { router } from "@/app/router"
 import { recordOnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
 describe("BudgetLens application shell", () => {
@@ -74,17 +75,29 @@ describe("BudgetLens application shell", () => {
   it("restores the collapsed preference after remount and preserves route navigation", async () => {
     const user = userEvent.setup()
     window.localStorage.setItem(SIDEBAR_PREFERENCE_KEY, JSON.stringify({ collapsed: true }))
-    window.history.replaceState({}, "", "/")
+    // The router is a module singleton shared by every test in this file, and
+    // window.history.replaceState does not notify its history subscriber, so
+    // reset through the router for deterministic starting state.
+    router.history.replace("/")
     render(<App />)
 
     expect(await screen.findByRole("button", { name: "Expand navigation" })).toBeInTheDocument()
 
     await user.click(screen.getByRole("link", { name: "Imports" }))
+    // Navigation-readiness gate: /imports is a lazyRouteComponent, so the
+    // router settles on the new pathname before its chunk renders. Waiting on
+    // router state (not wall-clock time) fixes the intermittent
+    // heading-not-found under parallel-worker load; the findBy below keeps
+    // the same 3s budget as the sibling tests for the lazy chunk itself.
+    await waitFor(() => expect(router.state.location.pathname).toBe("/imports"))
     expect(
-      await screen.findByRole("heading", { name: "Import Credit Karma data" }),
+      await screen.findByRole("heading", { name: "Import Credit Karma data" }, { timeout: 3_000 }),
     ).toBeInTheDocument()
 
     cleanup()
+    // The remount reuses the same singleton router, still parked at /imports;
+    // re-assert through the router so the second mount starts settled.
+    router.history.replace("/imports")
     render(<App />)
 
     expect(await screen.findByRole("button", { name: "Expand navigation" })).toBeInTheDocument()

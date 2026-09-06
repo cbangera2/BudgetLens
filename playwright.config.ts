@@ -19,6 +19,13 @@ export default defineConfig({
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile", use: { ...devices["iPhone 13"], browserName: "chromium" } },
+    // Opt-in WebKit leg for local runs: `PLAYWRIGHT_WEBKIT=1 pnpm test:browser
+    // --project=webkit`. Kept behind a flag (instead of always-on) because the
+    // CI browser job installs only the Chromium binary; promoting this to a
+    // CI leg needs a matching `playwright install webkit` step first.
+    ...(process.env.PLAYWRIGHT_WEBKIT === "1"
+      ? [{ name: "webkit", use: { ...devices["Desktop Safari"] } }]
+      : []),
   ],
   webServer: {
     command: "pnpm dev --host 127.0.0.1 --port 4173",
