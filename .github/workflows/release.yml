@@ -209,47 +209,30 @@ jobs:
           cat "$WORK/latest.json"
           gh release upload "$TAG" -R "$REPO" "$WORK/latest.json#latest.json" --clobber
 
-  validate:
-    name: Validate updater manifest
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [build, audit, manifest]
-    steps:
-      - name: Validate latest.json (version, platforms, signatures, URLs)
+      - name: Validate uploaded manifest (fresh download)
+        # Runs in this job (not a read-only job): draft releases are invisible
+        # to read-only tokens, so a separate validate job can never see them.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           EXPECTED_VERSION="${TAG#app-v}"
-          echo "Tag: $TAG (expect version $EXPECTED_VERSION)"
+          CHECK_DIR="$(mktemp -d)"
+          trap 'rm -rf "$CHECK_DIR"' EXIT
+          # Re-download what was just uploaded: true end-to-end check.
+          gh release download "$TAG" -R "${{ github.repository }}" --pattern "latest.json" --clobber --dir "$CHECK_DIR"
+          cat "$CHECK_DIR/latest.json"
 
-          # NOTE: the releases/tags/{tag} API 404s on draft releases, so read
-          # the draft through `gh release view`, which resolves drafts by tag.
-          # This job has no checkout, so every gh call names the repo with -R.
-          # The lookup can flake right after uploads; retry before failing.
-          for attempt in 1 2 3; do
-            if gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq . > /dev/null 2>&1; then
-              break
-            fi
-            if [ "$attempt" = "3" ]; then
-              echo "::error::no release found for tag $TAG."
-              exit 1
-            fi
-            sleep 15
-          done
-          gh release download "$TAG" -R "${{ github.repository }}" --pattern "latest.json" --clobber --dir .
-          cat latest.json
-
-          VERSION="$(jq -r '.version' latest.json)"
+          VERSION="$(jq -r '.version' "$CHECK_DIR/latest.json")"
           if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
             echo "::error::latest.json version $VERSION != tag version $EXPECTED_VERSION."
             exit 1
           fi
 
           for platform in darwin-aarch64 windows-x86_64; do
-            URL="$(jq -r --arg p "$platform" '.platforms[$p].url // empty' latest.json)"
-            SIG="$(jq -r --arg p "$platform" '.platforms[$p].signature // empty' latest.json)"
+            URL="$(jq -r --arg p "$platform" '.platforms[$p].url // empty' "$CHECK_DIR/latest.json")"
+            SIG="$(jq -r --arg p "$platform" '.platforms[$p].signature // empty' "$CHECK_DIR/latest.json")"
             if [ -z "$URL" ] || [ -z "$SIG" ]; then
               echo "::error::platform $platform missing url or signature in latest.json."
               exit 1
