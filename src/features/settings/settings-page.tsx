@@ -1,5 +1,5 @@
 import { useLiveQuery } from "dexie-react-hooks"
-import { Download, Laptop, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react"
+import { Download, Laptop, Moon, ShieldCheck, Sun, Trash2, Upload } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -8,8 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { database } from "@/db/database"
 import { repositories } from "@/db/repositories"
-import { clearAllData, createBackup } from "@/features/settings/backup"
+import {
+  type BackupPreview,
+  clearAllData,
+  createBackup,
+  previewBackup,
+  restoreBackup,
+} from "@/features/settings/backup"
 import { DesktopUpdateCard } from "@/features/settings/desktop-update-card"
 import { cn } from "@/lib/cn"
 
@@ -19,9 +26,28 @@ const themes = [
   { value: "system", label: "System", icon: Laptop },
 ] as const
 
+function describeRestorePreview(preview: BackupPreview): string {
+  const parts = [
+    `${preview.counts.transactions} transactions`,
+    `${preview.counts.wealth} wealth observations`,
+    `${preview.counts.wealthBreakdown} breakdown snapshots`,
+    `${preview.counts.wealthAccounts} account snapshots`,
+    `${preview.counts.budgets} budgets`,
+    `${preview.counts.transactionGroups} groups`,
+    `${preview.counts.imports} import batches`,
+  ]
+  const exported = preview.exportedAt ? `Exported ${preview.exportedAt}. ` : ""
+  return `${exported}Holds ${parts.join(", ")}.`
+}
+
 export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const [confirmation, setConfirmation] = useState("")
+  const [restoreName, setRestoreName] = useState<string | null>(null)
+  const [restorePreview, setRestorePreview] = useState<BackupPreview | null>(null)
+  const [restorePayload, setRestorePayload] = useState<unknown>(null)
+  const [restoreConfirmation, setRestoreConfirmation] = useState("")
+  const [restoreError, setRestoreError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const counts = useLiveQuery(async () => {
     const [transactions, wealth, wealthBreakdown, wealthAccounts, imports, groups] =
@@ -71,6 +97,52 @@ export function SettingsPage() {
       toast.success("All locally stored financial data was deleted")
     } catch {
       toast.error("Could not delete all data")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function resetRestore() {
+    setRestoreName(null)
+    setRestorePreview(null)
+    setRestorePayload(null)
+    setRestoreConfirmation("")
+    setRestoreError(null)
+  }
+
+  async function selectRestoreFile(file: File | undefined) {
+    if (!file) return
+    setBusy(true)
+    setRestoreError(null)
+    try {
+      const text = await file.text()
+      const payload: unknown = JSON.parse(text)
+      const preview = previewBackup(payload)
+      setRestoreName(file.name)
+      setRestorePreview(preview)
+      setRestorePayload(payload)
+      setRestoreConfirmation("")
+    } catch (caught) {
+      resetRestore()
+      setRestoreError(
+        caught instanceof Error ? caught.message : "That file is not a BudgetLens backup.",
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function applyRestore() {
+    if (!restorePayload || restoreConfirmation !== "RESTORE") return
+    setBusy(true)
+    try {
+      const receipt = await restoreBackup(database, restorePayload)
+      resetRestore()
+      toast.success(
+        `Backup restored: ${receipt.transactions} transactions, ${receipt.budgets} budgets`,
+      )
+    } catch (caught) {
+      setRestoreError(caught instanceof Error ? caught.message : "Could not restore that backup.")
     } finally {
       setBusy(false)
     }
@@ -166,6 +238,72 @@ export function SettingsPage() {
             Backups contain your financial data. Store them somewhere private and do not attach them
             to issues or pull requests.
           </p>
+          <div className="space-y-2 border-t pt-4">
+            <Label htmlFor="restore-file">Restore from a JSON backup</Label>
+            <Input
+              id="restore-file"
+              type="file"
+              accept=".json,application/json"
+              disabled={busy}
+              aria-invalid={Boolean(restoreError)}
+              aria-describedby={`restore-file-help${restoreError ? " restore-file-error" : ""}`}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0]
+                event.currentTarget.value = ""
+                void selectRestoreFile(file)
+              }}
+            />
+            <p id="restore-file-help" className="text-xs text-muted-foreground">
+              Restoring replaces everything currently stored with the backup contents. Version-1
+              bundles restore through Imports instead.
+            </p>
+          </div>
+          {restoreError ? (
+            <div
+              id="restore-file-error"
+              role="alert"
+              className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <p className="font-medium">That backup cannot be restored</p>
+              <p className="mt-1">{restoreError}</p>
+            </div>
+          ) : null}
+          {restorePreview && restoreName ? (
+            <div className="space-y-3 rounded-xl border p-3">
+              <p className="text-sm">
+                <span className="font-medium">{restoreName}</span> is ready.{" "}
+                {describeRestorePreview(restorePreview)}
+              </p>
+              <div className="max-w-sm space-y-2">
+                <Label htmlFor="restore-confirmation">Type RESTORE to confirm</Label>
+                <Input
+                  id="restore-confirmation"
+                  value={restoreConfirmation}
+                  autoComplete="off"
+                  onChange={(event) => setRestoreConfirmation(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={busy || restoreConfirmation !== "RESTORE"}
+                  onClick={() => void applyRestore()}
+                >
+                  <Upload className="size-4" aria-hidden="true" />
+                  Restore backup
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => resetRestore()}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
