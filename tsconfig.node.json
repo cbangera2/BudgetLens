@@ -9,5 +9,12 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "server/**/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "server/**/*.ts",
+    "workers/**/*.ts",
+    "src/features/assistant/demo-models.ts",
+    "src/features/assistant/relay-policy.ts"
+  ]
 }

@@ -273,6 +273,42 @@ function extractContent(payload: unknown): string {
 }
 
 export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
+const PROVIDER_MAX_ATTEMPTS = 3
+const PROVIDER_RETRY_BASE_MS = 500
+const PROVIDER_RETRY_CAP_MS = 1_500
+
+/**
+ * Retryable transport failures: dropped connections and server-side errors.
+ * Never 4xx (the provider/relay told us no: bad key, bad model, or our own
+ * rate limit told us to back off) and never aborts (user hit Stop, or the
+ * request timed out).
+ */
+function isRetryableTransportError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return false
+  if (error instanceof TypeError) return true
+  const message = error instanceof Error ? error.message : String(error)
+  return /Provider 5\d\d/.test(message)
+}
+
+function transportRetryDelayMs(attempt: number): number {
+  return Math.min(PROVIDER_RETRY_BASE_MS * 2 ** attempt, PROVIDER_RETRY_CAP_MS)
+}
+
+/** Backoff sleep that stays abortable so Stop stays responsive mid-retry. */
+function retrySleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"))
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException("Aborted", "AbortError"))
+    }
+    signal.addEventListener("abort", onAbort, { once: true })
+  })
+}
 
 /**
  * Free-model allowlist gate: whenever the shared demo key is active, reject
@@ -348,30 +384,46 @@ async function postChatCompletions(options: {
     )
   }
 
-  const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
-    method: "POST",
-    signal: withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS),
-    headers: {
-      "content-type": "application/json",
-      ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      ...(options.tools && options.tools.length > 0
-        ? { tools: options.tools, tool_choice: "auto" }
-        : {}),
-      temperature: 0.2,
-    }),
+  const signal = withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS)
+  const body = JSON.stringify({
+    model: options.model,
+    messages: options.messages,
+    ...(options.tools && options.tools.length > 0
+      ? { tools: options.tools, tool_choice: "auto" }
+      : {}),
+    temperature: 0.2,
   })
 
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "")
-    throw new Error(
-      `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
-    )
+  let attempt = 0
+  for (;;) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
+        method: "POST",
+        signal,
+        headers: {
+          "content-type": "application/json",
+          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
+        },
+        body,
+      })
+
+      if (!response.ok) {
+        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+        const detail = await response.text().catch(() => "")
+        throw new Error(
+          `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
+        )
+      }
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      return (await response.json()) as unknown
+    } catch (error) {
+      if (attempt + 1 >= PROVIDER_MAX_ATTEMPTS || !isRetryableTransportError(error)) throw error
+      attempt += 1
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      await retrySleep(transportRetryDelayMs(attempt - 1) + Math.floor(Math.random() * 250), signal)
+    }
   }
-  return (await response.json()) as unknown
 }
 
 export async function requestChatTurn(options: {
