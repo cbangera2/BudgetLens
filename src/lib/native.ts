@@ -329,3 +329,117 @@ function reminderKeyOf(extra: unknown): string | null {
   const key: unknown = extra.reminderKey
   return typeof key === "string" ? key : null
 }
+
+// ---------------------------------------------------------------------------
+// Widget snapshot bridge (WidgetKit widget + Siri App Intent).
+//
+// Contract: `src/features/widget-bridge/` builds a SMALL versioned JSON
+// payload (net-worth latest + delta, month spend vs budget, top categories)
+// and hands the serialized string here. This module is the ONLY sink.
+//
+// Delivery ladder (documented fallback chain):
+// 1. App-group container (future): the Widget extension cannot read the host
+//    app's Documents directory, so the snapshot must ultimately live in the
+//    shared App Group container. Reaching it from JS needs a tiny native
+//    file-mover (FileManager.containerURL(forSecurityApplicationGroupIdentifier:)
+//    cannot be addressed through the stock Filesystem plugin), which lands in
+//    the deferred device-validation pass with the entitlement from
+//    scripts/ios-patcher.mjs. Until then the "app-group" sink is reported but
+//    never claimed.
+// 2. Documents staging (native today): written via the stock Filesystem
+//    plugin so device-pass validation can already assert bytes on disk.
+// 3. localStorage scratch (web): debugging only, keyed below; never shipped
+//    to native, never a source of truth.
+//
+// When the App Group is unconfigured the group-container write is a graceful
+// no-op (never throws); callers treat `ok: false` as "widget shows its
+// placeholder until the next successful refresh".
+// ---------------------------------------------------------------------------
+
+/** Staged snapshot filename inside Documents (pre-app-group handoff). */
+export const WIDGET_SNAPSHOT_FILENAME = "budgetlens-widget-snapshot.json"
+
+/** Web-only localStorage scratch key for the latest widget payload. */
+export const WIDGET_SNAPSHOT_STORAGE_KEY = "budgetlens.widget-snapshot"
+
+export type WidgetSnapshotSink = "app-group" | "documents-staging" | "local-storage" | "noop"
+
+export interface WidgetSnapshotWriteResult {
+  ok: boolean
+  via: WidgetSnapshotSink
+  reason?: string
+}
+
+function readWebScratch(key: string): string | null {
+  try {
+    if (typeof localStorage === "undefined") return null
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function writeWebScratch(key: string, value: string): boolean {
+  try {
+    if (typeof localStorage === "undefined") return false
+    localStorage.setItem(key, value)
+    return true
+  } catch {
+    // Private mode / quota: the widget simply keeps its previous snapshot.
+    return false
+  }
+}
+
+/**
+ * Persist a serialized widget snapshot for the native widget to read. Never
+ * throws: every failure mode resolves to `{ ok: false, via: "noop" }` with a
+ * reason, so widget refreshes can never break the finance flow.
+ */
+export async function writeWidgetSnapshot(json: string): Promise<WidgetSnapshotWriteResult> {
+  if (typeof json !== "string" || !json) {
+    return { ok: false, via: "noop", reason: "empty-payload" }
+  }
+  if (!isNative()) {
+    const stored = writeWebScratch(WIDGET_SNAPSHOT_STORAGE_KEY, json)
+    return stored
+      ? { ok: true, via: "local-storage" }
+      : { ok: false, via: "noop", reason: "web-storage-unavailable" }
+  }
+  try {
+    await Filesystem.writeFile({
+      path: WIDGET_SNAPSHOT_FILENAME,
+      data: json,
+      directory: Directory.Documents,
+      encoding: Encoding.UTF8,
+    })
+    return {
+      ok: true,
+      via: "documents-staging",
+      reason: "app-group-handoff-pending-device-pass",
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      via: "noop",
+      reason: error instanceof Error ? error.message : "native-write-failed",
+    }
+  }
+}
+
+/**
+ * Read back the staged snapshot (Documents on native, localStorage scratch
+ * on web). Debugging aid for the widget bridge; never throws.
+ */
+export async function readStagedWidgetSnapshot(): Promise<string | null> {
+  if (!isNative()) return readWebScratch(WIDGET_SNAPSHOT_STORAGE_KEY)
+  try {
+    const result = await Filesystem.readFile({
+      path: WIDGET_SNAPSHOT_FILENAME,
+      directory: Directory.Documents,
+      encoding: Encoding.UTF8,
+    })
+    return typeof result.data === "string" ? result.data : null
+  } catch {
+    return null
+  }
+}
