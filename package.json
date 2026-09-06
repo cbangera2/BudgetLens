@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "build:desktop": "tsc -b && vite build --base=/",
     "build:ios": "tsc -b && VITE_BASE=/ vite build && cap sync ios",
-    "prebuild:ios": "test -d ios || cap add ios",
+    "prebuild:ios": "test -d ios || cap add ios --packagemanager CocoaPods",
     "cap:sync": "cap sync",
     "preview": "vite preview",
     "tauri": "tauri",
