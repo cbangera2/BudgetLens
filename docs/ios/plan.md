@@ -15,7 +15,7 @@ Goal: ship BudgetLens to iOS with native feel, minimal work, no fork of the web 
 - Styling is Tailwind v4 + CSS variables with `.dark` variant (`src/styles.css:1-63`). Theming via `useTheme` (`src/app/app-shell.tsx:62`).
 - Assistant has two transports (`src/features/assistant/provider.ts:25-82`, `src/features/assistant/assistant-panel.tsx`, `server/assistant-harness.ts`):
   - (a) `opencode-harness`: browser `POST /api/chat` to a Vite-dev-only middleware (`server/assistant-harness.ts:528-572`) which drives local `opencode serve` (`OPENCODE_BASE_URL`, default `http://127.0.0.1:4096`) using `@tanstack/ai` + `@tanstack/ai-opencode` + local-process sandbox. Explicitly dev-only; never in the static build.
-  - (b) Direct OpenAI-compatible providers: `opencode-bridge` (`http://127.0.0.1:11435/v1`), `ollama` (`http://localhost:11434/v1`), `lmstudio`, `openrouter`, `openai`, `custom`. Browser `fetch` to `/chat/completions`, tools executed locally against Dexie (`src/features/assistant/data-tools.ts`, `src/features/assistant/provider.ts:256-319`). Tool rows capped (`MAX_TOOL_ROWS = 50`), finance snapshot is aggregates-only.
+  - (b) Direct OpenAI-compatible providers: `opencode-bridge` (`http://127.0.0.1:11435/v1`), `ollama` (`http://localhost:11434/v1`), `lmstudio`, `openrouter`, `openai`, `custom`. Browser `fetch` to `/chat/completions`, tools executed locally against Dexie (`src/features/assistant/data-tools.ts`, `src/features/assistant/provider.ts:256-319`). Tool rows capped (`MAX_TOOL_ROWS = 50`); the finance snapshot is capped aggregates plus top/recent rows and a 90-day daily series (exact shapes in capacitor-plan §6.4 — never raw file contents).
 - Quality gates: `pnpm format:check`, `lint`, `typecheck`, `test`, `test:browser` (desktop Chromium + iPhone-sized viewport), `build` (`README.md:120-130`).
 
 Implication: the only portable-to-iOS parts without a server are the static bundle + Dexie + direct-provider assistant path. The harness path cannot ship on a phone.
@@ -29,7 +29,7 @@ How it works, conceptually:
 1. Keep developing the web app exactly as today.
 2. Add a Capacitor project at the repo root. Its web root points at the Vite production output (`dist/`).
 3. Capacitor generates a native `ios/` Xcode project: a full-screen WKWebView loading the bundled files via the Capacitor local scheme (not `file://`), plus a JS-to-native bridge.
-4. Ship through Xcode / TestFlight / App Store with an Apple Developer account.
+4. Ship through Xcode directly to personal devices (free Apple ID — no Developer account, no TestFlight, no App Store; see capacitor-plan §8).
 5. Web code detects "running natively" at runtime and switches on iOS shell behaviors (tab bar, sheets, native pickers). Web behavior when absent, so desktop and GitHub Pages are unaffected.
 
 Why this over the alternatives:
@@ -48,7 +48,7 @@ Why this over the alternatives:
 
 ## 3. Architecture
 
-```
+```text
 +---------------------+        +------------------------------+
 |  Vite static build  | -----> | Capacitor iOS shell (WKWebView)|
 |  React + Router     | bundle |  + bridge plugins             |
@@ -144,22 +144,22 @@ Native feel is navigation + sheets + touch, not a rewrite. Planned deltas, all r
 
 ## 9. Build, signing, and release
 
-- Repo additions: Capacitor config, `ios/` Xcode project, icons/splash, entitlements, Info.plist usage strings (Face ID, file access), build docs. `ios/` build artifacts stay gitignored; only config + docs + adapter + UI branches are committed.
-- Build modes: `pnpm dev` (web, unchanged), `pnpm build` (web/Pages, unchanged), new `pnpm build:ios` (sets Capacitor base, runs `tsc -b && vite build`, syncs to `ios/`). Lint/typecheck/test gates run before any native sync.
-- Signing: Apple Developer Program, Xcode automatic signing for dev, explicit App ID + provisioning for TestFlight/App Store. Bundle ID reserved early.
-- TestFlight first: internal testers validate install-over-upgrade data retention, Files import, backup share, Face ID, dark mode, largest text, airplane mode, low-storage warning.
-- App Store submission: category Finance, age rating, privacy nutrition label (data-not-collected by the app itself; hosted assistant calls disclosed as user-optional with third-party privacy links), support URL, demo-mode video/screenshots using synthetic fixtures only (never real exports, per `README.md:106-109`). Rejection risks to pre-empt: "app is just a website" (counter with offline-first + native Files/Share/Haptics/Biometrics integration), payments (none in v1), and key-management UX (BYOK must be smooth and honest).
+- Repo additions: Capacitor config, generated (gitignored, never hand-edited) `ios/` project, scripted native-project patcher landing with the first native change, icons/splash, entitlements, Info.plist usage strings (Face ID only — document-picker reads need none), build docs. Only config + docs + adapter + UI branches are committed.
+- Build modes: `pnpm dev` (web, unchanged), `pnpm build` (web/Pages, unchanged), new `pnpm build:ios` (self-bootstraps the platform via `prebuild:ios`, sets Capacitor base, runs `tsc -b && vite build`, syncs to `ios/`). Lint/typecheck/test gates run before any native sync.
+- Signing: free-Apple-ID direct install for device testing (no Developer account — App Store/TestFlight indefinitely post-scope, see capacitor-plan §8). Bundle ID `com.cbangera2.budgetlens` shared with Tauri for brand consistency (does NOT share Keychain items — that needs Team ID + access-group entitlements, not configured).
+- Device testing first (no TestFlight): install-over-upgrade data retention, Files import, backup share, Face ID, dark mode, largest text, airplane mode, low-storage warning.
+- Store submission checklist lives post-scope in capacitor-plan §8. Screenshots and previews use synthetic fixtures only (never real exports, per `README.md:106-109`).
 
 ## 10. Privacy and App Store disclosures
 
 - Core app: no account, no analytics, no tracking, no ads (matches `README.md:7-8`). State this in the listing and privacy label.
-- Optional assistant: when enabled, an aggregates-only snapshot leaves the device over HTTPS to the chosen provider (OpenRouter/OpenAI/custom). Disclose per provider, link provider privacy terms, keep consent + Keychain + censored logging (never log keys or snapshot contents).
+- Optional assistant: when enabled, a capped snapshot (up to 40 budgets/netWorth rows, 25 top + 100 recent transactions, 90-day daily series, truncated descriptions — exact shapes in capacitor-plan §6.4) leaves the device over HTTPS to the chosen provider (OpenRouter/OpenAI/custom). Disclose per provider, link provider privacy terms, keep consent + Keychain + censored logging (never log keys or snapshot contents).
 - Files: document picker reads only user-selected CSVs/JSON; original file contents are not retained beyond the import pipeline (same guarantee as web import metadata).
-- Screenshots, previews, and TestFlight notes use synthetic demo data only.
+- Screenshots, previews, and device-test notes use synthetic demo data only.
 
 ## 11. Performance and compatibility targets
 
-- Devices: last 3 major iPhone generations + current SE, latest two iOS majors. знаний cutoff note: verify at build time; do not hardcode the list here.
+- Devices: last 3 major iPhone generations + current SE, latest two iOS majors. Verify the supported device list at build time; do not hard-code it here.
 - Cold start to interactive Overview on a mid-range device: snappy on cached launch; warm chart interactions at 60fps feel (disable Recharts animation on native if needed).
 - Histories: 1M-All ranges over multi-year CSVs must scroll/zoom without jank; cap rendered points on small screens while keeping aggregates exact.
 - Memory: 20-file multi-import + large JSON bundle must not OOM the WebView; reuse existing per-file isolation and stream where PapaParse allows.
@@ -171,12 +171,12 @@ Native feel is navigation + sheets + touch, not a rewrite. Planned deltas, all r
 - New native-aware unit tests (jsdom with adapter mocked): router history selection, preset filtering on native vs web, Keychain-vs-localStorage key routing, backup share cancellation, biometric-off fallback.
 - Device matrix (physical phones, not just Simulator): fresh install, upgrade retention, Files + iCloud import (CSV, legacy CSV, 20x JSON, bundle), backup export + re-import, Face ID on/off, dark/light, largest Dynamic Type, VoiceOver pass on tabs/sheets, airplane mode for core + assistant, low-storage warning path.
 - Evals: existing `pnpm eval:assistant` stays dev-only; add a hosted-provider smoke eval against the capped snapshot with synthetic fixtures only.
-- Release checklist: origin-stability upgrade test, Keychain wipe on data-clear test, privacy-label accuracy review, synthetic-only screenshots, TestFlight notes with known limits (no harness, no localhost models, backups are manual in v1).
+- Release checklist: origin-stability upgrade test, Keychain wipe on data-clear test, synthetic-only screenshots, device-test notes with known limits (no harness, no localhost models, backups are manual in v1).
 
 ## 13. Rollout (phased, each shippable)
 
 - Phase 0 — PWA rehearsal (hours): deploy static build, Add to Home Screen, smoke fullscreen/offline/iPhone-viewport issues. Informs the sheet/tab-bar pass. No repo changes required.
-- Phase 1 — Capacitor shell + parity (days): config, icons, `build:ios`, WebView loads bundle, router/base fix, adapter skeleton with web fallbacks, TestFlight internal. No assistant on native yet; core + imports + backups working.
+- Phase 1 — Capacitor shell + parity (days): config, icons, `build:ios`, WebView loads bundle, router/base fix, adapter skeleton with web fallbacks, Simulator device-tester build. No assistant on native yet; core + imports + backups working.
 - Phase 2 — Native feel pass (days): tab bar, sheets, touch targets, safe areas, haptics, virtualized lists, Recharts mobile tuning, Face ID gate, Keychain settings. This is the "feels native" milestone.
 - Phase 3 — Hosted assistant opt-in (days): preset filtering, BYOK + Keychain + consent screen, HTTPS-only, abort/offline states, smoke eval. Harness stays desktop-dev-only.
 - Phase 4 — Hardening + submission (days): performance pass, accessibility pass, privacy label, store listing with synthetic data, TestFlight external, submit. Relay service and on-device model explicitly deferred.

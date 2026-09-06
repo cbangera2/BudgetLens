@@ -60,9 +60,11 @@ Two corrections to the previous plan:
 
 Measure on the oldest supported phone: 10 MB CSV, 20-file multi-select, large bundle restore. Then spec: chunked `readFile`/`writeFile` (or file-URL handoff), `Directory` choice (Documents = user-visible + backed up vs Cache/Data + backup exclusion), Share `url` + cancellation error-code handling, whether native per-file caps must sit below desktop, same-day filename disambiguation (current `budgetlens-backup-YYYY-MM-DD.json` collides on repeat shares), and off-main-thread stringify (worker) for large backups.
 
+Bounded-memory contract (not open questions): CSV imports stream through PapaParse and never hold the whole file as rows; JSON bundles have no streaming path, so they get a hard native preflight cap BELOW the desktop 10 MB/file / 50 MB-total budget (exact numbers from the oldest-device measurement) with a clear "file too large, use desktop web" message; 20-file batches are processed strictly sequentially with per-file memory release; the oldest-supported-device 10 MB + 20-file + large-restore run is a release blocker, not a nice-to-have.
+
 ### Spike 5: document picker + open-in plumbing (UTIs, multi-select, cancellation)
 
-Verify UTIs (CSV/JSON + backup bundle), multi-select up to 20 via Files + iCloud Drive, per-file failure isolation preserved, picker cancellation mid-batch, and Share-sheet cancellation codes.
+Verify UTIs (CSV/JSON + backup bundle), multi-select up to 20 via Files + iCloud Drive, per-file failure isolation preserved, picker cancellation mid-batch, and Share-sheet cancellation codes. Open-in needs the `@capacitor/app` dependency plus `CFBundleURLTypes` + `CFBundleDocumentTypes` + `LSSupportsOpeningDocumentsInPlace` and BOTH URL paths: `App.getLaunchUrl()` at startup (cold start — a file opened while the app is terminated never fires the listener) and `App.addListener('appUrlOpen')` for URLs received while running.
 
 Backup interchange decisions (with compat test): default share destination (Files vs iCloud Drive), filename/versioning, legacy CSV/JSON acceptance matrix for picker-restored bundles. Note: picker open-in-place needs NO iCloud entitlement; sync would need `icloud-services` + container and is out of scope — keep the two distinct in review notes.
 
@@ -80,7 +82,7 @@ Implement and test v3 restore on web BEFORE any native file work: id remap strat
 
 1. Add Capacitor to the repo: `capacitor.config.ts` committed with FROZEN `appId`, `appName`, `iosScheme`, `hostname` (values recorded in §12; changing them post-TestFlight wipes user data). Add the `@capacitor/*` dependencies to `package.json` (none exist today).
 2. Add `pnpm build:ios` script. It reuses `build`'s `tsc -b && vite build` (do not duplicate the typecheck — define CI order once: gates → web build → Capacitor base build → sync) with the Capacitor base from Spike 1, then Capacitor sync. Wire the same gates into CI so config cannot drift.
-3. Generate the `ios/` Xcode project once. Commit `capacitor.config.ts` + a scripted native-project patcher (Trapeze or equivalent config script) checked into the repo; do NOT rely on hand-editing `ios/App` and gitignoring the whole tree, because `PrivacyInfo.xcprivacy`, `Info.plist` edits (`NSFaceIDUsageDescription`, `CFBundleURLTypes`, `CFBundleDocumentTypes`, `LSSupportsOpeningDocumentsInPlace`), entitlements, icons, and splash all live under `ios/App` and regen wipes them. The alternative — explicitly committing `ios/App/App/*` — must be chosen now; the old "gitignore ios/ except config/docs" line was incoherent and is retracted.
+3. Generate the `ios/` Xcode project once via `cap add ios` (guarded by `prebuild:ios` so a fresh clone self-bootstraps). Single source-of-truth model: `ios/` stays GENERATED ONLY and gitignored — no hand edits, ever. The scripted native-project patcher (Trapeze or equivalent, checked into the repo) lands WITH the first commit that needs a native-project change (Face ID usage string, open-in UTIs, entitlements, icons) and applies `PrivacyInfo.xcprivacy`, `Info.plist` edits, entitlements, icons, and splash on every sync; a clean-checkout CI check (`cap add` + patcher + `cap sync` from scratch) gates Phase 1. The local Simulator storyboard/asset strip documented in §12 is a machine-limitation workaround, not the model — it lives only in the gitignored tree and is never committed.
 4. `PrivacyInfo.xcprivacy`: enumerate the Required-Reason APIs actually touched (audit Filesystem timestamps `C617.1`, UserDefaults `CA92.1`, DiskSpace `E174.1`, SystemBootTime `35F9.1` via WebKit/Capacitor + each plugin), set `NSPrivacyTracking=false` with no tracking domains. Verify against Apple's current list + a plugin audit before submission.
 5. Icons, splash, bundle ID reservation, signing (automatic for dev, explicit App ID + provisioning for TestFlight/App Store). StatusBar + SplashScreen plugin config ships here.
 
@@ -142,12 +144,11 @@ Data Protection entitlement is encryption-at-rest hardening, not a durability fi
 - Nice: swipe-to-edit, pull-to-refresh, skeletons, haptics everywhere, long-press menus.
 - Accessibility floor: tab bar/sheets labeled (reuse existing aria patterns), largest Dynamic Type does not break layouts, VoiceOver passes on navigation + sheets; full chart-SVG narration deferred with a data-table alternative. iPad/split layout is test-only in v1 (no dedicated layout).
 
-## 8. Privacy, signing, submission
+## 8. Privacy, signing, submission (submission POST-SCOPE without a Developer account)
 
 - Core listing: no account, no analytics, no tracking, no ads (matches `README.md:7-8`). Set `NSPrivacyTracking=false` with no tracking domains; `PrivacyInfo.xcprivacy` audited per §2.4.
-- Nutrition label: do NOT claim "data not collected" while the app initiates hosted inference carrying finance aggregates to third parties. Draft the precise wording before submission: Financial Info / Identifiers / Usage Data as applicable, per-provider (OpenRouter/OpenAI/custom) privacy links, plus Keychain/Files disclosures. Keep consent + censored logging (never keys or snapshot contents).
-- Category Finance, age rating, support URL, demo video/screenshots synthetic-only, TestFlight notes label demo data.
-- Rejection pre-emption beyond the "just a website" defense (offline-first + Files/Share/Haptics/Biometrics/Keychain): Guideline 4.2 (minimum functionality — offline core must satisfy it with assistant disabled), 5.1.1 (consent + per-provider links), BYOK external-purchase confusion (state no IAP in v1), demo-data labeling.
+- Privacy label (post-scope): do NOT pre-commit to "data not collected". Data inventory for later: Financial Info (aggregates snapshot, only with assistant opt-in), Identifiers (none collected by the app; Keychain holds user keys on-device), Usage Data (none). Per-provider (OpenRouter/OpenAI/custom) privacy links + Keychain/Files disclosures drafted at submission time. Until then: keep consent + censored logging (never keys or snapshot contents).
+- Screenshots/notes synthetic-only with demo data labeled; offline-first + native integrations documented (no-IAP, Guidelines 4.2/5.1.1 notes kept here for later).
 - Ban non-HTTPS assistant endpoints on native outright — no `NSBonjourServices`/local-network exception in v1.
 
 ## 9. Testing
@@ -157,21 +158,21 @@ Data Protection entitlement is encryption-at-rest hardening, not a durability fi
 - Device matrix (physical phones, oldest supported first): fresh install, upgrade retention (blocker), Files + iCloud import (CSV, legacy CSV, 20x JSON, v1 + v3 bundles), backup export + re-import interchange with web, Face ID on/off + re-enroll, dark/light, largest text, VoiceOver on tabs/sheets, airplane mode (core works, assistant explains), low-storage path, picker cancellation, Share cancellation, kill/background restore per the Spike 1 history choice, cold-start/perf on oldest phone, abort-on-dismiss.
 - Backup compat test: v1 and v3 bundles restore across web ↔ iOS both directions (blocked on Spike 7).
 
-## 10. Rollout (reordered: restore and shell precede TestFlight)
+## 10. Rollout (reordered: restore and shell precede device testing)
 
 - Phase 0: spikes above, including Spike 7 (v3 restore on web). Blockers resolved, decisions recorded in §12.
-- Phase 1: restore + shell + parity. v3 restore lands on web first; then config, `build:ios`, WebView loads bundle, router/base fix, adapter skeleton. Tab bar + sheets land BEFORE internal TestFlight (testers should not validate a desktop shell in a WebView). No assistant on native yet; core + imports + backup working.
+- Phase 1: restore + shell + parity. v3 restore lands on web first; then config, `build:ios`, WebView loads bundle, router/base fix, adapter skeleton. Tab bar + sheets land BEFORE any device-tester build (testers should not validate a desktop shell in a WebView). No assistant on native yet; core + imports + backup working.
 - Phase 2: feel + safety. Touch, safe areas, haptics, virtualization, chart tuning, Face ID, Keychain settings, wipe matrix, demo-data labeling.
 - Phase 3: hosted assistant opt-in. Preset/code gates, stored-settings reset, BYOK + consent, HTTPS-only, abort/offline states, smoke eval. Transport decision from Spike 2 determines whether a native-HTTP plugin is in scope.
-- Phase 4: hardening + submission. Perf pass on oldest phone, a11y pass, privacy label, listing, external TestFlight, submit.
+- Phase 4: hardening. Perf pass on oldest phone, a11y pass, Simulator + free-Apple-ID acceptance (§11). Store submission (privacy label, listing, TestFlight) is POST-SCOPE while there is no Developer account — the checklist stays in §8 for later and blocks nothing.
 
 ## 11. Definition of done
 
-- `pnpm dev/build/test/test:browser` green (incl. new WebKit leg); `build:ios` reproducible from clean checkout; CI runs gates before every native sync with the §2 order (no duplicated typecheck).
-- v3 restore works on web; TestFlight build installs, imports via Files (CSV, legacy CSV, 20x JSON, v1 + v3 bundles), manages all entities, renders all ranges, exports + re-imports backup interchangeably with web, survives upgrade without re-import.
-- Physical-phone pass: tabs, sheets, safe areas, dark/light, largest text, VoiceOver on nav/sheets, airplane mode, picker/share cancellation, kill/restore.
+- Every required gate green: `format:check`, `lint`, `typecheck`, `test`, `test:coverage`, `build`, `test:browser` (incl. new WebKit leg); `build:ios` reproducible from clean checkout; CI runs gates before every native sync with the §2 order (no duplicated typecheck).
+- v3 restore works on web; Simulator build installs, imports via Files (CSV, legacy CSV, 20x JSON, v1 + v3 bundles), manages all entities, renders all ranges, exports + re-imports backup interchangeably with web, survives upgrade without re-import.
+- Physical-phone pass (free-Apple-ID direct install, no TestFlight): tabs, sheets, safe areas, dark/light, largest text, VoiceOver on nav/sheets, airplane mode, picker/share cancellation, kill/restore.
 - Assistant hidden until opt-in; hosted BYOK over HTTPS with accurate per-transport consent; harness/localhost unreachable on native; no stored plaintext keys anywhere; Keychain wiped on clear.
-- Listing + label accurate (no "data not collected" while hosted inference exists); screenshots/notes synthetic-only with demo data labeled; review notes cover offline-first + native integrations + no-IAP + Guidelines 4.2/5.1.1.
+- Screenshots/notes synthetic-only with demo data labeled; offline-first + native integrations documented (no-IAP, Guidelines 4.2/5.1.1 notes kept post-scope with §8).
 - This doc updated with every Spike 0–7 decision (§12).
 
 ## 12. Decision log (fill during Phase 0 — do not start Phase 1 with blanks)
@@ -179,8 +180,8 @@ Data Protection entitlement is encryption-at-rest hardening, not a durability fi
 Resolved during scaffolding (verified on this machine; device confirmation still owed for ★ items):
 
 - Capacitor 8.5.1 (`@capacitor/core`, `@capacitor/ios`, `@capacitor/cli`), config in `capacitor.config.ts`.
-- `appId` `com.cbangera2.budgetlens` (shared with the Tauri shell in `src-tauri/tauri.conf.json` for shared Keychain access), `appName` `BudgetLens`, `webDir` `dist`.
-- `server.hostname` `localhost` + `server.iosScheme` `capacitor` → origin `capacitor://localhost` (pinned in config; changing them orphans storage). ★ Device must still confirm `isSecureContext` + `crypto.subtle` under this origin (Spike 3).
+- `appId` `com.cbangera2.budgetlens` (same identifier string as the Tauri shell in `src-tauri/tauri.conf.json` for brand consistency; this does NOT share Keychain items — see the capacitor.config.ts note), `appName` `BudgetLens`, `webDir` `dist`.
+- `server.hostname` `localhost` + `server.iosScheme` `capacitor` → origin `capacitor://localhost` (pinned in config; changing them orphans storage). Spike 3 secure-context verified on device (isSecureContext, randomUUID, subtle digest all work; persist() denied — see below).
 - iOS builds use `VITE_BASE=/` (`pnpm build:ios`); synced bundle verified to emit absolute `/assets/...` URLs that resolve on the custom scheme. GitHub Pages keeps `/BudgetLens/`.
 - Router on native: hash history + basepath `/`, extending the Tauri `isTauriSync()` pattern with `isNativeCapacitorSync()` (`src/lib/isNative.ts`, detects the WKWebView bridge; unit-tested both ways). Citation base-stripping parity test still owed (Spike 1).
 - `ios/` platform generated via `cap add ios` and synced via `cap sync ios` (CocoaPods + Xcode present); `ios/` stays gitignored, only config + scripts committed.
