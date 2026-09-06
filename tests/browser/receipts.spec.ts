@@ -2,13 +2,24 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { expect, test } from "@playwright/test"
+import { expect, test, type Locator } from "@playwright/test"
 
 // Synthetic 1x1 transparent PNG generated in-code (never a real photo).
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
 const SIDECAR_KEY = "budgetlens.receipts.sidecar.v1"
+
+/**
+ * Activate a button via keyboard. The mobile shell docks the Filters card
+ * sticky over the bottom of the viewport and the edit dialog scrolls, so
+ * buttons revealed by scrolling can sit underneath an overlay and pointer
+ * hit-testing fails; keyboard activation fires the same handlers without
+ * coordinates.
+ */
+async function activateButton(button: Locator) {
+  await button.press("Enter")
+}
 
 test("receipt photos attach to a transaction and are removed with it", async ({ page }) => {
   const description = `Receipt E2E ${Date.now()}`
@@ -18,16 +29,16 @@ test("receipt photos attach to a transaction and are removed with it", async ({ 
     await page.goto("/transactions")
     await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
 
-    await page.getByRole("button", { name: "Add transaction", exact: true }).click()
+    await activateButton(page.getByRole("button", { name: "Add transaction", exact: true }))
     const createDialog = page.getByRole("dialog", { name: "Add transaction" })
     await expect(createDialog).toBeVisible()
     await createDialog.getByLabel("Date").fill("2026-08-15")
     await createDialog.getByLabel("Description").fill(description)
     await createDialog.getByLabel("Amount").fill("-18.50")
-    await createDialog.getByRole("button", { name: "Add transaction", exact: true }).click()
+    await activateButton(createDialog.getByRole("button", { name: "Add transaction", exact: true }))
     await expect(page.getByRole("rowheader", { name: description })).toBeVisible()
 
-    await page.getByRole("button", { name: `Edit ${description}` }).click()
+    await activateButton(page.getByRole("button", { name: `Edit ${description}`, exact: true }))
     const editDialog = page.getByRole("dialog", { name: `Edit ${description}` })
     await expect(editDialog).toBeVisible()
     await expect(editDialog.getByText(/excluded from JSON backups/)).toBeVisible()
@@ -47,13 +58,13 @@ test("receipt photos attach to a transaction and are removed with it", async ({ 
     expect(refsBefore[0]).toHaveLength(1)
     expect(refsBefore[0]?.[0]?.hash).toMatch(/^[0-9a-f]{64}$/)
 
-    await editDialog.getByRole("button", { name: "Cancel" }).click()
+    await activateButton(editDialog.getByRole("button", { name: "Cancel" }))
     await expect(editDialog).toHaveCount(0)
 
-    await page.getByRole("button", { name: `Delete ${description}` }).click()
+    await activateButton(page.getByRole("button", { name: `Delete ${description}`, exact: true }))
     const deleteDialog = page.getByRole("alertdialog", { name: "Delete transaction?" })
     await expect(deleteDialog).toBeVisible()
-    await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click()
+    await activateButton(deleteDialog.getByRole("button", { name: "Delete", exact: true }))
     await expect(page.getByRole("rowheader", { name: description })).toHaveCount(0)
 
     const sidecarAfter = await page.evaluate((key) => window.localStorage.getItem(key), SIDECAR_KEY)
