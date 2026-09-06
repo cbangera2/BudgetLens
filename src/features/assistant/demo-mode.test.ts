@@ -15,6 +15,7 @@ import {
 import {
   defaultSettingsFor,
   defaultProvider,
+  describeNativeBlock,
   readAssistantSettings,
   requestChatTurn,
   toPersistableSettings,
@@ -256,5 +257,69 @@ describe("public demo build", () => {
     expect(defaultProvider()).toBe("opencode-bridge")
     expect(visibleAssistantPresets()).toHaveLength(8)
     expect(readAssistantSettings({ getItem: () => null }).provider).toBe("opencode-bridge")
+  })
+})
+
+declare global {
+  interface Window {
+    webkit?: { messageHandlers?: { bridge?: unknown } } | undefined
+  }
+}
+
+function stubNativeBridge(): void {
+  window.webkit = { messageHandlers: { bridge: {} } }
+}
+
+describe("native iOS shell transport lockdown", () => {
+  afterEach(() => {
+    window.webkit = undefined
+  })
+
+  it("hides local-only presets on native, keeps hosted and demo", () => {
+    stubNativeBridge()
+    vi.stubEnv("VITE_PUBLIC_DEMO", "")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    const ids = visibleAssistantPresets().map((preset) => preset.id)
+    expect(ids).toEqual(["openrouter", "openai", DEMO_PROVIDER_ID])
+  })
+
+  it("defaults to demo when available, OpenRouter otherwise, on native", () => {
+    stubNativeBridge()
+    vi.stubEnv("VITE_PUBLIC_DEMO", "")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    expect(defaultProvider()).toBe(DEMO_PROVIDER_ID)
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", "")
+    expect(defaultProvider()).toBe("openrouter")
+  })
+
+  it("falls back stored localhost selections and defaults rememberKey on native", () => {
+    stubNativeBridge()
+    vi.stubEnv("VITE_PUBLIC_DEMO", "")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", "")
+    const stored = readAssistantSettings({
+      getItem: () => JSON.stringify({ provider: "ollama" }),
+    })
+    expect(stored.provider).toBe("openrouter")
+    expect(defaultSettingsFor("openrouter").rememberKey).toBe(true)
+    expect(readAssistantSettings({ getItem: () => null }).rememberKey).toBe(true)
+  })
+
+  it("blocks harness, loopback, non-HTTPS, and invalid endpoints on native", () => {
+    expect(describeNativeBlock({ provider: "opencode-harness", baseURL: "/api/chat" })).toMatch(
+      /harness/i,
+    )
+    expect(
+      describeNativeBlock({ provider: "custom", baseURL: "http://localhost:4000/v1" }),
+    ).toMatch(/local servers/i)
+    expect(
+      describeNativeBlock({ provider: "custom", baseURL: "http://192.168.1.5:4000/v1" }),
+    ).toMatch(/HTTPS/i)
+    expect(describeNativeBlock({ provider: "custom", baseURL: "not a url" })).toMatch(/valid/i)
+    expect(
+      describeNativeBlock({ provider: "openrouter", baseURL: "https://openrouter.ai/api/v1" }),
+    ).toBeNull()
+    expect(
+      describeNativeBlock({ provider: "openrouter-demo", baseURL: "https://openrouter.ai/api/v1" }),
+    ).toBeNull()
   })
 })

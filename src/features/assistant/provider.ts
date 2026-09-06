@@ -13,6 +13,7 @@ import {
   THINKING_LEVELS,
   type ThinkingLevel,
 } from "@/features/assistant/thinking-select"
+import { isNativeCapacitorSync } from "@/lib/isNative"
 import { isTauriSync } from "@/lib/isTauri"
 
 export type AssistantProviderId =
@@ -104,13 +105,14 @@ export const ASSISTANT_PRESETS: readonly AssistantProviderPreset[] = [
 /**
  * Presets the user may pick right now. The demo preset is hidden unless demo
  * mode is available (relay URL or baked key), so keyless local dev behaves
- * exactly as before. The public demo build (GitHub Pages) additionally hides
- * local-only presets that cannot work from a static page; hosted BYOK
- * presets stay as an escape hatch.
+ * exactly as before. The public demo build (GitHub Pages) and the native iOS
+ * shell additionally hide local-only presets that cannot work there — the
+ * harness needs pnpm dev and loopback URLs are unreachable from the phone;
+ * hosted BYOK presets stay as an escape hatch.
  */
 export function visibleAssistantPresets(): readonly AssistantProviderPreset[] {
   let presets = ASSISTANT_PRESETS
-  if (isPublicDemoBuild()) {
+  if (isPublicDemoBuild() || isNativeCapacitorSync()) {
     presets = presets.filter((preset) => !LOCAL_ONLY_PROVIDER_IDS.has(preset.id))
   }
   if (!isDemoModeAvailable()) {
@@ -127,8 +129,15 @@ const LOCAL_ONLY_PROVIDER_IDS: ReadonlySet<AssistantProviderId> = new Set([
   "custom",
 ])
 
-/** Default provider for fresh settings: demo on the public build, bridge otherwise. */
+/**
+ * Default provider for fresh settings: demo on the public build, demo or
+ * OpenRouter on native (loopback bridges are unreachable from the phone),
+ * bridge otherwise.
+ */
 export function defaultProvider(): AssistantProviderId {
+  if (isNativeCapacitorSync()) {
+    return isDemoModeAvailable() ? DEMO_PROVIDER_ID : "openrouter"
+  }
   return isPublicDemoBuild() && isDemoModeAvailable() ? DEMO_PROVIDER_ID : "opencode-bridge"
 }
 
@@ -139,9 +148,10 @@ export interface AssistantSettings {
   apiKey: string
   thinking: ThinkingLevel
   /**
-   * Desktop only: persist the key in the OS keychain. Always true on first
-   * run in the binary (owner decision 2026-09-06); the checkbox opts out to
-   * memory-only. Ignored on web, where keys are never persisted.
+   * Desktop and native only: persist the key in the OS keychain. Always true
+   * on first run in the binary or shell (owner decision 2026-09-06); the
+   * checkbox opts out to memory-only. Ignored on web, where keys are never
+   * persisted.
    */
   rememberKey: boolean
 }
@@ -171,7 +181,7 @@ export function defaultSettingsFor(provider: AssistantProviderId): AssistantSett
     model: preset.model,
     apiKey: "",
     thinking: DEFAULT_THINKING_LEVEL,
-    rememberKey: isTauriSync(),
+    rememberKey: isTauriSync() || isNativeCapacitorSync(),
   }
 }
 
@@ -217,7 +227,10 @@ export function readAssistantSettings(storage: Pick<Storage, "getItem">): Assist
       model: asText(parsed.model, preset.model),
       apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
       thinking: asThinkingLevel(parsed.thinking),
-      rememberKey: typeof parsed.rememberKey === "boolean" ? parsed.rememberKey : isTauriSync(),
+      rememberKey:
+        typeof parsed.rememberKey === "boolean"
+          ? parsed.rememberKey
+          : isTauriSync() || isNativeCapacitorSync(),
     }
   } catch {
     return fallback
@@ -530,6 +543,34 @@ export function isLocalBaseURL(baseURL: string): boolean {
   } catch {
     return baseURL.includes("localhost") || baseURL.includes("127.0.0.1")
   }
+}
+
+/**
+ * Native (Capacitor) transport guard. Returns a user-facing reason when the
+ * configured provider cannot send from this device, or null when sending may
+ * proceed. The dev harness needs pnpm dev on a computer; loopback servers are
+ * unreachable from the phone; non-HTTPS custom endpoints are blocked outright.
+ */
+export function describeNativeBlock(
+  settings: Pick<AssistantSettings, "provider" | "baseURL">,
+): string | null {
+  if (settings.provider === "opencode-harness") {
+    return "The local agent harness needs pnpm dev on a computer and never runs on this device."
+  }
+  let url: URL | null = null
+  try {
+    url = new URL(settings.baseURL)
+  } catch {
+    url = null
+  }
+  if (!url) return "That base URL is not valid."
+  if (isLoopbackHost(url.hostname)) {
+    return "Local servers are unreachable from this device. Use demo mode or a hosted provider."
+  }
+  if (url.protocol !== "https:") {
+    return "Only HTTPS endpoints are allowed on this device."
+  }
+  return null
 }
 
 /**

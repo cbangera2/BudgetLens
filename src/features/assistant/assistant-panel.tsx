@@ -59,6 +59,7 @@ import { ProposalCard } from "@/features/assistant/proposal-card"
 import {
   ASSISTANT_PRESETS,
   ASSISTANT_SETTINGS_KEY,
+  describeNativeBlock,
   formatMinor,
   isAssistantProviderId,
   isLocalBaseURL,
@@ -90,6 +91,7 @@ import {
 } from "@/features/assistant/thread-store"
 import { isTransactionSort } from "@/features/transactions/filtering"
 import { clearAssistantKey, loadAssistantKey, saveAssistantKey } from "@/lib/apiKeyStore"
+import { isNativeCapacitorSync } from "@/lib/isNative"
 import { isTauriSync } from "@/lib/isTauri"
 
 interface ToolTrace {
@@ -303,6 +305,10 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   // Desktop binary (Tauri) vs web/Pages. Stable for the session; gates the
   // keychain, Rust transport (see provider.ts), probe, and updater UI.
   const [isDesktop] = useState(() => isTauriSync())
+  // Native iOS shell (Capacitor). Stable for the session; extends keychain
+  // behaviors to the iOS Keychain while desktop-only probes stay off.
+  const [isNative] = useState(() => isNativeCapacitorSync())
+  const keychainCapable = isDesktop || isNative
   const [showSettings, setShowSettings] = useState(false)
   const [layout, setLayout] = useState<AssistantWindowLayout>(() =>
     readAssistantLayout(window.localStorage),
@@ -368,15 +374,16 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     // API keys never touch clear-text storage: localStorage keeps settings
-    // with the key blanked. On desktop the keychain holds remembered keys.
-    // Demo credentials resolve at send time from the build env, never here.
+    // with the key blanked. On desktop and native the keychain holds
+    // remembered keys. Demo credentials resolve at send time from the build
+    // env, never here.
     const persistedSettings: AssistantSettings = toPersistableSettings(settings)
     try {
       window.localStorage.setItem(ASSISTANT_SETTINGS_KEY, JSON.stringify(persistedSettings))
     } catch {
       // Private-mode or quota failures must not break the panel.
     }
-    if (isDesktop && keySyncReadyRef.current) {
+    if (keychainCapable && keySyncReadyRef.current) {
       if (settings.rememberKey && settings.apiKey) {
         void saveAssistantKey(settings.provider, settings.apiKey)
       } else {
@@ -384,11 +391,11 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         void clearAssistantKey(settings.provider)
       }
     }
-  }, [settings, isDesktop])
+  }, [settings, keychainCapable])
 
-  // Desktop: pull the remembered key for this provider into memory.
+  // Desktop/native: pull the remembered key for this provider into memory.
   useEffect(() => {
-    if (!isDesktop) return () => undefined
+    if (!keychainCapable) return () => undefined
     if (settings.rememberKey && !settings.apiKey && !keySyncReadyRef.current) {
       let cancelled = false
       void loadAssistantKey(settings.provider).then((key) => {
@@ -404,7 +411,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     }
     keySyncReadyRef.current = true
     return () => undefined
-  }, [isDesktop, settings.provider, settings.rememberKey, settings.apiKey])
+  }, [keychainCapable, settings.provider, settings.rememberKey, settings.apiKey])
 
   useEffect(() => {
     try {
@@ -416,6 +423,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (settings.provider !== "opencode-harness") return () => undefined
+    // The harness preset is hidden on native, so this probe never fires there;
+    // belt-and-braces: never fetch a dev-server endpoint from the device.
+    if (isNative) {
+      setHarnessAvailable(false)
+      return () => undefined
+    }
     setHarnessAvailable(null)
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), 6000)
@@ -431,7 +444,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [settings.provider])
+  }, [settings.provider, isNative])
 
   // Desktop: probe the configured local server (Ollama/LM Studio/bridge) for
   // a first-run reachability hint. Hosted endpoints skip the probe — the Load
@@ -664,7 +677,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setDirectModelsError(null)
     modelsAbortRef.current?.abort()
     setHarnessSessionId(undefined)
-    if (isDesktop) {
+    if (keychainCapable) {
       // Keys are per-provider in the keychain: drop the in-memory key so the
       // hydration effect pulls the new provider's remembered key (or none).
       keySyncReadyRef.current = false
@@ -674,7 +687,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       provider,
       baseURL: preset.baseURL,
       model: preset.model,
-      ...(isDesktop ? { apiKey: "" } : {}),
+      ...(keychainCapable ? { apiKey: "" } : {}),
     }))
   }
 
@@ -912,6 +925,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     const question = (presetText ?? input).trim()
     if (!question || busy) return
     setError(null)
+    if (isNative) {
+      const blocked = describeNativeBlock(settings)
+      if (blocked) {
+        setError(blocked)
+        return
+      }
+    }
     setProposalState("idle")
     setRecatState("idle")
     setCreateState("idle")
@@ -1516,7 +1536,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               </label>
               <label className="grid gap-1" htmlFor="assistant-key">
                 <span className="font-medium">
-                  {isDesktop
+                  {keychainCapable
                     ? settings.rememberKey
                       ? "API key (stored in OS keychain)"
                       : "API key (kept for this session only)"
@@ -1531,7 +1551,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
                   placeholder="sk-…"
                 />
               </label>
-              {isDesktop && (
+              {keychainCapable && (
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
