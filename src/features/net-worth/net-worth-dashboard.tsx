@@ -14,6 +14,12 @@ import {
   type ChartMetric,
   type ChartPresentationSettings,
 } from "@/features/charts/render"
+import { GoalPanel } from "@/features/goals/goal-panel"
+import {
+  useNetWorthGoal,
+  WEALTH_HISTORY_CHART_STORAGE_KEY,
+  WEALTH_HISTORY_TARGET_METRIC_KEY,
+} from "@/features/goals/model"
 import {
   buildChartPoints,
   daysSince,
@@ -175,6 +181,7 @@ export function NetWorthDashboard({
   locale,
 }: NetWorthDashboardProps) {
   const [range, setRange] = useState<RangePreset>("1Y")
+  const { goal, save: saveGoal, clear: clearGoal } = useNetWorthGoal()
   const filtered = useMemo(
     () => filterSnapshots(snapshots, range, today),
     [snapshots, range, today],
@@ -199,7 +206,11 @@ export function NetWorthDashboard({
   const chartRows: ChartDataRow[] = chartPoints.map((point) => ({
     id: point.date,
     label: localeDate(point.date, locale),
-    values: { netWorth: point.netWorth, investment: point.investment },
+    values: {
+      netWorth: point.netWorth,
+      investment: point.investment,
+      ...(goal ? { [WEALTH_HISTORY_TARGET_METRIC_KEY]: goal.targetAmountMinor / 100 } : {}),
+    },
   }))
   const chartMetrics: readonly ChartMetric[] = [
     {
@@ -214,7 +225,23 @@ export function NetWorthDashboard({
       color: "var(--chart-investment)",
       formatValue: (value) => currency(value * 100, locale),
     },
+    ...(goal
+      ? [
+          {
+            key: WEALTH_HISTORY_TARGET_METRIC_KEY,
+            label: "Target",
+            color: "var(--chart-5)",
+            formatValue: (value: number) => currency(value * 100, locale),
+          },
+        ]
+      : []),
   ]
+  const wealthHistorySettings: ChartPresentationSettings = goal
+    ? {
+        ...wealthChartSettings,
+        metricKeys: [...wealthChartSettings.metricKeys, WEALTH_HISTORY_TARGET_METRIC_KEY],
+      }
+    : wealthChartSettings
   const latest = filtered.at(-1)
   const staleDays = latest ? daysSince(latest.date, today) : 0
   const hasSingleSeries = [summary.netWorth, summary.investment].some(
@@ -373,14 +400,24 @@ export function NetWorthDashboard({
                 )}
               </div>
 
+              <GoalPanel
+                snapshots={filtered}
+                today={today}
+                {...(locale === undefined ? {} : { locale })}
+                goal={goal}
+                onSave={(next) => saveGoal(next)}
+                onClear={clearGoal}
+              />
+
               <EditableChartRenderer
-                storageKey="budgetlens.chart.wealth-history.v1"
+                key={goal ? "wealth-history-with-goal" : "wealth-history"}
+                storageKey={WEALTH_HISTORY_CHART_STORAGE_KEY}
                 title="Wealth history"
                 description={`Net worth and investments for the ${range} range.`}
                 settingsDescription="Choose the visible wealth series, chart style, and area fill."
                 data={chartRows}
                 metrics={chartMetrics}
-                initialSettings={wealthChartSettings}
+                initialSettings={wealthHistorySettings}
               />
 
               <Card>
