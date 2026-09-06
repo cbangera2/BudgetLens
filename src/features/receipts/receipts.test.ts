@@ -1,6 +1,7 @@
 import { BudgetLensDatabase } from "@/db/database"
 import { createRepositories } from "@/db/repositories"
 import type { Transaction } from "@/domain/models"
+import { sha256HexBlob } from "@/features/receipts/hash"
 import {
   addReceiptForTransaction,
   deleteTransactionReceipts,
@@ -72,6 +73,39 @@ describe("receipt attach/list/remove pipeline", () => {
     expect(await loadReceiptBlob(first.hash)).toBeNull()
     expect(await loadReceiptBlob(second.hash)).toBeNull()
     expect(await deleteTransactionReceipts("tx-1")).toBe(0)
+  })
+
+  it("refuses to attach when sidecar storage is unavailable", async () => {
+    vi.stubGlobal("localStorage", undefined)
+    try {
+      await expect(
+        addReceiptForTransaction("tx-unavailable", syntheticImageFile("unavailable-a")),
+      ).rejects.toThrow(/unavailable/)
+      expect(listTransactionReceipts("tx-unavailable")).toHaveLength(0)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("rolls back stored bytes when the sidecar write fails", async () => {
+    const setItem = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded.", "QuotaExceededError")
+    })
+    try {
+      await expect(
+        addReceiptForTransaction("tx-quota", syntheticImageFile("quota-a")),
+      ).rejects.toThrow(/Quota exceeded/)
+      expect(listTransactionReceipts("tx-quota")).toHaveLength(0)
+
+      // The blob saved before the failed write must be gone again. jsdom has
+      // no canvas pipeline, so the stored bytes equal the source bytes.
+      const hash = await sha256HexBlob(
+        new Blob([syntheticPngBytes("quota-a")], { type: "image/png" }),
+      )
+      await expect(loadReceiptBlob(hash)).resolves.toBeNull()
+    } finally {
+      setItem.mockRestore()
+    }
   })
 
   it("prunes receipts for transactions that no longer exist", async () => {

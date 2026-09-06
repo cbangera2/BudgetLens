@@ -36,6 +36,25 @@ describe("receipt blob storage (IndexedDB fallback)", () => {
     await expect(loadReceiptBlob("delete-hash")).resolves.toBeNull()
     await expect(deleteReceiptBlob("missing-delete-hash")).resolves.toBeUndefined()
   })
+
+  it("round-trips concurrent saves without mixing results", async () => {
+    const payloads = ["concurrent-a", "concurrent-b", "concurrent-c", "concurrent-d"]
+
+    await Promise.all(
+      payloads.map((payload) =>
+        saveReceiptBlob(`concurrent-${payload}`, new Blob([payload], { type: "image/jpeg" })),
+      ),
+    )
+    const loaded = await Promise.all(
+      payloads.map((payload) => loadReceiptBlob(`concurrent-${payload}`)),
+    )
+    await Promise.all(
+      loaded.map(async (blob, index) => {
+        if (!blob) throw new Error("expected stored receipt bytes")
+        expect(await blob.text()).toBe(payloads[index])
+      }),
+    )
+  })
 })
 
 describe("receipt blob storage (OPFS)", () => {

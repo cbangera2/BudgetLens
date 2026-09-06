@@ -140,16 +140,28 @@ function runBlobStoreRequest<T>(
           fail(error)
           return
         }
-        transaction.addEventListener("complete", () => close())
+        // Resolve only on commit: request success fires before the transaction
+        // commits, so a later abort (for example quota exceeded at commit
+        // time) must still reject instead of resolving with unwritten bytes.
+        // Reading request.result here is safe: with exactly one request,
+        // success strictly precedes completion, and a missing key resolves
+        // with undefined exactly like before.
+        transaction.addEventListener("complete", () => {
+          close()
+          if (settled) return
+          settled = true
+          try {
+            resolve(request.result)
+          } catch (error) {
+            reject(error)
+          }
+        })
         const transactionFailed = () =>
           fail(transaction.error ?? new Error("Could not access receipt image storage."))
         transaction.addEventListener("error", transactionFailed)
         transaction.addEventListener("abort", transactionFailed)
-        request.addEventListener("success", () => {
-          if (settled) return
-          settled = true
-          resolve(request.result)
-        })
+        // Request errors propagate to the transaction, whose listeners above
+        // reject; the request listener only forwards the underlying cause.
         request.addEventListener("error", () =>
           fail(request.error ?? new Error("Could not access receipt image storage.")),
         )

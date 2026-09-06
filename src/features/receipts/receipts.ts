@@ -15,6 +15,7 @@ import {
   addReceiptRef,
   clearReceiptRefs,
   findTransactionsReferencingHash,
+  isReceiptSidecarAvailable,
   listReceiptRefs,
   readReceiptSidecar,
   removeReceiptRef,
@@ -27,6 +28,28 @@ export type { ReceiptRef }
 function isSupportedImage(source: Blob): boolean {
   // Some mobile pickers report an empty MIME type for camera captures.
   return source.type === "" || source.type.startsWith("image/")
+}
+
+// Per-hash promise chains serializing blob save/reference-count/delete
+// critical sections. Without this, a concurrent attach of identical bytes
+// could land its sidecar reference between another task's reference check
+// and blob deletion, stranding a reference to missing bytes. Sections never
+// nest, so chaining cannot deadlock; chains are dropped once drained.
+const hashChains = new Map<string, Promise<void>>()
+
+function runSerializedByHash<T>(hash: string, task: () => Promise<T>): Promise<T> {
+  const previous = hashChains.get(hash) ?? Promise.resolve()
+  const result = previous.then(task)
+  const tracked = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  hashChains.set(hash, tracked)
+  const cleanup = () => {
+    if (hashChains.get(hash) === tracked) hashChains.delete(hash)
+  }
+  tracked.then(cleanup, cleanup)
+  return result
 }
 
 /**
@@ -42,19 +65,39 @@ export async function addReceiptForTransaction(
   if (!isSupportedImage(source)) {
     throw new Error("Only image files can be attached as receipt photos.")
   }
+  if (!isReceiptSidecarAvailable()) {
+    throw new Error("Receipt photo storage is unavailable on this device.")
+  }
   const downscaled = await downscaleToThumbnail(source)
   const hash = await sha256HexBlob(downscaled.blob)
-  await saveReceiptBlob(hash, downscaled.blob)
-  const ref: ReceiptRef = {
-    hash,
-    mimeType: downscaled.mimeType,
-    sizeBytes: downscaled.blob.size,
-    width: downscaled.width > 0 ? downscaled.width : null,
-    height: downscaled.height > 0 ? downscaled.height : null,
-    createdAt: new Date().toISOString(),
-  }
-  addReceiptRef(transactionId, ref)
-  return ref
+  return runSerializedByHash(hash, async () => {
+    await saveReceiptBlob(hash, downscaled.blob)
+    const ref: ReceiptRef = {
+      hash,
+      mimeType: downscaled.mimeType,
+      sizeBytes: downscaled.blob.size,
+      width: downscaled.width > 0 ? downscaled.width : null,
+      height: downscaled.height > 0 ? downscaled.height : null,
+      createdAt: new Date().toISOString(),
+    }
+    try {
+      addReceiptRef(transactionId, ref)
+    } catch (error) {
+      // A sidecar failure (for example a quota error) must not leave the bytes
+      // saved above behind as an unreferenced, undiscoverable blob. Shared
+      // hashes survive: garbage collection keeps bytes other transactions
+      // still reference.
+      await collectGarbageInHashLock(hash)
+      throw error
+    }
+    if (!listReceiptRefs(transactionId).some((entry) => entry.hash === hash)) {
+      // The reference did not land (storage that swallows writes): roll back
+      // the same way rather than reporting success with nothing to show.
+      await collectGarbageInHashLock(hash)
+      throw new Error("The receipt photo could not be saved on this device.")
+    }
+    return ref
+  })
 }
 
 /** Hash references attached to a transaction (empty when none). */
@@ -68,6 +111,15 @@ export async function loadTransactionReceipt(hash: string): Promise<Blob | null>
 }
 
 async function collectGarbage(hash: string): Promise<void> {
+  return runSerializedByHash(hash, () => collectGarbageInHashLock(hash))
+}
+
+/**
+ * Reference-counted blob deletion for callers already inside the hash lock
+ * (see runSerializedByHash). Shared bytes survive until the last transaction
+ * referencing them lets go.
+ */
+async function collectGarbageInHashLock(hash: string): Promise<void> {
   // Shared bytes (same capture attached twice) survive until the last
   // transaction referencing them lets go.
   if (findTransactionsReferencingHash(hash).length === 0) {

@@ -71,6 +71,11 @@ function writeReceiptSidecar(map: SidecarMap): void {
   receiptStorage()?.setItem(RECEIPT_SIDECAR_KEY, JSON.stringify(map))
 }
 
+/** False when the sidecar store is unreachable (for example storage disabled). */
+export function isReceiptSidecarAvailable(): boolean {
+  return receiptStorage() !== null
+}
+
 /** Receipt references for one transaction (empty when none are attached). */
 export function listReceiptRefs(transactionId: string): ReceiptRef[] {
   return readReceiptSidecar()[transactionId] ?? []
