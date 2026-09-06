@@ -65,6 +65,7 @@ describe("isLocalBaseURL", () => {
     expect(isLocalBaseURL("http://localhost:11434/v1")).toBe(true)
     expect(isLocalBaseURL("http://127.0.0.1:11435/v1")).toBe(true)
     expect(isLocalBaseURL("http://[::1]:11434/v1")).toBe(true)
+    expect(isLocalBaseURL("http://127.0.0.2:11434/v1")).toBe(true)
   })
 
   it("treats hosted providers as cloud", () => {
