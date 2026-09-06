@@ -76,6 +76,18 @@ describe("detectSubscriptions", () => {
     expect(detectSubscriptions(transactions).subscriptions).toHaveLength(1)
   })
 
+  it("uses the median for a regular three-charge series", () => {
+    const transactions = [
+      expense("v1", "2026-01-01", "Regular Merchant", -3000),
+      expense("v2", "2026-01-31", "Regular Merchant", -3000),
+      expense("v3", "2026-03-07", "Regular Merchant", -3000),
+    ]
+    const result = detectSubscriptions(transactions)
+    expect(result.subscriptions).toHaveLength(1)
+    expect(result.subscriptions[0]?.medianIntervalDays).toBe(32.5)
+    expect(result.subscriptions[0]?.monthlyBurnMinor).toBe(2810)
+  })
+
   it("rejects irregular activity", () => {
     const transactions = [
       expense("i1", "2026-01-10", "Corner Deli"),

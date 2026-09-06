@@ -112,7 +112,12 @@ export function detectSubscriptions(transactions: readonly Transaction[]): Subsc
     }
     if (intervals.some((interval) => interval <= 0)) continue
 
-    const base = intervals.length === 2 ? Math.min(...intervals) : median(intervals)
+    let base = median(intervals)
+    if (intervals.length === 2) {
+      const short = Math.min(...intervals)
+      const long = Math.max(...intervals)
+      base = withinTolerance(long, short * 2) ? short : median(intervals)
+    }
     if (base < SUBSCRIPTION_MIN_INTERVAL_DAYS) continue
 
     let doubled = 0
