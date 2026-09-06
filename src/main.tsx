@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
 import { App } from "@/app/app"
+import { setupAutoBackupOnSuspend } from "@/features/settings/auto-backup"
 
 import "@/styles.css"
 
@@ -17,6 +18,9 @@ if (!root) {
 if (typeof navigator !== "undefined" && typeof navigator.storage?.persist === "function") {
   void navigator.storage.persist().catch(() => undefined)
 }
+
+// Native-only daily auto-backup on suspend; best-effort and never blocks render.
+setupAutoBackupOnSuspend()
 
 createRoot(root).render(
   <StrictMode>
