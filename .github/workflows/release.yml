@@ -29,12 +29,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Apple Silicon only (owner call 2026-09-06): one .dmg, no Intel leg.
           - os: macos-latest
             target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             args: ""
@@ -61,7 +59,7 @@ jobs:
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable (2026-09-06)
         with:
           toolchain: "1.98.0"
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: Cache Rust
         uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 (2026-09-06)
@@ -156,7 +154,7 @@ jobs:
             exit 1
           fi
 
-          for platform in darwin-aarch64 darwin-x86_64 windows-x86_64; do
+          for platform in darwin-aarch64 windows-x86_64; do
             URL="$(jq -r --arg p "$platform" '.platforms[$p].url // empty' latest.json)"
             SIG="$(jq -r --arg p "$platform" '.platforms[$p].signature // empty' latest.json)"
             if [ -z "$URL" ] || [ -z "$SIG" ]; then
