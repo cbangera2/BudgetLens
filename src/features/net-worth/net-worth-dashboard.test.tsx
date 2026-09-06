@@ -144,6 +144,19 @@ describe("NetWorthDashboard", () => {
     expect(screen.getByText("One observation—change unavailable")).toBeInTheDocument()
   })
 
+  it("shows the goal target line and pace projection when a goal is saved", () => {
+    window.localStorage.setItem(
+      "budgetlens.net-worth-goal.v1",
+      JSON.stringify({ version: 1, targetAmountMinor: 20_000_00, targetDate: "2027-02-28" }),
+    )
+    render(<NetWorthDashboard snapshots={history} today="2026-07-22" locale="en-US" />)
+    expect(screen.getByRole("heading", { name: "Net-worth goal" })).toBeInTheDocument()
+    expect(screen.getByText("Target", { selector: "span" })).toBeInTheDocument()
+    expect(screen.getByText(/Current pace/)).toBeInTheDocument()
+    expect(screen.getByText(/Projected to reach the target/)).toBeInTheDocument()
+    expect(screen.getByText(/Required pace/)).toBeInTheDocument()
+  })
+
   it("shows segment totals and detailed source balances without legacy history", () => {
     render(
       <NetWorthDashboard
