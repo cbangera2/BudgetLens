@@ -98,7 +98,7 @@ export function projectNetWorthGoal(
   const latest = ordered.at(-1)!
   const paceMinorPerDay = fitDailyPaceMinor(ordered)
   const paceMinorPerMonth = paceMinorPerDay === null ? null : paceMinorPerDay * AVERAGE_MONTH_DAYS
-  const targetPast = goal.targetDate <= today
+  const targetPast = goal.targetDate < today
   const monthsRemaining = targetPast ? 0 : daysBetween(today, goal.targetDate) / AVERAGE_MONTH_DAYS
   const requiredMinorPerMonth =
     monthsRemaining > 0 ? (goal.targetAmountMinor - latest.valueMinor) / monthsRemaining : null

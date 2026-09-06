@@ -26,6 +26,11 @@ describe("parseGoalInput", () => {
     expect(parseGoalInput("20000", "2027-02-30")).toBeNull()
     expect(parseGoalInput("20000", "not-a-date")).toBeNull()
   })
+
+  it("rejects amounts that convert to zero or unsafe minor units", () => {
+    expect(parseGoalInput("0.001", "2027-02-28")).toBeNull()
+    expect(parseGoalInput("1e20", "2027-02-28")).toBeNull()
+  })
 })
 
 describe("isValidCalendarDate", () => {

@@ -86,6 +86,8 @@ describe("GoalPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete goal" }))
     expect(onClear).toHaveBeenCalled()
     expect(screen.queryByText(/Current pace/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Target amount")).toHaveValue(null)
+    expect(screen.getByLabelText("Target date")).toHaveValue("")
   })
 
   it("explains a single observation instead of projecting", () => {

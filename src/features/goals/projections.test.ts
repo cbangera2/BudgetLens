@@ -129,6 +129,20 @@ describe("projectNetWorthGoal", () => {
     expect(projection.paceMinorPerDay).toBe(100_00)
   })
 
+  it("keeps the goal active through its target calendar day", () => {
+    const projection = projectNetWorthGoal(
+      [
+        { date: "2026-01-01", valueMinor: 10_000_00 },
+        { date: "2026-01-31", valueMinor: 13_000_00 },
+      ],
+      "2026-05-01",
+      { targetAmountMinor: 20_000_00, targetDate: "2026-05-01" },
+    )
+    expect(projection.status).toBe("on-track")
+    expect(projection.projectedHitDate).toBe("2026-04-11")
+    expect(projection.requiredMinorPerMonth).toBeNull()
+  })
+
   it("reports achieved once the latest observation covers the target", () => {
     const projection = projectNetWorthGoal(
       [

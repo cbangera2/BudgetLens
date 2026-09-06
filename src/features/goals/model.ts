@@ -51,7 +51,9 @@ export function parseGoalInput(amountText: string, dateText: string): NetWorthGo
   const targetDate = dateText.trim()
   if (!Number.isFinite(amount) || amount <= 0) return null
   if (!isValidCalendarDate(targetDate)) return null
-  return { targetAmountMinor: Math.round(amount * 100), targetDate }
+  const targetAmountMinor = Math.round(amount * 100)
+  if (!Number.isSafeInteger(targetAmountMinor) || targetAmountMinor <= 0) return null
+  return { targetAmountMinor, targetDate }
 }
 
 export function loadNetWorthGoal(storage: ReadableStorage | undefined): NetWorthGoal | null {

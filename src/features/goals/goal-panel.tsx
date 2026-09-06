@@ -135,7 +135,16 @@ export function GoalPanel({ snapshots, today, locale, goal, onSave, onClear }: G
           </div>
           <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
             {goal ? (
-              <Button type="button" variant="outline" onClick={onClear}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAmount("")
+                  setTargetDate("")
+                  setError("")
+                  onClear()
+                }}
+              >
                 Delete goal
               </Button>
             ) : null}
