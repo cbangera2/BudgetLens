@@ -95,6 +95,8 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Assert no Pages base leaked into desktop bundle
+        # Git Bash exists on all three runner OSes; PowerShell can't run this.
+        shell: bash
         run: |
           if grep -q '/BudgetLens/' dist/index.html; then
             echo "::error::dist/index.html contains /BudgetLens/ asset URLs — VITE_BASE was not /."
