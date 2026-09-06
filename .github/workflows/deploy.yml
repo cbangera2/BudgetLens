@@ -57,6 +57,9 @@ jobs:
           # Relay origin (Cloudflare Worker). Empty until the human first
           # deploy sets the secret; while empty, demo uses the direct path.
           VITE_ASSISTANT_RELAY_URL: ${{ secrets.VITE_ASSISTANT_RELAY_URL }}
+          # Public zero-setup build: demo is the default provider and
+          # local-only presets hide from the dropdown.
+          VITE_PUBLIC_DEMO: "true"
 
       - name: Prepare Pages artifact (SPA fallback + disable Jekyll)
         run: |

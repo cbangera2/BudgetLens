@@ -49,6 +49,15 @@ export function isDemoModeAvailable(): boolean {
 }
 
 /**
+ * True in the public zero-setup build (GitHub Pages, via VITE_PUBLIC_DEMO):
+ * demo becomes the default provider and local-only presets hide, so the
+ * panel just works for visitors with no setup.
+ */
+export function isPublicDemoBuild(): boolean {
+  return import.meta.env.VITE_PUBLIC_DEMO === "true"
+}
+
+/**
  * True when a request would spend the shared demo key, so the free-model
  * allowlist must apply. Detects the demo key even if it was pasted into a
  * BYOK preset's key field. Kept as defense-in-depth alongside the relay's
