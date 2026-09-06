@@ -64,6 +64,7 @@ import {
   isAssistantProviderId,
   isLocalBaseURL,
   listProviderModels,
+  needsHostedConsent,
   readAssistantSettings,
   requestChatTurn,
   sendToolResults,
@@ -347,6 +348,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Awaiting explicit hosted-data opt-in: the question to send on approval.
+  const [consentPending, setConsentPending] = useState<string | null>(null)
   const [contextSummary, setContextSummary] = useState<string | null>(null)
   // null = unchecked, true = local harness endpoint reachable, false = static
   // hosting (e.g. GitHub Pages) where the harness can never run.
@@ -948,6 +951,23 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         return
       }
     }
+    // First hosted send needs explicit opt-in: local providers never ask.
+    if (needsHostedConsent(settings)) {
+      setConsentPending(question)
+      return
+    }
+    await sendQuestion(question)
+  }
+
+  async function approveConsent() {
+    if (!consentPending || busy) return
+    const question = consentPending
+    setConsentPending(null)
+    setSettings((current) => ({ ...current, hostedConsent: true }))
+    await sendQuestion(question)
+  }
+
+  async function sendQuestion(question: string) {
     setProposalState("idle")
     setRecatState("idle")
     setCreateState("idle")
@@ -1050,6 +1070,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     const kept = messages.slice(0, messages.map((item) => item.role).lastIndexOf("user") + 1)
     const lastUser = kept[kept.length - 1]
     if (!lastUser || lastUser.role !== "user") return
+    setError(null)
+    // Provider may have changed since the original send — re-check consent.
+    if (needsHostedConsent(settings)) {
+      setConsentPending(lastUser.content)
+      return
+    }
     // Drop the truncated tail from the thread store too, or it resurrects on reload.
     const droppedIds = messages.slice(kept.length).map((item) => item.id)
     if (activeThreadId) {
@@ -1780,6 +1806,38 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           http://localhost:5173`).
         </p>
       )}
+
+      {consentPending && !busy ? (
+        <dialog open className="border-t px-4 py-3" aria-label="Confirm sharing finance summary">
+          <p className="text-sm font-medium">
+            Send a finance summary to {preset?.label ?? settings.provider}?
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            First hosted send shares a capped summary: spending by category, budget status (up to
+            50), recent transactions with shortened descriptions, and 90-day daily totals. Never raw
+            files. Remembered on this device.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                void approveConsent()
+              }}
+            >
+              Approve and send
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setConsentPending(null)
+              }}
+            >
+              Not now
+            </Button>
+          </div>
+        </dialog>
+      ) : null}
 
       <div className="border-t p-3">
         <Composer

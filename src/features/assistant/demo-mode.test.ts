@@ -16,6 +16,7 @@ import {
   defaultSettingsFor,
   defaultProvider,
   describeNativeBlock,
+  needsHostedConsent,
   readAssistantSettings,
   requestChatTurn,
   toPersistableSettings,
@@ -324,5 +325,43 @@ describe("native iOS shell transport lockdown", () => {
     expect(
       describeNativeBlock({ provider: "openrouter-demo", baseURL: "https://openrouter.ai/api/v1" }),
     ).toBeNull()
+  })
+
+  it("requires consent only for hosted providers without opt-in", () => {
+    expect(
+      needsHostedConsent({
+        provider: "openrouter",
+        baseURL: "https://openrouter.ai/api/v1",
+        hostedConsent: false,
+      }),
+    ).toBe(true)
+    expect(
+      needsHostedConsent({
+        provider: "openrouter",
+        baseURL: "https://openrouter.ai/api/v1",
+        hostedConsent: true,
+      }),
+    ).toBe(false)
+    expect(
+      needsHostedConsent({
+        provider: "openrouter-demo",
+        baseURL: "https://openrouter.ai/api/v1",
+        hostedConsent: false,
+      }),
+    ).toBe(true)
+    expect(
+      needsHostedConsent({
+        provider: "ollama",
+        baseURL: "http://localhost:11434/v1",
+        hostedConsent: false,
+      }),
+    ).toBe(false)
+    expect(
+      needsHostedConsent({
+        provider: "opencode-harness",
+        baseURL: "/api/chat",
+        hostedConsent: false,
+      }),
+    ).toBe(false)
   })
 })
