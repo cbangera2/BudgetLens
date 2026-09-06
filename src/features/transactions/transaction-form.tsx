@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select"
 import type { Transaction, TransactionDraft, TransactionGroup } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import { ReceiptSection } from "@/features/receipts/receipt-section"
 
 const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -316,6 +317,7 @@ export function TransactionForm({
           onChange={(e) => set("notes", e.target.value)}
         />
       </div>
+      {transaction && <ReceiptSection transactionId={transaction.id} />}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
