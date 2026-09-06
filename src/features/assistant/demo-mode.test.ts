@@ -14,6 +14,7 @@ import {
 } from "@/features/assistant/demo-models"
 import {
   defaultSettingsFor,
+  defaultProvider,
   readAssistantSettings,
   requestChatTurn,
   toPersistableSettings,
@@ -215,5 +216,45 @@ describe("demo key storage hygiene", () => {
     vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
     expect(defaultSettingsFor(DEMO_PROVIDER_ID).apiKey).toBe("")
     expect(resolveDemoEndpoint()?.apiKey).toBe(SYNTHETIC_DEMO_KEY)
+  })
+})
+
+describe("public demo build", () => {
+  it("defaults fresh settings to demo and hides local-only presets", () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO", "true")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    expect(defaultProvider()).toBe(DEMO_PROVIDER_ID)
+    expect(visibleAssistantPresets().map((preset) => preset.id)).toEqual([
+      "openrouter",
+      "openai",
+      DEMO_PROVIDER_ID,
+    ])
+    expect(readAssistantSettings({ getItem: () => null }).provider).toBe(DEMO_PROVIDER_ID)
+  })
+
+  it("respects a stored hosted-BYOK selection", () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO", "true")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    const settings = readAssistantSettings({
+      getItem: () => JSON.stringify({ provider: "openrouter" }),
+    })
+    expect(settings.provider).toBe("openrouter")
+  })
+
+  it("falls back from a stored local-only selection to demo", () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO", "true")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    const settings = readAssistantSettings({
+      getItem: () => JSON.stringify({ provider: "ollama" }),
+    })
+    expect(settings.provider).toBe(DEMO_PROVIDER_ID)
+  })
+
+  it("leaves local dev untouched (bridge default, all presets visible)", () => {
+    vi.stubEnv("VITE_PUBLIC_DEMO", "")
+    vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
+    expect(defaultProvider()).toBe("opencode-bridge")
+    expect(visibleAssistantPresets()).toHaveLength(8)
+    expect(readAssistantSettings({ getItem: () => null }).provider).toBe("opencode-bridge")
   })
 })

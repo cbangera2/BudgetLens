@@ -56,6 +56,9 @@ jobs:
           # enforcement is unbypassable. If the relay URL is ever unset,
           # the demo preset hides and the app behaves as before.
           VITE_ASSISTANT_RELAY_URL: ${{ secrets.VITE_ASSISTANT_RELAY_URL }}
+          # Public zero-setup build: demo is the default provider and
+          # local-only presets hide from the dropdown.
+          VITE_PUBLIC_DEMO: "true"
 
       - name: Prepare Pages artifact (SPA fallback + disable Jekyll)
         run: |

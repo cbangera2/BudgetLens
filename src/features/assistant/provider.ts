@@ -5,6 +5,7 @@ import {
   DEMO_PROVIDER_ID,
   isDemoModeAvailable,
   isDemoRequest,
+  isPublicDemoBuild,
 } from "@/features/assistant/demo-endpoint"
 import { DEMO_DEFAULT_MODEL, isDemoModelAllowed } from "@/features/assistant/demo-models"
 import {
@@ -101,13 +102,34 @@ export const ASSISTANT_PRESETS: readonly AssistantProviderPreset[] = [
 ]
 
 /**
- * Presets the user may pick right now. The demo preset is hidden unless a
- * demo key was baked in at build time (VITE_OPENROUTER_DEMO_KEY), so local
- * dev without the key behaves exactly as before.
+ * Presets the user may pick right now. The demo preset is hidden unless demo
+ * mode is available (relay URL or baked key), so keyless local dev behaves
+ * exactly as before. The public demo build (GitHub Pages) additionally hides
+ * local-only presets that cannot work from a static page; hosted BYOK
+ * presets stay as an escape hatch.
  */
 export function visibleAssistantPresets(): readonly AssistantProviderPreset[] {
-  if (isDemoModeAvailable()) return ASSISTANT_PRESETS
-  return ASSISTANT_PRESETS.filter((preset) => preset.id !== DEMO_PROVIDER_ID)
+  let presets = ASSISTANT_PRESETS
+  if (isPublicDemoBuild()) {
+    presets = presets.filter((preset) => !LOCAL_ONLY_PROVIDER_IDS.has(preset.id))
+  }
+  if (!isDemoModeAvailable()) {
+    presets = presets.filter((preset) => preset.id !== DEMO_PROVIDER_ID)
+  }
+  return presets
+}
+
+const LOCAL_ONLY_PROVIDER_IDS: ReadonlySet<AssistantProviderId> = new Set([
+  "opencode-harness",
+  "opencode-bridge",
+  "ollama",
+  "lmstudio",
+  "custom",
+])
+
+/** Default provider for fresh settings: demo on the public build, bridge otherwise. */
+export function defaultProvider(): AssistantProviderId {
+  return isPublicDemoBuild() && isDemoModeAvailable() ? DEMO_PROVIDER_ID : "opencode-bridge"
 }
 
 export interface AssistantSettings {
@@ -175,19 +197,19 @@ export function toPersistableSettings(settings: AssistantSettings): AssistantSet
 }
 
 export function readAssistantSettings(storage: Pick<Storage, "getItem">): AssistantSettings {
-  const fallback = defaultSettingsFor("opencode-bridge")
+  const fallback = defaultSettingsFor(defaultProvider())
   try {
     const raw = storage.getItem(ASSISTANT_SETTINGS_KEY)
     if (!raw) return fallback
     const parsed: unknown = JSON.parse(raw) as unknown
     if (!isRecord(parsed)) return fallback
     const storedProvider = isAssistantProviderId(parsed.provider) ? parsed.provider : null
-    // A stored demo selection from a keyed build (e.g. Pages) means nothing in
-    // a keyless build (local dev): fall back so behavior is exactly as before.
+    // A stored selection hidden in this build (demo without credentials, or
+    // a local-only preset on the public build) falls back to the default, so
+    // the panel always opens on something that works here.
+    const visibleIds = new Set(visibleAssistantPresets().map((preset) => preset.id))
     const provider =
-      storedProvider === DEMO_PROVIDER_ID && !isDemoModeAvailable()
-        ? fallback.provider
-        : (storedProvider ?? fallback.provider)
+      storedProvider && visibleIds.has(storedProvider) ? storedProvider : fallback.provider
     const preset = presetFor(provider)
     return {
       provider,
