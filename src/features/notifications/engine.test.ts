@@ -95,7 +95,7 @@ describe("computePendingReminders budgets", () => {
     expect(reminders[0]?.title).toContain("80%")
   })
 
-  it("fires the 100% reminder on the exact boundary", () => {
+  it("fires the 100% reminder on the exact boundary without claiming over-budget", () => {
     const reminders = computePendingReminders({
       budgets: [goal({ amountMinor: 100_00 })],
       transactions: [expense({ amountMinor: -100_00 })],
@@ -103,6 +103,46 @@ describe("computePendingReminders budgets", () => {
     })
     expect(reminders).toHaveLength(1)
     expect(reminders[0]?.key).toBe("budget:Groceries:2026-09:100")
+    expect(reminders[0]?.title).toBe("Groceries hit 100% of budget")
+  })
+
+  it("reserves over-budget for spending above the goal", () => {
+    const reminders = computePendingReminders({
+      budgets: [goal({ amountMinor: 100_00 })],
+      transactions: [expense({ amountMinor: -120_00 })],
+      todayIso: "2026-09-15",
+    })
+    expect(reminders).toHaveLength(1)
+    expect(reminders[0]?.key).toBe("budget:Groceries:2026-09:100")
+    expect(reminders[0]?.title).toBe("Groceries is over budget")
+  })
+
+  it("matches goals with surrounding whitespace to trimmed categories", () => {
+    const reminders = computePendingReminders({
+      budgets: [goal({ category: "  Groceries  ", amountMinor: 100_00 })],
+      transactions: [expense({ amountMinor: -5000 })],
+      todayIso: "2026-09-15",
+    })
+    expect(reminders.map((reminder) => reminder.key)).toEqual(["budget:Groceries:2026-09:50"])
+  })
+
+  it("emits one reminder for duplicate monthly goals in a category", () => {
+    const reminders = computePendingReminders({
+      budgets: [goal({ amountMinor: 100_00 }), goal({ amountMinor: 100_00 })],
+      transactions: [expense({ amountMinor: -8500 })],
+      todayIso: "2026-09-15",
+    })
+    expect(reminders.map((reminder) => reminder.key)).toEqual(["budget:Groceries:2026-09:80"])
+  })
+
+  it("rejects impossible calendar days instead of normalizing them", () => {
+    expect(
+      computePendingReminders({
+        budgets: [goal({ amountMinor: 100_00 })],
+        transactions: [expense({ amountMinor: -100_00 })],
+        todayIso: "2026-02-30",
+      }),
+    ).toEqual([])
   })
 
   it("ignores other months, other categories, and income", () => {

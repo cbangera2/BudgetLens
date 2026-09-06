@@ -53,6 +53,12 @@ describe("reminderNumericId", () => {
     expect(first).toBeLessThanOrEqual(2_147_483_647)
     expect(reminderNumericId("bill:acme:2026-09-13")).not.toBe(first)
   })
+
+  it("hashes full code units so unicode keys do not fold together", () => {
+    expect(reminderNumericId("budget:Ł:2026-09:80")).not.toBe(
+      reminderNumericId("budget:A:2026-09:80"),
+    )
+  })
 })
 
 describe("reminder bridge on web", () => {

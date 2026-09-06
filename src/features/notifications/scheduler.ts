@@ -89,10 +89,26 @@ export function productionReminderAdapter(): ReminderSyncAdapter {
 }
 
 /**
- * Reconcile desired triggers with pending notifications. Never throws: every
- * failure degrades to a status the UI can explain.
+ * Reconcile desired triggers with pending notifications. Serialized
+ * process-wide: concurrent data-change callbacks queue behind the active run
+ * so an older snapshot can never schedule or cancel after a newer one.
+ * Never throws: every failure degrades to a status the UI can explain.
  */
 export async function syncReminders(
+  input: ReminderSyncInput,
+  adapter: ReminderSyncAdapter,
+): Promise<ReminderSyncResult> {
+  const run = syncChain.then(() => reconcileReminders(input, adapter))
+  syncChain = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  return run
+}
+
+let syncChain: Promise<void> = Promise.resolve()
+
+async function reconcileReminders(
   input: ReminderSyncInput,
   adapter: ReminderSyncAdapter,
 ): Promise<ReminderSyncResult> {
@@ -118,20 +134,25 @@ export async function syncReminders(
       return emptyResult("skipped-error")
     }
 
-    const desired = computePendingReminders({
+    // Actionable triggers WITHOUT the fired-key filter: a reminder scheduled
+    // by the previous run is fired AND still pending, and must stay in the
+    // desired set or it would be misclassified as stale and cancelled.
+    const actionable = computePendingReminders({
       budgets: input.budgets,
       transactions: input.transactions,
       todayIso: input.todayIso,
-      firedKeys: new Set(adapter.firedKeys),
     })
-    const desiredKeys = new Set(desired.map((reminder) => reminder.key))
+    const actionableKeys = new Set(actionable.map((reminder) => reminder.key))
     const pendingIds = new Set(pending.map((entry) => entry.id))
     const stale = pending
-      .filter((entry) => isOurKey(entry.key) && !desiredKeys.has(entry.key))
+      .filter((entry) => isOurKey(entry.key) && !actionableKeys.has(entry.key))
       .map((entry) => entry.id)
-    const fresh = desired.filter((reminder) => !pendingIds.has(reminderNumericId(reminder.key)))
+    const fired = new Set(adapter.firedKeys)
+    const fresh = actionable.filter(
+      (reminder) => !fired.has(reminder.key) && !pendingIds.has(reminderNumericId(reminder.key)),
+    )
 
-    if (desired.length === 0) {
+    if (actionable.length === 0) {
       if (stale.length > 0) {
         try {
           await adapter.cancel(stale)
@@ -244,7 +265,18 @@ export async function setRemindersEnabled(next: boolean): Promise<EnableReminder
     } catch {
       // Ignore.
     }
-    return { enabled: true, status: await refreshReminders() }
+    // The refresh must see the enabled preference; on failure revert it so
+    // the toggle never claims an active state that never scheduled.
+    const status = await refreshReminders()
+    if (status === "skipped-error") {
+      try {
+        writeNotificationsEnabled(window.localStorage, false)
+      } catch {
+        // Ignore.
+      }
+      return { enabled: false, reason: "error" }
+    }
+    return { enabled: true, status }
   } catch {
     return { enabled: false, reason: "error" }
   }

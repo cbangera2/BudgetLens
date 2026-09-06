@@ -249,15 +249,17 @@ export interface PendingReminderInfo {
 
 /**
  * Stable numeric id for an engine key. The plugin requires 32-bit int ids;
- * djb2 folded into 1..2_147_483_647 keeps them positive and deterministic so
- * re-deriving the same trigger never duplicates a pending notification.
+ * FNV-1a over the full UTF-16 code units, folded into 1..2_147_483_647, keeps
+ * them positive and deterministic so re-deriving the same trigger never
+ * duplicates a pending notification.
  */
 export function reminderNumericId(key: string): number {
-  let hash = 5381
+  let hash = 2_166_136_261
   for (let index = 0; index < key.length; index += 1) {
-    hash = ((hash * 33) ^ (key.charCodeAt(index) & 0xff)) | 0
+    hash ^= key.charCodeAt(index)
+    hash = Math.imul(hash, 16_777_619)
   }
-  return (Math.abs(hash) % 2_147_483_646) + 1
+  return (Math.abs(hash | 0) % 2_147_483_646) + 1
 }
 
 /** Notification display permission. "denied" on web so callers stay dormant. */

@@ -22,11 +22,12 @@ vi.mock("@/lib/native", () => ({
   cancelReminderNotifications: mocks.cancel,
   listPendingReminderKeys: mocks.listPending,
   reminderNumericId: (key: string) => {
-    let hash = 5381
+    let hash = 2_166_136_261
     for (let index = 0; index < key.length; index += 1) {
-      hash = ((hash * 33) ^ (key.charCodeAt(index) & 0xff)) | 0
+      hash ^= key.charCodeAt(index)
+      hash = Math.imul(hash, 16_777_619)
     }
-    return (Math.abs(hash) % 2_147_483_646) + 1
+    return (Math.abs(hash | 0) % 2_147_483_646) + 1
   },
 }))
 
@@ -116,6 +117,15 @@ describe("setRemindersEnabled", () => {
     expect(outcome).toEqual({ enabled: false, reason: "denied" })
     expect(window.localStorage.getItem("budgetlens.notifications.enabled")).toBe("0")
     expect(mocks.schedule).not.toHaveBeenCalled()
+  })
+
+  it("reverts the toggle when the post-enable refresh fails", async () => {
+    mocks.isNative.mockReturnValue(true)
+    mocks.requestPermission.mockResolvedValueOnce("granted")
+    mocks.schedule.mockRejectedValueOnce(new Error("denied"))
+    const outcome = await setRemindersEnabled(true)
+    expect(outcome).toEqual({ enabled: false, reason: "error" })
+    expect(window.localStorage.getItem("budgetlens.notifications.enabled")).toBe("0")
   })
 
   it("degrades on web without touching the plugin", async () => {

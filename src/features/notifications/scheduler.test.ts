@@ -151,8 +151,59 @@ describe("syncReminders reconciliation", () => {
   it("never double-schedules a fired key from an earlier run", async () => {
     const adapter = fakeAdapter({ firedKeys: ["budget:Groceries:2026-09:80"] })
     const result = await syncReminders(input(), adapter)
-    expect(result.status).toBe("skipped-empty")
-    expect(adapter.scheduled).toEqual([])
+    expect(result.status).toBe("synced")
+    expect(result.scheduled).toEqual([])
+    expect(result.cancelled).toEqual([])
+    expect(adapter.persisted).toEqual([])
+  })
+
+  it("keeps a still-pending fired reminder instead of cancelling it", async () => {
+    const pendingId = reminderNumericId("budget:Groceries:2026-09:80")
+    const adapter = fakeAdapter({
+      firedKeys: ["budget:Groceries:2026-09:80"],
+      listPending: async () => [{ id: pendingId, key: "budget:Groceries:2026-09:80" }],
+    })
+    const result = await syncReminders(input(), adapter)
+    expect(result.status).toBe("synced")
+    expect(result.scheduled).toEqual([])
+    expect(result.cancelled).toEqual([])
+  })
+
+  it("serializes overlapping runs so snapshots cannot reorder native ops", async () => {
+    const events: string[] = []
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Reassigned by the gate executor below.
+    let releaseFirst = (): void => undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const adapter = fakeAdapter({
+      listPending: async () => {
+        events.push("list")
+        return []
+      },
+      schedule: async () => {
+        events.push("schedule-start")
+        await firstGate
+        events.push("schedule-end")
+      },
+    })
+    const first = syncReminders(input(), adapter)
+    const second = syncReminders(input(), adapter)
+    // Let both runs reach their first await before releasing the gate.
+    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    releaseFirst()
+    const [firstResult, secondResult] = await Promise.all([first, second])
+    expect(firstResult.status).toBe("synced")
+    expect(secondResult.status).toBe("synced")
+    expect(events).toEqual([
+      "list",
+      "schedule-start",
+      "schedule-end",
+      "list",
+      "schedule-start",
+      "schedule-end",
+    ])
   })
 
   it("cancels stale triggers that no longer apply", async () => {

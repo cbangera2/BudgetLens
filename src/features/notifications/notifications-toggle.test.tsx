@@ -61,6 +61,17 @@ describe("NotificationsSettingsCard", () => {
     expect(checkbox).not.toBeChecked()
   })
 
+  it("shows revoked permission on mount even with a stored on-preference", async () => {
+    mocks.isNative.mockReturnValue(true)
+    mocks.checkPermission.mockResolvedValueOnce("denied")
+    window.localStorage.setItem(NOTIFICATIONS_ENABLED_KEY, "1")
+    render(<NotificationsSettingsCard />)
+    expect(await screen.findByText(/enable them in ios settings/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole("checkbox", { name: /send reminders on this device/i }),
+    ).not.toBeChecked()
+  })
+
   it("turns off again on native", async () => {
     mocks.isNative.mockReturnValue(true)
     mocks.checkPermission.mockResolvedValueOnce("granted")

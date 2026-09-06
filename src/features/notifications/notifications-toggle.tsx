@@ -33,13 +33,21 @@ export function NotificationsSettingsCard() {
     let cancelled = false
     void checkReminderPermission()
       .then((status) => {
-        if (!cancelled && status !== "granted") setPermissionDenied(status === "denied")
+        if (cancelled) return
+        // A revoked OS permission must be visible even when the stored
+        // preference is still on: nothing will fire until re-granted.
+        if (status === "denied") {
+          setPermissionDenied(true)
+          setEnabled(false)
+        }
       })
       .catch(() => undefined)
-    const stop = ensureReminderStoreSync()
+    // Session singleton: intentionally never stopped here, so budget and
+    // transaction commits keep reconciling after leaving Settings. The
+    // app-shell mount is a follow-up owned by the shell zone.
+    ensureReminderStoreSync()
     return () => {
       cancelled = true
-      stop()
     }
   }, [isNativeShell])
 
@@ -79,7 +87,7 @@ export function NotificationsSettingsCard() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={isNativeShell && enabled}
+            checked={isNativeShell && enabled && !permissionDenied}
             disabled={busy || !isNativeShell}
             onChange={(event) => {
               void onToggle(event.target.checked)
@@ -92,7 +100,7 @@ export function NotificationsSettingsCard() {
             ? "Off by default — reminders interrupt you, so nothing is scheduled until you turn this on."
             : "Reminders need the BudgetLens iPhone app. This preview does nothing on web."}
         </p>
-        {isNativeShell && permissionDenied && !enabled ? (
+        {isNativeShell && permissionDenied ? (
           <output className="block text-xs text-muted-foreground">
             Notifications are turned off for BudgetLens. Enable them in iOS Settings &gt;
             Notifications &gt; BudgetLens, then try again.

@@ -114,11 +114,14 @@ function budgetReminder(
   const spent = formatMinorAsMoney(spentMinor)
   const goal = formatMinorAsMoney(goalMinor)
   if (percent >= 100) {
+    const over = spentMinor > goalMinor
     return {
       key: `budget:${category}:${month}:${percent}`,
       kind: "budget",
-      title: `${category} is over budget`,
-      body: `${category} hit ${percent}% of its ${label} budget (${spent} of ${goal}).`,
+      title: over ? `${category} is over budget` : `${category} hit 100% of budget`,
+      body: over
+        ? `${category} is over its ${label} budget (${spent} of ${goal}).`
+        : `${category} reached its ${label} budget (${spent} of ${goal}).`,
     }
   }
   return {
@@ -140,7 +143,7 @@ function computeBudgetReminders(
     if (goal.period !== "monthly") continue
     const category = goal.category.trim()
     if (!category || goal.amountMinor <= 0) continue
-    const spent = spentForCategoryMonth(transactions, goal.category, month)
+    const spent = spentForCategoryMonth(transactions, category, month)
     const percent = crossedThreshold(spent, goal.amountMinor)
     if (percent === null) continue
     reminders.push(budgetReminder(category, month, percent, spent, goal.amountMinor))
@@ -160,8 +163,11 @@ export function normalizeMerchantName(description: string): string {
 }
 
 function parseDayMs(day: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
   const time = Date.parse(`${day}T00:00:00Z`)
-  return Number.isNaN(time) ? null : time
+  if (Number.isNaN(time)) return null
+  // Reject impossible calendar days (2026-02-30 normalizes to March 2).
+  return new Date(time).toISOString().slice(0, 10) === day ? time : null
 }
 
 function median(values: readonly number[]): number {
@@ -320,5 +326,15 @@ export function computePendingReminders(inputs: ReminderInputs): PendingReminder
     ...computeBudgetReminders(inputs.budgets, inputs.transactions, month),
     ...computeBillReminders(inputs.transactions, todayMs),
   ]
-  return reminders.filter((reminder) => !fired.has(reminder.key))
+  const filtered = reminders.filter((reminder) => !fired.has(reminder.key))
+  // Duplicate monthly goals for one category are allowed by the store; keep
+  // the first trigger so one native id is never scheduled twice.
+  const unique: PendingReminder[] = []
+  const seen = new Set<string>()
+  for (const reminder of filtered) {
+    if (seen.has(reminder.key)) continue
+    seen.add(reminder.key)
+    unique.push(reminder)
+  }
+  return unique
 }
