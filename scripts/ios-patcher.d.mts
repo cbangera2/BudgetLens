@@ -14,6 +14,22 @@ export declare const APP_GROUP_TOKEN: string
 export declare const BLOCK_BEGIN: string
 export declare const BLOCK_END: string
 export declare const TARGET_MARKER: string
+export declare const QUICK_ACTIONS_PLIST_KEY: string
+export declare const QUICK_ACTION_ADD_TYPE: string
+export declare const QUICK_ACTION_BUDGETS_TYPE: string
+export declare const QUICK_ACTION_EVENT: string
+export declare const SCENE_DELEGATE_FILE: string
+export declare const QUICK_ACTION_BEGIN: string
+export declare const QUICK_ACTION_END: string
+export declare const QUICK_ACTION_LAUNCH_MARKER: string
+
+export interface QuickActionItem {
+  type: string
+  title: string
+  iconType: string
+}
+
+export declare const QUICK_ACTION_ITEMS: QuickActionItem[]
 
 export interface PatcherOptions {
   projectDir: string
@@ -56,6 +72,15 @@ export declare function ensureAppGroupEntitlements(
   groupId: string,
 ): TextEdit
 export declare function buildWidgetExtensionPlist(): string
+export declare function quickActionItemXml(item: QuickActionItem): string
+export declare function buildQuickActionItemsValue(): string
+export declare function ensureQuickActionShortcutItems(plistXml: string): TextEdit
+export declare function shortcutArraySpan(
+  plistXml: string,
+  afterKey: number,
+): { open: number; close: number }
+export declare function quickActionSceneDelegateBlock(): string
+export declare function ensureSceneDelegateQuickActions(source: string): TextEdit
 export declare function upsertMarkedBlock(text: string, section: string, inner: string): TextEdit
 export declare function applyPbxprojEdits(text: string, context: { appId: string }): PbxprojEdit
 export declare function applyHostTargetEmbedEdits(
