@@ -107,6 +107,9 @@ export class ImportService {
     const effectiveRules = resolveTransactionRules(rules)
     const ruleResult = applyTransactionRulesToDrafts(effectiveRules, parsed.transactions)
     const ruleTransactions = ruleResult.applied
+    // Duplicate fingerprints intentionally include the rule-applied category, matching the
+    // existing category-in-fingerprint semantics (manual category edits also change identity).
+    // Exact-file re-imports remain blocked by sourceHash regardless of rules.
     const ruleApplications = ruleTransactions.map((_, index) => ({
       originalCategory: ruleResult.originalCategories[index] ?? null,
       matchedRuleId: ruleResult.matchedRuleIds[index] ?? null,

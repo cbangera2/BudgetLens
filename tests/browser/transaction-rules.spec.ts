@@ -38,8 +38,10 @@ test("transaction rules apply at import with per-row override", async ({ page })
   await page.getByRole("link", { name: "Transactions", exact: true }).click()
   await expect(page.getByRole("rowheader", { name: "Synthetic Coffee House" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Synthetic Grocery Mart" })).toBeVisible()
-  await expect(page.locator("tbody td", { hasText: "Dining" }).first()).toBeAttached()
-  await expect(page.locator("tbody td", { hasText: "Groceries" }).first()).toBeAttached()
+  const coffeeRow = page.locator("tbody tr", { hasText: "Synthetic Coffee House" })
+  const groceryRow = page.locator("tbody tr", { hasText: "Synthetic Grocery Mart" })
+  await expect(coffeeRow).toContainText("Dining")
+  await expect(groceryRow).toContainText("Groceries")
 })
 
 test("transaction rules support reorder with first-match-wins precedence", async ({ page }) => {
