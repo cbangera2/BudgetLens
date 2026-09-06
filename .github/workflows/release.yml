@@ -90,10 +90,13 @@ jobs:
           releaseDraft: true
           prerelease: false
           # This tauri-action line uses `uploadUpdaterJson` (not
-          # `includeUpdaterJson`, which it silently ignores). Legs upload
-          # binaries + signatures only; the `manifest` job below writes the
-          # single merged latest.json (parallel legs would race-clobber it).
-          uploadUpdaterJson: false
+          # `includeUpdaterJson`, which it silently ignores). It must stay
+          # true: it also gates uploading the mac .app.tar.gz + .sig updater
+          # artifacts (without it only the .dmg is uploaded). Each leg writes
+          # its own partial latest.json; the `manifest` job below overwrites
+          # it with the single merged manifest, so the transient partial file
+          # never ships (releases stay draft until published).
+          uploadUpdaterJson: true
           args: ${{ matrix.args }}
 
       - name: Assert no Pages base leaked into desktop bundle
