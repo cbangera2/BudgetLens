@@ -6,7 +6,7 @@ export type TransferFlag = "confirmed" | "dismissed"
 export type TransferFlags = Record<string, TransferFlag>
 
 function isFlags(value: unknown): value is TransferFlags {
-  if (typeof value !== "object" || value === null) return false
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false
   for (const flag of Object.values(value)) {
     if (flag !== "confirmed" && flag !== "dismissed") return false
   }
@@ -87,33 +87,44 @@ export function useTransferFlags(): TransferFlagActions {
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
-  const persist = useCallback((next: TransferFlags) => {
-    setFlags(next)
-    writeTransferFlags(next)
+  const update = useCallback((mutate: (next: TransferFlags) => void) => {
+    // Re-read persisted flags at action time so flags set in another tab (or a
+    // not-yet-processed storage event) are merged instead of overwritten.
+    setFlags((previous) => {
+      const next: TransferFlags = { ...readTransferFlags(), ...previous }
+      mutate(next)
+      writeTransferFlags(next)
+      return next
+    })
   }, [])
 
   const confirmPair = useCallback(
     (expenseId: string, incomeId: string) => {
-      persist({ ...flags, [expenseId]: "confirmed", [incomeId]: "confirmed" })
+      update((next) => {
+        next[expenseId] = "confirmed"
+        next[incomeId] = "confirmed"
+      })
     },
-    [flags, persist],
+    [update],
   )
 
   const dismissPair = useCallback(
     (expenseId: string, incomeId: string) => {
-      persist({ ...flags, [expenseId]: "dismissed", [incomeId]: "dismissed" })
+      update((next) => {
+        next[expenseId] = "dismissed"
+        next[incomeId] = "dismissed"
+      })
     },
-    [flags, persist],
+    [update],
   )
 
   const clearFlag = useCallback(
     (id: string) => {
-      if (!(id in flags)) return
-      const next = { ...flags }
-      delete next[id]
-      persist(next)
+      update((next) => {
+        delete next[id]
+      })
     },
-    [flags, persist],
+    [update],
   )
 
   return {

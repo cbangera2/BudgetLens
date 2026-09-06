@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Transaction } from "@/domain/models"
 
-import { detectTransferPairs, spendingExcludingTransfers, type TransferPair } from "./detection"
+import {
+  detectTransferPairs,
+  spendingExcludingTransfers,
+  transferPairIds,
+  type TransferPair,
+} from "./detection"
 import type { TransferFlagActions } from "./store"
 
 function formatMoney(amountMinor: number): string {
@@ -49,9 +54,9 @@ export function TransfersSection({
       !confirmedIds.has(pair.incomeId),
   )
   const confirmed = pairs.filter(
-    (pair) => confirmedIds.has(pair.expenseId) || confirmedIds.has(pair.incomeId),
+    (pair) => confirmedIds.has(pair.expenseId) && confirmedIds.has(pair.incomeId),
   )
-  const totals = spendingExcludingTransfers(transactions, confirmedIds)
+  const totals = spendingExcludingTransfers(transactions, transferPairIds(confirmed))
 
   return (
     <section aria-label="Transfers">
