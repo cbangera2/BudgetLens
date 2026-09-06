@@ -1,10 +1,16 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { beforeEach } from "vitest"
 
 import { App } from "@/app/app"
 import { SIDEBAR_PREFERENCE_KEY } from "@/app/app-shell"
+import { recordOnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
 describe("BudgetLens application shell", () => {
+  beforeEach(() => {
+    // Shell tests run as returning users; the welcome screen has its own suite.
+    recordOnboardingChoice(window.localStorage, "empty")
+  })
   it("renders the primary navigation and private local-first message", async () => {
     window.history.replaceState({}, "", "/")
     render(<App />)
@@ -74,7 +80,9 @@ describe("BudgetLens application shell", () => {
     expect(await screen.findByRole("button", { name: "Expand navigation" })).toBeInTheDocument()
 
     await user.click(screen.getByRole("link", { name: "Imports" }))
-    expect(await screen.findByRole("heading", { name: "Import data" })).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Import Credit Karma data" }),
+    ).toBeInTheDocument()
 
     cleanup()
     render(<App />)

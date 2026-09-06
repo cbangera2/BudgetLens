@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:4173",
+      "localStorage": [
+        {
+          "name": "budgetlens.onboarding.v1",
+          "value": "{\"version\":1,\"choice\":\"empty\",\"completedAt\":\"2026-01-01T00:00:00.000Z\"}"
+        }
+      ]
+    }
+  ]
+}

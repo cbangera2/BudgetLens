@@ -2,6 +2,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 
 import { database } from "@/db/database"
 import { ImportService } from "@/features/imports/import-service"
+import { readOnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
 import {
   DEMO_TRIP_LABEL,
@@ -65,6 +66,9 @@ export async function seedDemoDataIfEmpty(db: typeof database = database): Promi
 }
 
 export function ensureDemoData(db: typeof database = database): Promise<boolean> {
+  // First-run onboarding gates demo seeding: only an explicit demo choice
+  // loads the sample budget, so import and empty flows keep a clean store.
+  if (readOnboardingChoice(globalThis.localStorage) !== "demo") return Promise.resolve(false)
   inFlight ??= seedDemoDataIfEmpty(db).catch((error: unknown) => {
     console.error("Failed to load demo data", error)
     return false
