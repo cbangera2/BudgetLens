@@ -112,7 +112,9 @@ export function computeSettlementBalances(
  * Rounding-dust rule: transfers are integer minor units and must sum to
  * exactly the total creditor balance. If any remainder exists (for example
  * from prior integer splits), it is pushed onto the largest transfer so
- * `sum(transfers) == sum(creditor balances)` exactly.
+ * `sum(transfers) == sum(creditor balances)` exactly. The adjustment applies
+ * only when debtor and creditor totals agree, so unbalanced input is settled
+ * up to what debtors owe and never inflated.
  */
 export function simplifyBalances(balances: readonly SettlementBalance[]): SettlementTransfer[] {
   const debtors = balances
@@ -153,7 +155,10 @@ export function simplifyBalances(balances: readonly SettlementBalance[]): Settle
     .reduce((sum, entry) => sum + entry.balanceMinor, 0)
   const actual = transfers.reduce((sum, transfer) => sum + transfer.amountMinor, 0)
   const dust = expected - actual
-  if (dust !== 0 && transfers.length > 0) {
+  const debtorTotal = balances
+    .filter((entry) => entry.balanceMinor < 0)
+    .reduce((sum, entry) => sum - entry.balanceMinor, 0)
+  if (dust !== 0 && transfers.length > 0 && debtorTotal === expected) {
     let largestIndex = 0
     for (let index = 1; index < transfers.length; index += 1) {
       if (transfers[index]!.amountMinor > transfers[largestIndex]!.amountMinor) {

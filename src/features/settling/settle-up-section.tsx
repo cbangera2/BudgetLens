@@ -39,13 +39,14 @@ export function SettleUpSection({ transactions }: { transactions: readonly Trans
             key={`${transfer.from}-${transfer.to}`}
             className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border p-3 text-sm"
           >
-            <span>
+            <span aria-hidden="true">
               <strong className="font-semibold">{transfer.from}</strong>
-              <span aria-hidden="true"> → </span>
-              <span className="sr-only"> pays </span>
+              <span> → </span>
               <strong className="font-semibold">{transfer.to}</strong>
             </span>
-            <span className="font-semibold tabular-nums">{formatMoney(transfer.amountMinor)}</span>
+            <span aria-hidden="true" className="font-semibold tabular-nums">
+              {formatMoney(transfer.amountMinor)}
+            </span>
             <span className="sr-only">
               {transfer.from} pays {transfer.to} {formatMoney(transfer.amountMinor)}
             </span>
@@ -68,8 +69,8 @@ export function SettleUpSection({ transactions }: { transactions: readonly Trans
         {body}
         {result.balances.length > 1 && result.transfers.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            Balances split each shared expense equally among everyone in the group using the
-            transaction share count; payers are inferred from account names.
+            The payer keeps their share-count portion of each shared expense and the rest is divided
+            among the other members; payers are inferred from account names.
           </p>
         )}
       </CardContent>

@@ -92,6 +92,14 @@ describe("settleGroupTransactions", () => {
     expect(transfers).toEqual([{ from: "Charlie", to: "Alice", amountMinor: 1_000 }])
   })
 
+  it("never inflates transfers for unbalanced input", () => {
+    const transfers = simplifyBalances([
+      { member: "Alice", balanceMinor: 1_000 },
+      { member: "Bob", balanceMinor: -400 },
+    ])
+    expect(transfers).toEqual([{ from: "Bob", to: "Alice", amountMinor: 400 }])
+  })
+
   it("uses existing shareCount rounding for uneven splits and conserves exactly", () => {
     const transactions = [
       buildTransaction({
