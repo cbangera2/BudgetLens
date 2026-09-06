@@ -139,6 +139,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
+function goalsOf(output: unknown): unknown[] {
+  if (!isRecord(output) || !Array.isArray(output.goals)) {
+    throw new Error("expected goals in budget output")
+  }
+  return output.goals
+}
+
 describe("assistant provider settings", () => {
   it("defaults to the local OpenCode bridge", () => {
     const settings = readAssistantSettings({ getItem: () => null })
@@ -253,6 +260,20 @@ describe("assistant data tools", () => {
     expect(output).toMatchObject({
       goals: [{ category: "Groceries", spentMinor: 1000, over: false }],
     })
+  })
+
+  it("caps budget_status output with truncation metadata", async () => {
+    const repos = stubRepositories({
+      transactions: [],
+      budgets: Array.from({ length: MAX_TOOL_ROWS + 10 }, (_, index) => ({
+        category: `Category ${index}`,
+        amountMinor: 1000,
+        period: "monthly" as const,
+      })),
+    })
+    const output: unknown = await executeAssistantTool(repos, "budget_status", {})
+    expect(output).toMatchObject({ totalCount: MAX_TOOL_ROWS + 10, truncated: true })
+    expect(goalsOf(output)).toHaveLength(MAX_TOOL_ROWS)
   })
 })
 

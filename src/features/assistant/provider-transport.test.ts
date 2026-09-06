@@ -226,3 +226,29 @@ describe("rememberKey setting", () => {
     expect(parsed.apiKey).toBe("x")
   })
 })
+
+describe("requestChatTurn abort compatibility (no AbortSignal.any)", () => {
+  it("propagates a pre-aborted signal as AbortError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
+        // Mimic spec fetch: an already-aborted signal rejects immediately.
+        if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
+        return jsonResponse(chatPayload("late"))
+      }),
+    )
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      requestChatTurn({
+        baseURL: "https://openrouter.ai/api/v1",
+        apiKey: "test",
+        model: "openai/gpt-5-mini",
+        system: "diag",
+        history: [{ role: "user", content: "hi" }],
+        tools: [],
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(DOMException)
+  })
+})

@@ -54,7 +54,8 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
     type: "function",
     function: {
       name: "budget_status",
-      description: "List budget goals with spent, remaining, and over/under status.",
+      description:
+        "List budget goals with spent, remaining, and over/under status. Capped at 50 goals.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -312,7 +313,9 @@ export async function executeAssistantTool(
       // expense-side amounts in the goal's current calendar period count.
       const referenceDate = new Date().toISOString().slice(0, 10)
       return {
-        goals: goals.map((goal) => {
+        totalCount: goals.length,
+        truncated: goals.length > MAX_TOOL_ROWS,
+        goals: goals.slice(0, MAX_TOOL_ROWS).map((goal) => {
           const periodPrefix =
             goal.period === "monthly" ? referenceDate.slice(0, 7) : referenceDate.slice(0, 4)
           const spentMinor = transactions

@@ -346,9 +346,32 @@ function assertDemoModelAllowed(baseURL: string, apiKey: string, model: string):
   )
 }
 
+/**
+ * Combine a caller signal with a timeout without AbortSignal.any/timeout,
+ * which are missing on older WebKit (iOS 17 ships neither reliably).
+ * Semantics match: caller abort wins as AbortError, timeout surfaces as
+ * TimeoutError, and the timer is cleared as soon as either fires.
+ */
 function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const timeout = AbortSignal.timeout(timeoutMs)
-  return signal ? AbortSignal.any([signal, timeout]) : timeout
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException("Assistant request timed out.", "TimeoutError"))
+  }, timeoutMs)
+  if (!signal) return controller.signal
+  if (signal.aborted) {
+    clearTimeout(timer)
+    controller.abort(signal.reason)
+    return controller.signal
+  }
+  signal.addEventListener(
+    "abort",
+    () => {
+      clearTimeout(timer)
+      controller.abort(signal.reason)
+    },
+    { once: true },
+  )
+  return controller.signal
 }
 
 /**

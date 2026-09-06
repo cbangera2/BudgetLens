@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router"
 
 import { AppShell } from "@/app/app-shell"
+import { isNativeCapacitorSync } from "@/lib/isNative"
 import { isTauriSync } from "@/lib/isTauri"
 
 const rootRoute = createRootRoute({ component: AppShell })
@@ -59,12 +60,14 @@ const routeTree = rootRoute.addChildren(routes)
 
 // Keep router base in sync with Vite `base` (import.meta.env.BASE_URL).
 // "/BudgetLens/" -> "/BudgetLens", "/" -> "/"
-// Desktop binary (Tauri, custom protocol, no history fallback): hash history
-// with base "/". Gated on runtime detection so one dist/ serves web + desktop.
-const desktop = isTauriSync()
+// Embedded shells (Tauri desktop binary on a custom protocol, Capacitor iOS
+// shell on capacitor://localhost) have no server history fallback: hash
+// history with base "/". Gated on runtime detection so one dist/ serves
+// web + desktop + iOS.
+const embedded = isTauriSync() || isNativeCapacitorSync()
 const rawBase = import.meta.env.BASE_URL
-const basepath = desktop ? "/" : rawBase.replace(/\/$/, "") || "/"
-const history = desktop ? createHashHistory() : createBrowserHistory()
+const basepath = embedded ? "/" : rawBase.replace(/\/$/, "") || "/"
+const history = embedded ? createHashHistory() : createBrowserHistory()
 
 export const router = createRouter({ routeTree, basepath, history })
 
