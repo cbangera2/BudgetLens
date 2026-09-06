@@ -1,6 +1,7 @@
 import type {
   FinanceSnapshot,
   SnapshotBudget,
+  SnapshotDayPoint,
   SnapshotNetWorthPoint,
   SnapshotSpendingBucket,
 } from "@/features/assistant/data-tools"
@@ -44,6 +45,17 @@ function point(date: string, valueMinor: number, series = "netWorth"): SnapshotN
   return { date, series, valueMinor, value: `$${(valueMinor / 100).toFixed(2)}` }
 }
 
+function day(date: string, spentMinor: number, count = 1): SnapshotDayPoint {
+  return {
+    date,
+    spent: `$${(spentMinor / 100).toFixed(2)}`,
+    spentMinor,
+    income: "$0.00",
+    incomeMinor: 0,
+    count,
+  }
+}
+
 function finance(overrides: Partial<FinanceSnapshot> = {}): FinanceSnapshot {
   return {
     generatedAt: "2026-09-06T11:00:00.000Z",
@@ -54,7 +66,11 @@ function finance(overrides: Partial<FinanceSnapshot> = {}): FinanceSnapshot {
     netWorth: [point("2026-07-31", 1000000), point("2026-08-31", 1050000)],
     extremes: { largestExpense: null, largestIncome: null },
     topTransactions: [],
-    dailySeries: [],
+    dailySeries: [
+      day("2026-09-02", 42500, 3),
+      day("2026-09-03", 18000, 2),
+      day("2026-08-15", 99999),
+    ],
     recentTransactions: [],
     ...overrides,
   }
@@ -103,21 +119,37 @@ describe("buildWidgetSnapshot", () => {
   it("sums month spend vs budget across goals and flags over-budget", () => {
     const snapshot = buildWidgetSnapshot(finance(), { now: NOW })
 
-    // 42500 + 18000 spent vs 50000 + 15000 budgeted.
+    // Spend comes from the daily series (42500 + 18000 in September; the
+    // August entry is prefix-filtered out); budget sums all goals.
     expect(snapshot.month.spentMinor).toBe(60500)
     expect(snapshot.month.budgetMinor).toBe(65000)
     expect(snapshot.month.remainingMinor).toBe(4500)
     expect(snapshot.month.over).toBe(false)
 
-    const over = buildWidgetSnapshot(finance({ budgets: [goal("Dining", 18000, 15000)] }), {
-      now: NOW,
-    })
+    const over = buildWidgetSnapshot(
+      finance({
+        budgets: [goal("Dining", 18000, 15000)],
+        dailySeries: [day("2026-09-03", 18000, 1)],
+      }),
+      { now: NOW },
+    )
     expect(over.month.over).toBe(true)
     expect(over.month.remainingMinor).toBe(-3000)
   })
 
+  it("counts month spend without any budget goal", () => {
+    const snapshot = buildWidgetSnapshot(
+      finance({ budgets: [], dailySeries: [day("2026-09-04", 1234, 1)] }),
+      { now: NOW },
+    )
+
+    expect(snapshot.month.spentMinor).toBe(1234)
+    expect(snapshot.month.budgetMinor).toBe(0)
+    expect(snapshot.month.over).toBe(true)
+  })
+
   it("zeroes the month summary when there are no budgets", () => {
-    const snapshot = buildWidgetSnapshot(finance({ budgets: [] }), { now: NOW })
+    const snapshot = buildWidgetSnapshot(finance({ budgets: [], dailySeries: [] }), { now: NOW })
 
     expect(snapshot.month.spentMinor).toBe(0)
     expect(snapshot.month.budgetMinor).toBe(0)
@@ -143,8 +175,9 @@ describe("buildWidgetSnapshot", () => {
 
     expect(snapshot.budgets).toHaveLength(MAX_WIDGET_BUDGETS)
     expect(snapshot.budgets[0]?.category).toBe("Category 11")
-    // Month totals still cover ALL goals, not just the capped slice.
-    expect(snapshot.month.spentMinor).toBe(78000)
+    // The budget total still covers ALL goals, not just the capped slice
+    // (spend comes from the shared daily-series fixture).
+    expect(snapshot.month.spentMinor).toBe(60500)
     expect(snapshot.month.budgetMinor).toBe(600000)
   })
 

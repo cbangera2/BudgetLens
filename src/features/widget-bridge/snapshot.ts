@@ -100,17 +100,19 @@ function summarizeNetWorth(finance: FinanceSnapshot): WidgetNetWorthSummary {
 }
 
 function summarizeMonth(finance: FinanceSnapshot, month: string): WidgetMonthSummary {
-  // Month spend vs budget reuses the current-period spend math from
-  // `budget_status` (see buildFinanceSnapshot): each goal already carries its
-  // period spend, so the widget sums instead of re-querying. Note yearly goals
-  // contribute year-to-date spend, matching the assistant's own semantics.
-  const goals = Array.isArray(finance.budgets) ? finance.budgets : []
+  // Month spend sums the daily outflow series for the month, so imported
+  // expenses WITHOUT a budget goal still count (summing goal spend alone
+  // would hide them). dailySeries covers the trailing 90 days with one entry
+  // per active date; entries are matched by YYYY-MM prefix. Goals contribute
+  // only the budget side. Both inputs are reused buildFinanceSnapshot shapes.
+  const series = Array.isArray(finance.dailySeries) ? finance.dailySeries : []
   let spentMinor = 0
-  let budgetMinor = 0
-  for (const goal of goals) {
-    spentMinor += goal.spentMinor
-    budgetMinor += goal.goalMinor
+  for (const day of series) {
+    if (day.date.startsWith(month)) spentMinor += day.spentMinor
   }
+  const goals = Array.isArray(finance.budgets) ? finance.budgets : []
+  let budgetMinor = 0
+  for (const goal of goals) budgetMinor += goal.goalMinor
   const remainingMinor = budgetMinor - spentMinor
   return {
     month,

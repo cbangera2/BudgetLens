@@ -18,11 +18,12 @@ import {
   APP_GROUP_TOKEN,
   TARGET_MARKER,
   WIDGET_SOURCES,
+  applyHostTargetEmbedEdits,
   applyPbxprojEdits,
+  buildWidgetExtensionPlist,
   diffLines,
   ensureAppGroupEntitlements,
   ensureTopLevelDictKey,
-  buildWidgetExtensionPlist,
   planProjectEdits,
   stableId,
   upsertMarkedBlock,
@@ -55,7 +56,20 @@ const PBXPROJ = [
   `\t\tAAA000000000000000000002 /* AppDelegate.swift */ = {isa = PBXFileReference; };`,
   `/* End PBXFileReference section */`,
   `/* Begin PBXNativeTarget section */`,
-  `\t\tAAA000000000000000000003 /* App */ = {isa = PBXNativeTarget; };`,
+  `\t\tAAA000000000000000000003 /* App */ = {`,
+  `\t\t\tisa = PBXNativeTarget;`,
+  `\t\t\tbuildConfigurationList = AAA000000000000000000009;`,
+  `\t\t\tbuildPhases = (`,
+  `\t\t\t\tAAA000000000000000000005 /* Sources */,`,
+  `\t\t\t);`,
+  `\t\t\tbuildRules = (`,
+  `\t\t\t);`,
+  `\t\t\tdependencies = (`,
+  `\t\t\t);`,
+  `\t\t\tname = App;`,
+  `\t\t\tproductName = App;`,
+  `\t\t\tproductType = "com.apple.product-type.application";`,
+  `\t\t};`,
   `/* End PBXNativeTarget section */`,
   `/* Begin PBXProject section */`,
   `\t\tAAA000000000000000000004 /* Project object */ = {isa = PBXProject; targets = (`,
@@ -202,6 +216,48 @@ describe("ios-patcher pure parts", () => {
     expect(() => applyPbxprojEdits(noTargets, { appId: "x" })).toThrow(/targets/)
   })
 
+  it("embeds the appex in the host app with copy phase + dependency wiring", () => {
+    const first = applyPbxprojEdits(PBXPROJ, { appId: "com.cbangera2.budgetlens" })
+
+    expect(first.text).toContain("Embed App Extensions")
+    expect(first.text).toContain("dstSubfolderSpec = 13")
+    expect(first.text).toContain("PBXTargetDependency")
+    expect(first.text).toContain("PBXContainerItemProxy")
+    expect(first.text).toContain("BudgetLensWidget:embed-copy")
+    expect(first.text).toContain("BudgetLensWidget:embed-dep")
+    // The host App target references the copy phase and the dependency.
+    const hostBlock = first.text.slice(
+      first.text.indexOf("AAA000000000000000000003 /* App */"),
+      first.text.indexOf("AAA000000000000000000003 /* App */") + 1200,
+    )
+    expect(hostBlock).toContain("Embed App Extensions")
+    expect(hostBlock).toContain("PBXTargetDependency")
+
+    for (const id of [
+      stableId("BudgetLensWidget:phase:embed"),
+      stableId("BudgetLensWidget:build:embed"),
+      stableId("BudgetLensWidget:dep:host"),
+      stableId("BudgetLensWidget:proxy:host"),
+    ]) {
+      expect(first.text.split(id).length - 1).toBeGreaterThanOrEqual(2)
+    }
+
+    const second = applyPbxprojEdits(first.text, { appId: "com.cbangera2.budgetlens" })
+    expect(second.changed).toBe(false)
+    expect(second.text).toBe(first.text)
+  })
+
+  it("fails clearly when no host application target exists", () => {
+    const noHost = PBXPROJ.replace(
+      'productType = "com.apple.product-type.application"',
+      'productType = "com.apple.product-type.bundle"',
+    )
+    expect(() => applyPbxprojEdits(noHost, { appId: "x" })).toThrow(/host application target/)
+    expect(() =>
+      applyHostTargetEmbedEdits(PBXPROJ, { embedPhase: "AAA", targetDep: "BBB" }),
+    ).not.toThrow()
+  })
+
   it("diffs lines for dry-run output", () => {
     const hunks = diffLines("a\nb\nc", "a\nB\nc\nd")
     expect(hunks.filter((line) => line.type === " ")).toHaveLength(2)
@@ -305,6 +361,9 @@ describe("ios-patcher CLI on a fixture project copy", () => {
     expect(
       readFileSync(path.join(projectDir, "App.xcodeproj", "project.pbxproj"), "utf8"),
     ).toContain(TARGET_MARKER)
+    expect(
+      readFileSync(path.join(projectDir, "App.xcodeproj", "project.pbxproj"), "utf8"),
+    ).toContain("BudgetLensWidget:embed-copy")
 
     const before = treeHash()
     const second = runPatcher(["--project", projectDir])

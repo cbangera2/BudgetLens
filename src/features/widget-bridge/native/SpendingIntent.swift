@@ -36,6 +36,11 @@ struct SpendingQueryIntent: AppIntent {
     guard let snapshot = WidgetSnapshotStore.load() else {
       return .result(dialog: "I couldn't find your BudgetLens snapshot. Open the app once to refresh it.")
     }
+    if let month, month != snapshot.month.month {
+      return .result(
+        dialog: "I only have BudgetLens data for \(snapshot.month.month). Open the app to refresh for \(month)."
+      )
+    }
     let wanted = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if let slice = snapshot.topCategories.first(where: { $0.category.lowercased() == wanted }) {
       return .result(

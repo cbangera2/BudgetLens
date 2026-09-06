@@ -24,7 +24,10 @@ struct BudgetLensSnapshotProvider: TimelineProvider {
 
   func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetSnapshotEntry>) -> Void) {
     let entry = WidgetSnapshotEntry(date: Date(), snapshot: WidgetSnapshotStore.load())
-    completion(Timeline(entries: [entry], policy: .atEnd))
+    // Hourly cadence: a single now-dated entry with .atEnd can spin reloads,
+    // while snapshot writes trigger WidgetCenter reloads for fresh data.
+    let nextRefresh = Calendar.current.date(byAdding: .hour, value: 1, to: Date()) ?? Date(timeIntervalSinceNow: 3600)
+    completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
   }
 }
 
@@ -36,7 +39,7 @@ struct BudgetLensWidgetEntryView: View {
       VStack(alignment: .leading, spacing: 6) {
         Text(snapshot.netWorth.latest ?? "--")
           .font(.headline)
-          .accessibilityLabel("Net worth")
+          .accessibilityLabel("Net worth \(snapshot.netWorth.latest ?? "--")")
         Text(monthLine(for: snapshot))
           .font(.caption)
           .foregroundStyle(snapshot.month.over ? .red : .secondary)
@@ -73,6 +76,7 @@ struct BudgetLensWidgetEntryView: View {
   }
 }
 
+@main
 struct BudgetLensWidget: Widget {
   let kind = "BudgetLensWidget"
 

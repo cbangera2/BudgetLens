@@ -129,7 +129,9 @@ describe("widget refresh triggers", () => {
     expect(result.ok).toBe(true)
     const snapshot = await latestSnapshot()
     expect(snapshot.transactionCount).toBe(1)
-    expect(snapshot.month.spentMinor).toBe(0) // no budgets yet: spend tracked, budget zero
+    // The unbudgeted import still counts toward month spend via the daily series.
+    expect(snapshot.month.spentMinor).toBe(1234)
+    expect(snapshot.month.budgetMinor).toBe(0)
   })
 
   it("fires on the restore path and reflects restored rows", async () => {

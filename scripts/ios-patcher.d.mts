@@ -58,6 +58,10 @@ export declare function ensureAppGroupEntitlements(
 export declare function buildWidgetExtensionPlist(): string
 export declare function upsertMarkedBlock(text: string, section: string, inner: string): TextEdit
 export declare function applyPbxprojEdits(text: string, context: { appId: string }): PbxprojEdit
+export declare function applyHostTargetEmbedEdits(
+  text: string,
+  ids: { embedPhase: string; targetDep: string },
+): PbxprojEdit
 export declare function diffLines(before: string, after: string): DiffLine[]
 export declare function planProjectEdits(
   readFile: (relativePath: string) => string | null,

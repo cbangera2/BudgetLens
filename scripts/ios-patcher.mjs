@@ -248,7 +248,9 @@ function markedBlock(section, inner) {
 }
 
 /**
- * Replace an existing marked block or insert it before the section end.
+ * Replace an existing marked block, insert it before the section end, or
+ * create a whole new section when the project has none yet (e.g. a project
+ * without any PBXCopyFilesBuildPhase). All paths are deterministic.
  * @param {string} text
  * @param {string} section
  * @param {string} inner
@@ -264,16 +266,30 @@ export function upsertMarkedBlock(text, section, inner) {
     return { text: next, changed: next !== text }
   }
   const anchor = `/* End ${section} section */`
-  if (!text.includes(anchor)) {
+  if (text.includes(anchor)) {
+    return { text: text.replace(anchor, () => `${block}\n${anchor}`), changed: true }
+  }
+  // No such section yet: open one just before the rootObject line at the end
+  // of the objects table (stable across repeated inserts: re-runs take the
+  // marker-replace path above). Section order is cosmetic to Xcode; ids rule.
+  const rootAnchor = /(\n)(\trootObject = )/
+  if (!rootAnchor.test(text)) {
     throw new Error(
       `ios-patcher: project.pbxproj is missing "${anchor}"; regenerate ios/ via "cap add ios".`,
     )
   }
-  return { text: text.replace(anchor, () => `${block}\n${anchor}`), changed: true }
+  return {
+    text: text.replace(
+      rootAnchor,
+      (_match, newline, root) =>
+        `${newline}/* Begin ${section} section */\n${block}\n/* End ${section} section */\n${root}`,
+    ),
+    changed: true,
+  }
 }
 
 /**
- * @returns {{ files: Record<string, string>, builds: Record<string, string>, product: string, entitlements: string, infoPlist: string, sourcesPhase: string, target: string, configList: string, configDebug: string, configRelease: string }}
+ * @returns {{ files: Record<string, string>, builds: Record<string, string>, product: string, entitlements: string, infoPlist: string, sourcesPhase: string, target: string, configList: string, configDebug: string, configRelease: string, embedPhase: string, embedBuild: string, targetDep: string, containerProxy: string }}
  */
 function widgetIds() {
   const id = (kind, name) => stableId(`BudgetLensWidget:${kind}:${name}`)
@@ -290,7 +306,73 @@ function widgetIds() {
     configList: id("config", "list"),
     configDebug: id("config", "debug"),
     configRelease: id("config", "release"),
+    embedPhase: id("phase", "embed"),
+    embedBuild: id("build", "embed"),
+    targetDep: id("dep", "host"),
+    containerProxy: id("proxy", "host"),
   }
+}
+
+/**
+ * Wire the appex into the host application target: add the Embed App
+ * Extensions copy phase to `buildPhases` and the target dependency to
+ * `dependencies`. Lines are marker-guarded so re-runs are stable.
+ * @param {string} text
+ * @param {{ embedPhase: string, targetDep: string }} ids
+ * @returns {TextEdit & { notes: string[] }}
+ */
+export function applyHostTargetEmbedEdits(text, ids) {
+  const notes = []
+  const pattern =
+    /\t\t[0-9A-Za-z]{24} \/\* [^*]* \*\/ = \{\n\t\t\tisa = PBXNativeTarget;[\s\S]*?\n\t\t\};/g
+  const blocks = text.match(pattern) ?? []
+  const host = blocks.find((block) =>
+    block.includes('productType = "com.apple.product-type.application"'),
+  )
+  if (!host) {
+    throw new Error(
+      'ios-patcher: no host application target in project.pbxproj; regenerate ios/ via "cap add ios".',
+    )
+  }
+  let next = host
+  let changed = false
+  // Array bodies may be empty (`dependencies = ()` on a fresh project), so
+  // the patterns tolerate zero entries and the splice normalizes to one
+  // entry per line deterministically.
+  const phasesPattern = /(\t\t\tbuildPhases = \()([\s\S]*?)(\t\t\t\);)/
+  const depsPattern = /(\t\t\tdependencies = \()([\s\S]*?)(\t\t\t\);)/
+  if (!phasesPattern.test(next) || !depsPattern.test(next)) {
+    throw new Error(
+      'ios-patcher: host application target has no buildPhases/dependencies arrays; regenerate ios/ via "cap add ios".',
+    )
+  }
+  const spliceEntry = (head, body, entry) => {
+    const inner = body.trim() ? `${body.replace(/\n$/, "")}\n${entry}\n` : `\n${entry}\n`
+    return `${head}${inner}\t\t\t);`
+  }
+  if (!next.includes("BudgetLensWidget:embed-copy")) {
+    next = next.replace(phasesPattern, (_match, head, body) =>
+      spliceEntry(
+        head,
+        body,
+        `\t\t\t\t${ids.embedPhase} /* Embed App Extensions */, // BudgetLensWidget:embed-copy`,
+      ),
+    )
+    changed = true
+    notes.push("PBXNativeTarget-embed-copy")
+  }
+  if (!next.includes("BudgetLensWidget:embed-dep")) {
+    next = next.replace(depsPattern, (_match, head, body) =>
+      spliceEntry(
+        head,
+        body,
+        `\t\t\t\t${ids.targetDep} /* PBXTargetDependency */, // BudgetLensWidget:embed-dep`,
+      ),
+    )
+    changed = true
+    notes.push("PBXNativeTarget-embed-dep")
+  }
+  return { text: text.replace(host, () => next), changed, notes }
 }
 
 /**
@@ -338,11 +420,16 @@ export function applyPbxprojEdits(text, context) {
 
   track(
     "PBXBuildFile",
-    WIDGET_SOURCES.map((name) =>
-      t(
-        `${ids.builds[name]} /* ${name} in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.files[name]} /* ${name} */; };`,
+    [
+      ...WIDGET_SOURCES.map((name) =>
+        t(
+          `${ids.builds[name]} /* ${name} in Sources */ = {isa = PBXBuildFile; fileRef = ${ids.files[name]} /* ${name} */; };`,
+        ),
       ),
-    ).join("\n"),
+      t(
+        `${ids.embedBuild} /* ${WIDGET_TARGET_NAME}.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = ${ids.product} /* ${WIDGET_TARGET_NAME}.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };`,
+      ),
+    ].join("\n"),
   )
 
   track(
@@ -442,6 +529,66 @@ export function applyPbxprojEdits(text, context) {
     next = next.replace(pattern, (_match, head, tail) => `${head}${line}${tail}`)
     changed = true
     notes.push("PBXProject-targets")
+  }
+
+  // Host-app embedding: without a Copy Files phase (PlugIns, dstSubfolderSpec
+  // 13) plus a target dependency, Xcode builds the appex but never installs
+  // it inside App.app. containerPortal is the project object itself.
+  const rootObject = /rootObject = ([0-9A-Za-z]{24})/.exec(next)
+  if (!rootObject || !rootObject[1]) {
+    throw new Error("ios-patcher: project.pbxproj has no rootObject to anchor the embed proxy.")
+  }
+
+  track(
+    "PBXCopyFilesBuildPhase",
+    [
+      t(`${ids.embedPhase} /* Embed App Extensions */ = {`),
+      t(`\tisa = PBXCopyFilesBuildPhase;`),
+      t(`\tbuildActionMask = 2147483647;`),
+      t(`\tdstPath = "";`),
+      t(`\tdstSubfolderSpec = 13;`),
+      t(`\tfiles = (`),
+      t(`\t\t${ids.embedBuild} /* ${WIDGET_TARGET_NAME}.appex in Embed App Extensions */,`),
+      t(`\t);`),
+      t(`\tname = "Embed App Extensions";`),
+      t(`\trunOnlyForDeploymentPostprocessing = 0;`),
+      t(`};`),
+    ].join("\n"),
+  )
+
+  track(
+    "PBXTargetDependency",
+    [
+      t(`${ids.targetDep} /* PBXTargetDependency */ = {`),
+      t(`\tisa = PBXTargetDependency;`),
+      t(`\tname = ${WIDGET_TARGET_NAME};`),
+      t(`\ttarget = ${ids.target} /* ${WIDGET_TARGET_NAME} */;`),
+      t(`\ttargetProxy = ${ids.containerProxy} /* PBXContainerItemProxy */;`),
+      t(`};`),
+    ].join("\n"),
+  )
+
+  track(
+    "PBXContainerItemProxy",
+    [
+      t(`${ids.containerProxy} /* PBXContainerItemProxy */ = {`),
+      t(`\tisa = PBXContainerItemProxy;`),
+      t(`\tcontainerPortal = ${rootObject[1]} /* Project object */;`),
+      t(`\tproxyType = 1;`),
+      t(`\tremoteGlobalIDString = ${ids.target};`),
+      t(`\tremoteInfo = ${WIDGET_TARGET_NAME};`),
+      t(`};`),
+    ].join("\n"),
+  )
+
+  const hostEmbed = applyHostTargetEmbedEdits(next, {
+    embedPhase: ids.embedPhase,
+    targetDep: ids.targetDep,
+  })
+  next = hostEmbed.text
+  if (hostEmbed.changed) {
+    changed = true
+    notes.push(...hostEmbed.notes)
   }
 
   return { text: next, changed, notes }
