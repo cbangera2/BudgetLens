@@ -1,0 +1,6 @@
+Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Provider,Labels,Notes
+2024-12-15,Synthetic Prior-Year Market,-88.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic boundary row
+2025-01-05,Synthetic Payroll,2500.00,Income,Credit,Everyday Checking,Checking,Sample Credit Union,income,Synthetic income row
+2025-02-10,Synthetic Corner Rent,-900.00,Rent,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic rent row
+2025-03-12,Synthetic Neighborhood Grocer,-210.50,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,weekly,Synthetic grocery row
+2025-06-20,Synthetic Bistro,-64.25,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic dining row

@@ -19,6 +19,7 @@ import {
   type ChartPresentationSettings,
 } from "@/features/charts/render"
 import { DashboardCustomizer, type DashboardModuleId } from "@/features/dashboard/customization"
+import { YearReviewSection } from "@/features/year-review/year-review-section"
 
 import {
   calculateBudgetProgress,
@@ -568,6 +569,7 @@ export function DashboardPage() {
           Your financial picture, without sending financial data to a server.
         </p>
       </div>
+      <YearReviewSection transactions={transactions} wealth={wealth} />
       <DashboardCustomizer renderModule={({ id }) => modules[id]} />
     </div>
   )

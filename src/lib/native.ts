@@ -521,3 +521,106 @@ export async function deleteReceiptFile(hash: string): Promise<void> {
     // Missing files are already gone.
   }
 }
+
+// Year-in-review share card (feature: src/features/year-review/*). PNG blobs
+// cannot travel through shareBackupFile (UTF-8 JSON string plus a .json
+// browser download), so this generic binary helper stages the bytes and opens
+// the native Share sheet on iOS, with a Web Share, clipboard, download ladder
+// on web. User cancellation resolves; only genuine failures reject.
+
+/** How a shared file reached the user. */
+export type SharedFileOutcome = "shared" | "copied" | "downloaded"
+
+function downloadBlobOnWeb(filename: string, blob: Blob): void {
+  if (typeof document === "undefined" || typeof URL.createObjectURL !== "function") return
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+  }
+  return btoa(binary)
+}
+
+function isShareCancellation(error: unknown): boolean {
+  if (error instanceof Error) {
+    if (error.name === "AbortError") return true
+    return /cancel|dismiss/i.test(error.message)
+  }
+  return false
+}
+
+/**
+ * Share a binary file (e.g. the year-in-review PNG): native Share sheet via
+ * a staged Cache file on iOS, Web Share sheet with files where supported,
+ * clipboard image copy next, and a browser download as the final fallback.
+ * Resolves once the share is dismissed, copied, or the download starts.
+ */
+export async function shareFile(
+  filename: string,
+  blob: Blob,
+  title = "BudgetLens",
+): Promise<SharedFileOutcome> {
+  if (isNative()) {
+    const base64 = await blobToBase64(blob)
+    const saved = await Filesystem.writeFile({
+      path: filename,
+      data: base64,
+      directory: Directory.Cache,
+    })
+    try {
+      await Share.share({ title, url: saved.uri })
+    } catch (error) {
+      if (isShareCancellation(error)) return "shared"
+      throw error
+    }
+    return "shared"
+  }
+
+  if (typeof navigator !== "undefined" && typeof File !== "undefined") {
+    try {
+      const file = new File([blob], filename, { type: blob.type || "application/octet-stream" })
+      const webNavigator = navigator as Navigator & {
+        canShare?: (data: { files: File[] }) => boolean
+        share?: (data: { files: File[]; title?: string }) => Promise<void>
+      }
+      if (
+        typeof webNavigator.canShare === "function" &&
+        typeof webNavigator.share === "function" &&
+        webNavigator.canShare({ files: [file] })
+      ) {
+        await webNavigator.share({ files: [file], title })
+        return "shared"
+      }
+    } catch (error) {
+      if (isShareCancellation(error)) return "shared"
+      // A failed Web Share falls through to clipboard, then download.
+    }
+  }
+
+  try {
+    if (
+      typeof ClipboardItem !== "undefined" &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard?.write
+    ) {
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })])
+      return "copied"
+    }
+  } catch {
+    // Clipboard unavailable or denied: the download fallback still works.
+  }
+
+  downloadBlobOnWeb(filename, blob)
+  return "downloaded"
+}
