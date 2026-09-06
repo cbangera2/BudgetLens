@@ -470,7 +470,7 @@ export function ImportPage() {
                             ? `${item.issues.length.toLocaleString()} invalid row(s)`
                             : "Ready"}
                         {(item.ruleAppliedCount ?? 0) > 0
-                          ? ` · ${(item.ruleAppliedCount ?? 0).toLocaleString()} rule${(item.ruleAppliedCount ?? 0) === 1 ? "" : "s"} applied`
+                          ? ` · ${(item.ruleAppliedCount ?? 0).toLocaleString()} row${(item.ruleAppliedCount ?? 0) === 1 ? "" : "s"} matched`
                           : ""}
                       </td>
                     </tr>
