@@ -9,6 +9,7 @@ import {
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { BarChart3, Landmark, Layers, ReceiptText, Settings, Target, Upload } from "lucide-react"
+import { act } from "react"
 
 import { MobileTabs } from "@/components/mobile/mobile-tabs"
 import { MOBILE_LAYOUT_QUERY } from "@/components/mobile/use-media-query"
@@ -29,8 +30,10 @@ const TEST_NAVIGATION = [
  * browsers hide the inactive surface with `hidden`/`lg:` rules, and the
  * Playwright spec covers navigation against the real pages.
  */
-function mockViewport(matchesMobile: boolean) {
+function mockViewport(initialMobile: boolean) {
   const previous = window.matchMedia
+  let matchesMobile = initialMobile
+  const listeners = new Set<(event: { matches: boolean }) => void>()
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: (query: string) => ({
@@ -39,12 +42,30 @@ function mockViewport(matchesMobile: boolean) {
       onchange: null,
       addListener: () => undefined,
       removeListener: () => undefined,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
+      addEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => {
+        listeners.add(listener)
+      },
+      removeEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => {
+        listeners.delete(listener)
+      },
       dispatchEvent: () => false,
     }),
   })
-  return () => Object.defineProperty(window, "matchMedia", { configurable: true, value: previous })
+  return {
+    restore() {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: previous })
+    },
+    setMobile(next: boolean) {
+      matchesMobile = next
+      for (const listener of listeners) listener({ matches: next })
+    },
+  }
+}
+
+function expectSheetFocus(sheet: HTMLElement) {
+  const active = document.activeElement
+  if (!(active instanceof HTMLElement)) throw new Error("expected focus inside the sheet")
+  expect(sheet).toContainElement(active)
 }
 
 function renderTabs(initialPath = "/") {
@@ -74,7 +95,7 @@ function renderTabs(initialPath = "/") {
 
 describe("mobile tab bar", () => {
   it("renders five tabs plus More on narrow viewports and navigates", async () => {
-    const restore = mockViewport(true)
+    const viewport = mockViewport(true)
     try {
       const user = userEvent.setup()
       const { router } = renderTabs()
@@ -92,12 +113,12 @@ describe("mobile tab bar", () => {
       expect(await screen.findByRole("heading", { name: "Transactions stub" })).toBeInTheDocument()
       expect(router.state.location.pathname).toBe("/transactions")
     } finally {
-      restore()
+      viewport.restore()
     }
   })
 
   it("opens the More sheet, navigates to overflow destinations, and closes", async () => {
-    const restore = mockViewport(true)
+    const viewport = mockViewport(true)
     try {
       const user = userEvent.setup()
       const { router } = renderTabs()
@@ -112,12 +133,12 @@ describe("mobile tab bar", () => {
       expect(router.state.location.pathname).toBe("/imports")
       expect(screen.queryByRole("dialog", { name: "More destinations" })).not.toBeInTheDocument()
     } finally {
-      restore()
+      viewport.restore()
     }
   })
 
   it("closes the More sheet with Escape", async () => {
-    const restore = mockViewport(true)
+    const viewport = mockViewport(true)
     try {
       const user = userEvent.setup()
       renderTabs()
@@ -127,18 +148,67 @@ describe("mobile tab bar", () => {
       await user.keyboard("{Escape}")
       expect(screen.queryByRole("dialog", { name: "More destinations" })).not.toBeInTheDocument()
     } finally {
-      restore()
+      viewport.restore()
+    }
+  })
+
+  it("closes the More sheet and unlocks scroll when leaving the mobile layout", async () => {
+    const viewport = mockViewport(true)
+    try {
+      const user = userEvent.setup()
+      renderTabs()
+
+      await user.click(await screen.findByRole("button", { name: "More" }))
+      expect(await screen.findByRole("dialog", { name: "More destinations" })).toBeInTheDocument()
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => viewport.setMobile(false))
+      expect(screen.queryByRole("dialog", { name: "More destinations" })).not.toBeInTheDocument()
+      expect(document.body.style.overflow).toBe("")
+
+      // Resizing back starts from a closed sheet, not a stale open one.
+      act(() => viewport.setMobile(true))
+      expect(screen.queryByRole("dialog", { name: "More destinations" })).not.toBeInTheDocument()
+    } finally {
+      viewport.restore()
+    }
+  })
+
+  it("traps Tab focus inside the More sheet", async () => {
+    const viewport = mockViewport(true)
+    try {
+      const user = userEvent.setup()
+      renderTabs()
+
+      await user.click(await screen.findByRole("button", { name: "More" }))
+      const sheet = await screen.findByRole("dialog", { name: "More destinations" })
+      expectSheetFocus(sheet)
+
+      // Close -> Groups -> Imports -> wraps to Close.
+      await user.tab()
+      expect(document.activeElement).toHaveAccessibleName("Groups")
+      await user.tab()
+      expect(document.activeElement).toHaveAccessibleName("Imports")
+      await user.tab()
+      expect(document.activeElement).toHaveAccessibleName("Close")
+      expectSheetFocus(sheet)
+
+      await user.tab({ shift: true })
+      expect(document.activeElement).toHaveAccessibleName("Imports")
+      expectSheetFocus(sheet)
+    } finally {
+      viewport.restore()
     }
   })
 
   it("renders no tab bar on wide viewports", () => {
-    const restore = mockViewport(false)
+    const viewport = mockViewport(false)
     try {
       renderTabs()
       expect(screen.queryByRole("list", { name: "Primary destinations" })).not.toBeInTheDocument()
       expect(screen.queryByRole("button", { name: "More" })).not.toBeInTheDocument()
     } finally {
-      restore()
+      viewport.restore()
     }
   })
 })

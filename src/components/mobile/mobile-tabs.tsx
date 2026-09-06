@@ -26,9 +26,16 @@ export function MobileTabs({ navigation }: { navigation: readonly MobileTabItem[
   const isMobileLayout = useIsMobileLayout()
   const [moreOpen, setMoreOpen] = useState(false)
   const moreButtonRef = useRef<HTMLButtonElement>(null)
+  const sheetRef = useRef<HTMLDialogElement>(null)
   const sheetCloseRef = useRef<HTMLButtonElement>(null)
 
   const { primary, more } = useMemo(() => splitNavigation(navigation), [navigation])
+
+  // A mobile-to-desktop transition unmounts the sheet; drop the open state
+  // with it so resizing back does not reopen a stale sheet.
+  useEffect(() => {
+    if (!isMobileLayout) setMoreOpen(false)
+  }, [isMobileLayout])
 
   // Move focus into the sheet on open and return it to the trigger on close.
   // The ref guard keeps the initial mount from stealing focus.
@@ -46,7 +53,31 @@ export function MobileTabs({ navigation }: { navigation: readonly MobileTabItem[
   useEffect(() => {
     if (!moreOpen) return undefined
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreOpen(false)
+      if (event.key === "Escape") {
+        setMoreOpen(false)
+        return
+      }
+      // Lightweight focus trap: the non-modal sheet keeps background content
+      // out of the Tab order while open (Escape or Close dismisses).
+      if (event.key !== "Tab") return
+      const sheet = sheetRef.current
+      if (!sheet) return
+      const focusables = [
+        ...sheet.querySelectorAll<HTMLElement>(
+          "a[href], button:not([disabled]), [tabindex]:not([tabindex='-1'])",
+        ),
+      ]
+      const first = focusables.at(0)
+      const last = focusables.at(-1)
+      if (!first || !last) return
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !sheet.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener("keydown", onKeyDown)
     const previousOverflow = document.body.style.overflow
@@ -92,11 +123,13 @@ export function MobileTabs({ navigation }: { navigation: readonly MobileTabItem[
         <div className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
+            tabIndex={-1}
             aria-label="Close more destinations"
             onClick={() => setMoreOpen(false)}
             className="absolute inset-0 cursor-default bg-foreground/35 backdrop-blur-[2px]"
           />
           <dialog
+            ref={sheetRef}
             id="mobile-more-sheet"
             open
             aria-modal="true"
