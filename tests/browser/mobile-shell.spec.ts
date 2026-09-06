@@ -11,8 +11,26 @@ function isMobileLayout(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1280) < 1024
 }
 
-test("primary navigation adapts to the viewport", async ({ page }) => {
+/**
+ * Start past the first-run onboarding gate (fresh contexts land on it since
+ * the sibling onboarding feature). Chooses "Start empty" for a clean store,
+ * then navigates to the target route. Idempotent when the gate is absent
+ * (e.g. CI's returning-user storage state).
+ */
+async function startBeyondOnboarding(page: Page, url: string): Promise<void> {
   await page.goto("/")
+  const gate = page.getByTestId("onboarding-screen")
+  const shell = page.getByRole("navigation", { name: "Primary" })
+  await expect(gate.or(shell)).toBeVisible()
+  if (await gate.isVisible()) {
+    await page.getByRole("button", { name: "Start empty" }).click()
+    await expect(shell).toBeVisible()
+  }
+  if (url !== "/") await page.goto(url)
+}
+
+test("primary navigation adapts to the viewport", async ({ page }) => {
+  await startBeyondOnboarding(page, "/")
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible()
 
   if (isMobileLayout(page)) {
@@ -26,7 +44,7 @@ test("primary navigation adapts to the viewport", async ({ page }) => {
 
 test("tab bar navigates tabs and More-sheet destinations", async ({ page }) => {
   test.skip(!isMobileLayout(page), "mobile layout only")
-  await page.goto("/")
+  await startBeyondOnboarding(page, "/")
 
   await page.getByRole("link", { name: "Transactions" }).click()
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
@@ -49,7 +67,7 @@ test("tab bar navigates tabs and More-sheet destinations", async ({ page }) => {
 
 test("assistant panel docks as a bottom sheet on small viewports", async ({ page }) => {
   test.skip(!isMobileLayout(page), "mobile layout only")
-  await page.goto("/")
+  await startBeyondOnboarding(page, "/")
 
   // The mobile project emulates a touch-first device.
   expect(await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches)).toBe(true)
@@ -75,7 +93,7 @@ test("assistant panel docks as a bottom sheet on small viewports", async ({ page
 
 test("transaction filters dock above the tab bar on small viewports", async ({ page }) => {
   test.skip(!isMobileLayout(page), "mobile layout only")
-  await page.goto("/transactions")
+  await startBeyondOnboarding(page, "/transactions")
 
   const search = page.getByLabel("Search")
   await expect(search).toBeVisible()
