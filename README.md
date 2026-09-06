@@ -71,8 +71,7 @@ pnpm test:browser
 ```
 
 Stack: React 19, TypeScript, Vite, TanStack Router, Tailwind, Recharts, Dexie/IndexedDB, Papa Parse,
-Zod, Oxlint/Oxfmt, Vitest, Playwright, Tauri (desktop). See [CONTRIBUTING.md](CONTRIBUTING.md) and
-[docs/REVAMP_PLAN.md](docs/REVAMP_PLAN.md).
+Zod, Oxlint/Oxfmt, Vitest, Playwright, Tauri (desktop). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Changelog
 
