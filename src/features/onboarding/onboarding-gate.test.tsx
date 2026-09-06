@@ -6,7 +6,7 @@ import { OnboardingGate } from "@/features/onboarding/onboarding-gate"
 import { ONBOARDING_STORAGE_KEY } from "@/features/onboarding/onboarding-storage"
 
 vi.mock("@/features/demo/demo-seed", () => ({
-  ensureDemoData: vi.fn<() => Promise<boolean>>(async () => true),
+  seedDemoDataIfEmpty: vi.fn<() => Promise<boolean>>(async () => true),
 }))
 
 vi.mock("@/app/router", () => ({
@@ -14,11 +14,11 @@ vi.mock("@/app/router", () => ({
 }))
 
 import { router } from "@/app/router"
-import { ensureDemoData } from "@/features/demo/demo-seed"
+import { seedDemoDataIfEmpty } from "@/features/demo/demo-seed"
 import { readOnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
 const navigate = vi.mocked(router.navigate)
-const seedDemo = vi.mocked(ensureDemoData)
+const seedDemo = vi.mocked(seedDemoDataIfEmpty)
 
 afterEach(() => {
   cleanup()
@@ -56,6 +56,24 @@ describe("OnboardingGate", () => {
     expect(seedDemo).toHaveBeenCalledTimes(1)
     expect(readOnboardingChoice(window.localStorage)).toBe("demo")
     expect(window.localStorage.getItem(ONBOARDING_STORAGE_KEY)).toContain('"version":1')
+  })
+
+  it("keeps onboarding visible with a retry when demo seeding fails", async () => {
+    const user = userEvent.setup()
+    seedDemo.mockRejectedValueOnce(new Error("storage unavailable"))
+    renderGate()
+
+    await user.click(await screen.findByRole("button", { name: "Explore demo data" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be loaded/i)
+    expect(screen.getByTestId("onboarding-screen")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument()
+    expect(seedDemo).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole("button", { name: "Explore demo data" }))
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument()
+    expect(seedDemo).toHaveBeenCalledTimes(2)
   })
 
   it("routes to imports when the import choice is selected", async () => {

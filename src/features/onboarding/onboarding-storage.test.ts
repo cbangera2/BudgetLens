@@ -5,6 +5,7 @@ import {
   ONBOARDING_STORAGE_KEY,
   recordOnboardingChoice,
   readOnboardingChoice,
+  safeOnboardingStorage,
 } from "@/features/onboarding/onboarding-storage"
 
 function memoryStorage(initial?: Record<string, string>): Pick<Storage, "getItem" | "setItem"> {
@@ -99,5 +100,34 @@ describe("onboarding flag", () => {
     recordOnboardingChoice(storage, "empty")
     recordOnboardingChoice(storage, "demo")
     expect(readOnboardingChoice(storage)).toBe("demo")
+  })
+})
+
+describe("safeOnboardingStorage", () => {
+  it("returns working storage normally", () => {
+    const storage = safeOnboardingStorage()
+    storage.setItem("probe", "1")
+    expect(storage.getItem("probe")).toBe("1")
+  })
+
+  it("falls back to memory when Web Storage access is blocked", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get: (): Storage => {
+        throw new Error("blocked")
+      },
+    })
+    try {
+      const storage = safeOnboardingStorage()
+      storage.setItem(
+        ONBOARDING_STORAGE_KEY,
+        JSON.stringify({ version: 1, choice: "demo", completedAt: "x" }),
+      )
+      expect(readOnboardingChoice(storage)).toBe("demo")
+      expect(readOnboardingChoice(safeOnboardingStorage())).toBe("demo")
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
+    }
   })
 })

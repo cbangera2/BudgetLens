@@ -7,6 +7,7 @@ import type { OnboardingChoice } from "@/features/onboarding/onboarding-storage"
 interface OnboardingScreenProps {
   onSelect: (choice: OnboardingChoice) => void
   pendingChoice?: OnboardingChoice | null
+  demoError?: boolean
 }
 
 const options: {
@@ -36,7 +37,11 @@ const options: {
   },
 ]
 
-export function OnboardingScreen({ onSelect, pendingChoice = null }: OnboardingScreenProps) {
+export function OnboardingScreen({
+  onSelect,
+  pendingChoice = null,
+  demoError = false,
+}: OnboardingScreenProps) {
   const busy = pendingChoice !== null
 
   return (
@@ -84,6 +89,12 @@ export function OnboardingScreen({ onSelect, pendingChoice = null }: OnboardingS
           ? "Loading the sample budget. This takes a moment on first launch."
           : "Sample data is synthetic and clearly labeled. Imports never leave this browser."}
       </p>
+      {demoError && !busy ? (
+        <p role="alert" className="mt-4 text-center text-sm font-medium text-destructive">
+          The sample budget could not be loaded. Check browser storage and select Explore demo data
+          again to retry.
+        </p>
+      ) : null}
     </main>
   )
 }

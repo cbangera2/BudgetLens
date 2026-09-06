@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from "react"
 
 import { router } from "@/app/router"
-import { ensureDemoData } from "@/features/demo/demo-seed"
+import { seedDemoDataIfEmpty } from "@/features/demo/demo-seed"
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen"
 import {
   readOnboardingChoice,
   recordOnboardingChoice,
+  safeOnboardingStorage,
   type OnboardingChoice,
 } from "@/features/onboarding/onboarding-storage"
 
-function appStorage(): Pick<Storage, "getItem" | "setItem"> {
-  return window.localStorage
-}
-
 export function OnboardingGate({ children }: { children: React.ReactNode }) {
   const [completedChoice, setCompletedChoice] = useState<OnboardingChoice | null>(() =>
-    readOnboardingChoice(appStorage()),
+    readOnboardingChoice(safeOnboardingStorage()),
   )
   const [pendingChoice, setPendingChoice] = useState<OnboardingChoice | null>(null)
+  const [demoError, setDemoError] = useState(false)
   const importRedirectArmed = useRef(false)
 
   // The router only mounts with the shell after onboarding completes, so the
@@ -35,19 +33,29 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
     if (pendingChoice !== null) return
     if (next === "demo") {
       setPendingChoice("demo")
-      recordOnboardingChoice(appStorage(), "demo")
-      // Choice is recorded before seeding so the seed gate in ensureDemoData
-      // treats this explicit choice as consent to load the sample budget.
-      void ensureDemoData().finally(() => {
-        setPendingChoice(null)
-        setCompletedChoice("demo")
-      })
+      setDemoError(false)
+      recordOnboardingChoice(safeOnboardingStorage(), "demo")
+      // Seed directly (not via the cached ensureDemoData) so every attempt is
+      // fresh and a failed attempt keeps onboarding visible with a retry. A
+      // false no-op (sample already present) still proceeds; only a throw is a
+      // seed failure.
+      void seedDemoDataIfEmpty()
+        .then(() => {
+          setPendingChoice(null)
+          setCompletedChoice("demo")
+        })
+        .catch(() => {
+          setPendingChoice(null)
+          setDemoError(true)
+        })
       return
     }
-    recordOnboardingChoice(appStorage(), next)
+    recordOnboardingChoice(safeOnboardingStorage(), next)
     if (next === "import") importRedirectArmed.current = true
     setCompletedChoice(next)
   }
 
-  return <OnboardingScreen onSelect={handleSelect} pendingChoice={pendingChoice} />
+  return (
+    <OnboardingScreen onSelect={handleSelect} pendingChoice={pendingChoice} demoError={demoError} />
+  )
 }

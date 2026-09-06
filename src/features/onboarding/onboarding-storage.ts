@@ -57,3 +57,26 @@ export function recordOnboardingChoice(
   }
   return record
 }
+
+const memoryFallback = new Map<string, string>()
+
+function memoryStorageFallback(): WritableStorage {
+  return {
+    getItem: (key: string) => memoryFallback.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      memoryFallback.set(key, value)
+    },
+  }
+}
+
+export function safeOnboardingStorage(): WritableStorage {
+  try {
+    const storage = globalThis.localStorage
+    if (!storage) return memoryStorageFallback()
+    // Probe: some browsers throw on use (not access) when storage is blocked.
+    storage.getItem(ONBOARDING_STORAGE_KEY)
+    return storage
+  } catch {
+    return memoryStorageFallback()
+  }
+}
