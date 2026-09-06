@@ -214,7 +214,8 @@ describe("requestChatTurn tool fallback (web transport)", () => {
   })
 })
 
-describe("rememberKey setting", () => {  it("defaults to false on web and parses stored values", () => {
+describe("rememberKey setting", () => {
+  it("defaults to false on web and parses stored values", () => {
     expect(readAssistantSettings(memoryStorage()).rememberKey).toBe(false)
     const storage = {
       getItem: () => JSON.stringify({ provider: "openai", rememberKey: true, apiKey: "x" }),
