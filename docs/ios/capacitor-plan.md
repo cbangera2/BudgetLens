@@ -3,6 +3,8 @@
 Status: detailed draft, no code yet. Companion to `docs/ios/plan.md` (strategy) — this doc is the build order.
 Revised after subagent review (2026-09-05): backup-restore gap, Keychain premise, subtle crypto, config pinning, CORS ordering, open-in keys, privacy specifics folded in.
 
+Distribution update (2026-09-05): no Apple Developer account, so App Store and TestFlight are OUT of scope indefinitely. Distribution is Simulator builds plus free-Apple-ID direct install to personal devices. Submission checklist items (privacy label, listing, review pre-emption) stay documented below for later but block nothing. Everything else — app code, adapter, backup story, hosted-assistant opt-in — is unaffected.
+
 ## 0. Ground rules
 
 - Web stays shippable at every step. Every native behavior is behind a runtime `isNative()` check with a web fallback. `pnpm dev / build / test / test:browser` must stay green.
@@ -183,3 +185,15 @@ Resolved during scaffolding (verified on this machine; device confirmation still
 - Router on native: hash history + basepath `/`, extending the Tauri `isTauriSync()` pattern with `isNativeCapacitorSync()` (`src/lib/isNative.ts`, detects the WKWebView bridge; unit-tested both ways). Citation base-stripping parity test still owed (Spike 1).
 - `ios/` platform generated via `cap add ios` and synced via `cap sync ios` (CocoaPods + Xcode present); `ios/` stays gitignored, only config + scripts committed.
 - Open-in plist keys (`CFBundleURLTypes`, `CFBundleDocumentTypes`), Keychain plugin pin, nutrition-label wording: still open.
+
+Device-verified on iPhone 15 Simulator, iOS 17.0, Xcode 26.6 (2026-09-05, scratch diagnostics screen, screenshots on file):
+
+- Origin is `capacitor://localhost` exactly as pinned. `isSecureContext=true`.
+- `crypto.randomUUID()` works and `crypto.subtle.digest("SHA-256")` matches the known test vector — no fallback/polyfill needed on this origin. Review item B3 closed for secure-context; B5's `randomUUID` concern closed.
+- Raw IndexedDB put/get/delete works; Dexie opened the real `budgetlens` db and counted 144 demo transactions seeded by the previous launch — which also proves data survives reinstall-over (upgrade-retention path works in the sim).
+- `navigator.storage.persist()` returned false and `persisted()` false: eviction protection is NOT granted, so the manual-backup-first story stands. The `main.tsx` best-effort call stays (harmless).
+- `Capacitor.isNativePlatform()=true`, platform `ios` — confirms the `isNativeCapacitorSync()` unit-test simulation was faithful.
+- Plain `fetch` POST to both `openrouter.ai/api/v1` and `api.openai.com/v1` `/chat/completions` returned HTTP 401 (preflight passed; 401 is just the missing key). Review item B2 closed: NO native HTTP plugin needed, "no custom Swift" survives, direct-provider assistant transport works as specified.
+- Still device-only (need physical iPhone): storage eviction over time/low-storage UX, file-bridge size caps, open-in plumbing, chart/list performance on old phones, Face ID.
+
+Local Simulator environment note: this Xcode install has the 26.5 SDK but no 26.5 platform, so `ibtool`/`actool` cannot compile storyboards or asset catalogs. The generated (gitignored) `ios/` project was locally stripped of Main/LaunchScreen storyboards (scene delegate already sets `CAPBridgeViewController` programmatically; `UILaunchScreen` dict replaces the launch storyboard) and asset catalog to build for the iOS 17 sim. Committed sources are unaffected; CI/TestFlight machines with full Xcode need none of this.
