@@ -152,47 +152,29 @@ jobs:
 
           DARWIN_BIN="BudgetLens_${VERSION}_aarch64.app.tar.gz"
           WIN_BIN="BudgetLens_${VERSION}_x64-setup.exe"
-          # The release asset index can lag uploads by seconds: poll until all
-          # four files (2 binaries + 2 signatures) are visible, then proceed.
+          # The release asset index can lag uploads: poll until both binaries
+          # and both signatures are visible, then proceed.
           for attempt in $(seq 1 30); do
             ASSETS="$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets')"
-            have() {
-              echo "$ASSETS" | jq -e --arg n "$1" '.[] | select(.name == $n)' > /dev/null
-            }
-            if have "$DARWIN_BIN" && have "${DARWIN_BIN}.sig" && have "$WIN_BIN" && have "${WIN_BIN}.sig"; then
+            if echo "$ASSETS" | jq -e --arg n "$DARWIN_BIN" '.[] | select(.name == $n)' > /dev/null \
+              && echo "$ASSETS" | jq -e --arg n "${DARWIN_BIN}.sig" '.[] | select(.name == $n)' > /dev/null \
+              && echo "$ASSETS" | jq -e --arg n "$WIN_BIN" '.[] | select(.name == $n)' > /dev/null \
+              && echo "$ASSETS" | jq -e --arg n "${WIN_BIN}.sig" '.[] | select(.name == $n)' > /dev/null; then
               break
             fi
             if [ "$attempt" = "30" ]; then
-              echo "::error::timed out waiting for updater artifacts on $TAG."
+              echo "::error::timed out waiting for updater artifacts on $TAG. Visible:"
               echo "$ASSETS" | jq -r '.[].name'
               exit 1
             fi
             sleep 10
           done
+          echo "Visible assets:"
+          echo "$ASSETS" | jq -r '.[].name'
           gh release download "$TAG" -R "$REPO" --pattern "*.sig" --clobber --dir "$WORK"
           url_for() {
             echo "$ASSETS" | jq -r --arg n "$1" '.[] | select(.name == $n) | .browserDownloadUrl // empty'
           }
-
-          DARWIN_BIN="BudgetLens_${VERSION}_aarch64.app.tar.gz"
-          WIN_BIN="BudgetLens_${VERSION}_x64-setup.exe"
-          # The release asset index can lag uploads by seconds: poll until all
-          # four files (2 binaries + 2 signatures) are visible, then proceed.
-          for attempt in $(seq 1 30); do
-            ASSETS="$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets')"
-            have() {
-              echo "$ASSETS" | jq -e --arg n "$1" '.[] | select(.name == $n)' > /dev/null
-            }
-            if have "$DARWIN_BIN" && have "${DARWIN_BIN}.sig" && have "$WIN_BIN" && have "${WIN_BIN}.sig"; then
-              break
-            fi
-            if [ "$attempt" = "30" ]; then
-              echo "::error::timed out waiting for updater artifacts on $TAG."
-              echo "$ASSETS" | jq -r '.[].name'
-              exit 1
-            fi
-            sleep 10
-          done
           DARWIN_URL="$(url_for "$DARWIN_BIN")"
           WIN_URL="$(url_for "$WIN_BIN")"
           DARWIN_SIG="$(cat "$WORK/${DARWIN_BIN}.sig" 2>/dev/null || true)"
