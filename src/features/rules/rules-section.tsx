@@ -31,8 +31,7 @@ function toInput(rule: TransactionRule): TransactionRuleInput {
   return {
     merchantSubstring: rule.merchantSubstring ?? "",
     amountOperator: rule.amountOperator ?? "",
-    amountDollars:
-      rule.amountMinor === null ? "" : (rule.amountMinor / 100).toFixed(2).replace(/\.00$/, ".00"),
+    amountDollars: rule.amountMinor === null ? "" : (rule.amountMinor / 100).toFixed(2),
     category: rule.category,
   }
 }
