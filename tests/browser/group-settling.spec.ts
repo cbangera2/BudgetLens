@@ -13,14 +13,14 @@ test("group settling suggests exact paybacks for a shared group", async ({ page 
   await page.getByRole("button", { name: "Confirm import" }).click()
   await expect(page.getByText("Imported 2 transactions rows.")).toBeVisible()
 
-  await page.getByRole("link", { name: "Groups", exact: true }).click()
+  await page.goto("/groups")
   await expect(page.getByRole("heading", { name: "Groups" })).toBeVisible()
   await page.getByRole("button", { name: "New group" }).click()
   await page.getByLabel("Name").fill("Settling Trip")
   await page.getByRole("button", { name: "Save group" }).click()
   await expect(page.getByText("Settling Trip")).toBeVisible()
 
-  await page.getByRole("link", { name: "Transactions", exact: true }).click()
+  await page.goto("/transactions")
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Settling Cabin" })).toBeVisible()
   await page.getByLabel("Select Settling Cabin").check()
@@ -37,7 +37,7 @@ test("group settling suggests exact paybacks for a shared group", async ({ page 
   await page.getByLabel("Sharing").click()
   await page.getByRole("option", { name: /Shared ÷2/ }).click()
 
-  await page.getByRole("link", { name: "Groups", exact: true }).click()
+  await page.goto("/groups")
   await page
     .getByRole("link", { name: /Settling Trip/ })
     .first()
