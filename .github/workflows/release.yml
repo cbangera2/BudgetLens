@@ -90,8 +90,10 @@ jobs:
           releaseDraft: true
           prerelease: false
           # This tauri-action line uses `uploadUpdaterJson` (not
-          # `includeUpdaterJson`, which it silently ignores).
-          uploadUpdaterJson: true
+          # `includeUpdaterJson`, which it silently ignores). Legs upload
+          # binaries + signatures only; the `manifest` job below writes the
+          # single merged latest.json (parallel legs would race-clobber it).
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
       - name: Assert no Pages base leaked into desktop bundle
@@ -126,11 +128,72 @@ jobs:
         # only real vulnerabilities fail this step.
         run: cargo audit --file src-tauri/Cargo.lock
 
+  manifest:
+    name: Merge updater manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build]
+    permissions:
+      contents: write
+    steps:
+      - name: Build latest.json from uploaded signatures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          VERSION="${TAG#app-v}"
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+
+          gh release download "$TAG" -R "$REPO" --pattern "*.sig" --clobber --dir "$WORK"
+          ASSETS="$(gh release view "$TAG" -R "$REPO" --json assets --jq '.assets')"
+          url_for() {
+            echo "$ASSETS" | jq -r --arg n "$1" '.[] | select(.name == $n) | .browserDownloadUrl // empty'
+          }
+
+          DARWIN_BIN="BudgetLens_${VERSION}_aarch64.app.tar.gz"
+          WIN_BIN="BudgetLens_${VERSION}_x64-setup.exe"
+          DARWIN_URL="$(url_for "$DARWIN_BIN")"
+          WIN_URL="$(url_for "$WIN_BIN")"
+          DARWIN_SIG="$(cat "$WORK/${DARWIN_BIN}.sig" 2>/dev/null || true)"
+          WIN_SIG="$(cat "$WORK/${WIN_BIN}.sig" 2>/dev/null || true)"
+          if [ -z "$DARWIN_URL" ] || [ -z "$DARWIN_SIG" ]; then
+            echo "::error::missing $DARWIN_BIN or its signature on $TAG."
+            exit 1
+          fi
+          if [ -z "$WIN_URL" ] || [ -z "$WIN_SIG" ]; then
+            echo "::error::missing $WIN_BIN or its signature on $TAG."
+            exit 1
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes "BudgetLens $VERSION desktop release." \
+            --arg durl "$DARWIN_URL" \
+            --arg dsig "$DARWIN_SIG" \
+            --arg wurl "$WIN_URL" \
+            --arg wsig "$WIN_SIG" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $date,
+              platforms: {
+                "darwin-aarch64": { signature: $dsig, url: $durl },
+                "windows-x86_64": { signature: $wsig, url: $wurl },
+                "windows-x86_64-nsis": { signature: $wsig, url: $wurl }
+              }
+            }' > "$WORK/latest.json"
+          cat "$WORK/latest.json"
+          gh release upload "$TAG" -R "$REPO" "$WORK/latest.json#latest.json" --clobber
+
   validate:
     name: Validate updater manifest
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [build, audit]
+    needs: [build, audit, manifest]
     steps:
       - name: Validate latest.json (version, platforms, signatures, URLs)
         env:
@@ -143,11 +206,12 @@ jobs:
 
           # NOTE: the releases/tags/{tag} API 404s on draft releases, so read
           # the draft through `gh release view`, which resolves drafts by tag.
-          if ! gh release view "$TAG" --json assets --jq . > /dev/null; then
+          # This job has no checkout, so every gh call names the repo with -R.
+          if ! gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq . > /dev/null; then
             echo "::error::no release found for tag $TAG."
             exit 1
           fi
-          gh release download "$TAG" --pattern "latest.json" --clobber --dir .
+          gh release download "$TAG" -R "${{ github.repository }}" --pattern "latest.json" --clobber --dir .
           cat latest.json
 
           VERSION="$(jq -r '.version' latest.json)"
