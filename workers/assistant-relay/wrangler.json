@@ -1,0 +1,9 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/configuration-schema.json",
+  "name": "budgetlens-assistant-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "vars": {
+    "ALLOWED_ORIGINS": "https://cbangera2.github.io,http://localhost:*"
+  }
+}
