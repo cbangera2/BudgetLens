@@ -1,9 +1,11 @@
 export {
+  chartDrilldownHref,
   chartPalettes,
   CustomChartRenderer,
   type BarDirection,
   type AreaFill,
   type ChartDataRow,
+  type ChartDrilldownResolver,
   type ChartGrid,
   type ChartKind,
   type ChartLabelDisplay,
