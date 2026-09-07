@@ -1,6 +1,16 @@
 import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
-import { Pencil, Plus, Trash2, Users, X } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Pencil,
+  Plus,
+  Receipt,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +25,8 @@ import type { Transaction, TransactionDraft } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
+import { deleteTransactionReceipts } from "@/features/receipts/receipts"
+import { readReceiptSidecar } from "@/features/receipts/sidecar"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
@@ -32,6 +44,14 @@ import {
 import { SavedViewsBar } from "./saved-views-bar"
 import { SearchHintChips } from "./search-hint-chips"
 import { TransactionForm } from "./transaction-form"
+import {
+  computeRunningBalances,
+  formatRelativeDate,
+  nextColumnSort,
+  sortTransactionsByColumn,
+  type TransactionColumnKey,
+  type TransactionColumnSortState,
+} from "./transaction-list-utils"
 
 const pageSize = 50
 
@@ -80,7 +100,13 @@ export function TransactionsPageContent() {
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [columnSort, setColumnSort] = useState<TransactionColumnSortState>(null)
+  const [receiptCounts, setReceiptCounts] = useState<ReadonlyMap<string, number>>(
+    () =>
+      new Map(Object.entries(readReceiptSidecar()).map(([id, refs]) => [id, refs.length] as const)),
+  )
   const [lastSplit, setLastSplit] = useState(DEFAULT_SHARE_COUNT)
   const lastSelectedRef = useRef<string | null>(null)
   const editingTriggerRef = useRef<HTMLElement | null>(null)
@@ -91,18 +117,38 @@ export function TransactionsPageContent() {
   useReturnFocusOnClose(deleting !== null, deletingTriggerRef, deletingWasOpenRef)
 
   useEffect(() => {
+    const refreshReceipts = () => {
+      setReceiptCounts(
+        new Map(
+          Object.entries(readReceiptSidecar()).map(([id, refs]) => [id, refs.length] as const),
+        ),
+      )
+    }
+    refreshReceipts()
+    window.addEventListener("storage", refreshReceipts)
+    window.addEventListener("focus", refreshReceipts)
+    const timer = window.setInterval(refreshReceipts, 2000)
+    return () => {
+      window.removeEventListener("storage", refreshReceipts)
+      window.removeEventListener("focus", refreshReceipts)
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
     const query = serializeTransactionFilters(filters)
     history.replaceState(history.state, "", `${location.pathname}${query ? `?${query}` : ""}`)
     setPage(1)
   }, [filters])
 
   useEffect(() => {
-    if (!editing && !deleting) return undefined
+    if (!editing && !deleting && !bulkDeleting) return undefined
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
-      if (deleting) setDeleting(null)
+      if (bulkDeleting) setBulkDeleting(false)
+      else if (deleting) setDeleting(null)
       else setEditing(null)
     }
     document.addEventListener("keydown", closeOnEscape)
@@ -110,14 +156,20 @@ export function TransactionsPageContent() {
       document.body.style.overflow = previousOverflow
       document.removeEventListener("keydown", closeOnEscape)
     }
-  }, [deleting, editing])
+  }, [bulkDeleting, deleting, editing])
 
   const visible = useMemo(
     () => filterAndSortTransactions(transactions ?? [], filters),
     [transactions, filters],
   )
-  const pages = Math.max(1, Math.ceil(visible.length / pageSize))
-  const pageRows = visible.slice((page - 1) * pageSize, page * pageSize)
+  const ordered = useMemo(
+    () => sortTransactionsByColumn(visible, columnSort),
+    [visible, columnSort],
+  )
+  const balances = useMemo(() => computeRunningBalances(transactions ?? []), [transactions])
+  const categoryOptions = useMemo(() => unique(transactions ?? [], "category"), [transactions])
+  const pages = Math.max(1, Math.ceil(ordered.length / pageSize))
+  const pageRows = ordered.slice((page - 1) * pageSize, page * pageSize)
   const patchFilter = (patch: Partial<TransactionViewFilters>) =>
     setFilters((current) => ({ ...current, ...patch }))
 
@@ -142,11 +194,11 @@ export function TransactionsPageContent() {
     )
     if (shift) {
       const lastId = lastSelectedRef.current!
-      const lastIndex = visible.findIndex((row) => row.id === lastId)
-      const currentIndex = visible.findIndex((row) => row.id === id)
+      const lastIndex = ordered.findIndex((row) => row.id === lastId)
+      const currentIndex = ordered.findIndex((row) => row.id === id)
       if (lastIndex !== -1 && currentIndex !== -1) {
         const [start, end] = [Math.min(lastIndex, currentIndex), Math.max(lastIndex, currentIndex)]
-        const rangeIds = visible.slice(start, end + 1).map((row) => row.id)
+        const rangeIds = ordered.slice(start, end + 1).map((row) => row.id)
         setSelected((current) => {
           const next = new Set(current)
           for (const rangeId of rangeIds) {
@@ -209,6 +261,49 @@ export function TransactionsPageContent() {
       setLastSplit(changes.shareCount)
     }
     setSelected(new Set())
+  }
+
+  async function bulkRemove() {
+    const ids = [...selected]
+    for (const id of ids) {
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- Deterministic removal order.
+        await repositories.transactions.remove(id)
+      } catch {
+        // A missing row is already gone; keep removing the rest.
+      }
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- Per-row receipt cleanup.
+        await deleteTransactionReceipts(id)
+      } catch {
+        // Receipt cleanup is best-effort and never blocks bulk delete.
+      }
+    }
+    setSelected(new Set())
+    setBulkDeleting(false)
+  }
+
+  function sortButtonLabel(key: TransactionColumnKey, label: string): string {
+    if (!columnSort || columnSort.key !== key) return `Sort by ${label}`
+    return columnSort.direction === "asc"
+      ? `Sort by ${label}, currently ascending`
+      : `Sort by ${label}, currently descending`
+  }
+
+  function sortIcon(key: TransactionColumnKey) {
+    if (!columnSort || columnSort.key !== key) {
+      return <ArrowUpDown className="size-3" aria-hidden="true" />
+    }
+    return columnSort.direction === "asc" ? (
+      <ArrowUp className="size-3" aria-hidden="true" />
+    ) : (
+      <ArrowDown className="size-3" aria-hidden="true" />
+    )
+  }
+
+  function ariaSortFor(key: TransactionColumnKey): "ascending" | "descending" | "none" {
+    if (!columnSort || columnSort.key !== key) return "none"
+    return columnSort.direction === "asc" ? "ascending" : "descending"
   }
 
   async function toggleSharedSingle(transaction: Transaction, checked: boolean) {
@@ -452,6 +547,26 @@ export function TransactionsPageContent() {
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
             <div className="flex items-center gap-2">
               <Select
+                id="bulk-category"
+                aria-label="Recategorize"
+                value=""
+                onValueChange={(value) => {
+                  if (!value || value === "__placeholder__") return
+                  if (value === "__uncategorized__") void bulkApply({ category: null })
+                  else void bulkApply({ category: value })
+                }}
+                options={[
+                  { value: "__placeholder__", label: "Recategorize…", disabled: true },
+                  ...categoryOptions.map((category) => ({ value: category, label: category })),
+                  { value: "__uncategorized__", label: "Uncategorized" },
+                ]}
+                placeholder="Recategorize…"
+                className="h-9 w-44"
+              />
+            </div>
+            <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
+            <div className="flex items-center gap-2">
+              <Select
                 id="bulk-share"
                 aria-label="Sharing"
                 value=""
@@ -481,6 +596,14 @@ export function TransactionsPageContent() {
                 className="h-9 w-36"
               />
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Delete selected"
+              onClick={() => setBulkDeleting(true)}
+            >
+              <Trash2 className="size-4" aria-hidden="true" /> Delete
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -546,12 +669,40 @@ export function TransactionsPageContent() {
                         onChange={(event) => toggleSelectAll(event.target.checked)}
                       />
                     </th>
-                    <th className="p-2 md:p-3">Date</th>
-                    <th className="p-2 md:p-3">Description</th>
+                    <th className="p-2 md:p-3" aria-sort={ariaSortFor("date")}>
+                      <button
+                        type="button"
+                        aria-label={sortButtonLabel("date", "date")}
+                        onClick={() => setColumnSort(nextColumnSort(columnSort, "date"))}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                      >
+                        Date {sortIcon("date")}
+                      </button>
+                    </th>
+                    <th className="p-2 md:p-3" aria-sort={ariaSortFor("merchant")}>
+                      <button
+                        type="button"
+                        aria-label={sortButtonLabel("merchant", "merchant")}
+                        onClick={() => setColumnSort(nextColumnSort(columnSort, "merchant"))}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                      >
+                        Description {sortIcon("merchant")}
+                      </button>
+                    </th>
                     <th className="hidden p-3 sm:table-cell">Category</th>
                     <th className="hidden p-3 md:table-cell">Account</th>
                     <th className="hidden p-3 md:table-cell">Provider / type</th>
-                    <th className="p-2 text-right md:p-3">Amount</th>
+                    <th className="p-2 text-right md:p-3" aria-sort={ariaSortFor("amount")}>
+                      <button
+                        type="button"
+                        aria-label={sortButtonLabel("amount", "amount")}
+                        onClick={() => setColumnSort(nextColumnSort(columnSort, "amount"))}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                      >
+                        Amount {sortIcon("amount")}
+                      </button>
+                    </th>
+                    <th className="hidden p-3 text-right md:table-cell">Balance</th>
                     <th className="hidden p-2 text-center sm:table-cell md:p-3">Shared</th>
                     <th className="p-2 md:p-3">
                       <span className="sr-only">Actions</span>
@@ -593,7 +744,12 @@ export function TransactionsPageContent() {
                           />
                         </td>
                         <td className="p-2 text-xs whitespace-nowrap md:p-3 md:text-sm">
-                          {transaction.date}
+                          <span className="block">{transaction.date}</span>
+                          {formatRelativeDate(transaction.date) && (
+                            <span className="block text-[11px] text-muted-foreground">
+                              {formatRelativeDate(transaction.date)}
+                            </span>
+                          )}
                         </td>
                         <th scope="row" className="p-2 font-medium md:p-3">
                           <Link
@@ -605,7 +761,8 @@ export function TransactionsPageContent() {
                           </Link>
                           {(group ||
                             transaction.shared ||
-                            flaggedTransferIds.has(transaction.id)) && (
+                            flaggedTransferIds.has(transaction.id) ||
+                            receiptCounts.has(transaction.id)) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
                               {group && (
                                 <Link
@@ -622,6 +779,24 @@ export function TransactionsPageContent() {
                                 <Badge variant="secondary">shared ÷{transaction.shareCount}</Badge>
                               )}
                               {flaggedTransferIds.has(transaction.id) && <TransferBadge />}
+                              {receiptCounts.has(transaction.id) && (
+                                <Link
+                                  to="/transactions/$transactionId"
+                                  params={{ transactionId: transaction.id }}
+                                  aria-label={`View receipt for ${transaction.description}`}
+                                  className="inline-flex"
+                                >
+                                  <Badge
+                                    variant="outline"
+                                    className="inline-flex items-center gap-1"
+                                  >
+                                    <Receipt className="size-3" aria-hidden="true" />
+                                    {(receiptCounts.get(transaction.id) ?? 1) > 1
+                                      ? `${receiptCounts.get(transaction.id)} receipts`
+                                      : "Receipt"}
+                                  </Badge>
+                                </Link>
+                              )}
                             </span>
                           )}
                         </th>
@@ -687,6 +862,13 @@ export function TransactionsPageContent() {
                               your share {formatMoney(effective)}
                             </span>
                           )}
+                        </td>
+                        <td className="hidden p-3 text-right text-xs tabular-nums md:table-cell md:text-sm">
+                          <span
+                            title={`Running balance for ${transaction.accountName ?? "unspecified account"}`}
+                          >
+                            {formatMoney(balances.get(transaction.id) ?? normalized)}
+                          </span>
                         </td>
                         <td className="hidden p-2 text-center sm:table-cell md:p-3">
                           <input
@@ -800,6 +982,44 @@ export function TransactionsPageContent() {
                     })()
                   }}
                 >
+                  Delete
+                </Button>
+              </CardContent>
+            </Card>
+          </dialog>
+        </div>
+      )}
+      {bulkDeleting && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setBulkDeleting(false)
+          }}
+        >
+          <dialog
+            open
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="bulk-delete-title"
+            aria-describedby="bulk-delete-description"
+            className="relative m-0 w-full max-w-md rounded-2xl border bg-background p-0 text-foreground shadow-2xl"
+          >
+            <Card className="border-0 shadow-none">
+              <CardHeader>
+                <CardTitle id="bulk-delete-title">
+                  Delete {selected.size} transaction{selected.size === 1 ? "" : "s"}?
+                </CardTitle>
+                <CardDescription id="bulk-delete-description">
+                  This permanently removes {selected.size} selected transaction
+                  {selected.size === 1 ? "" : "s"} from this browser.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-end gap-2">
+                <Button variant="ghost" autoFocus onClick={() => setBulkDeleting(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={() => void bulkRemove()}>
                   Delete
                 </Button>
               </CardContent>
