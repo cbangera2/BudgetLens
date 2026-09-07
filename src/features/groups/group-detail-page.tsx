@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Pencil, Trash2, UserPlus, X } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -19,6 +19,7 @@ import {
 } from "@/features/charts/render"
 import { formatMoney } from "@/features/dashboard/format"
 import { SettleUpSection } from "@/features/settling/settle-up-section"
+import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
 
 import { calculateGroupSummary, groupContributionMinor } from "./calculations"
 import { GroupEditorCard, groupColorHex } from "./group-form"
@@ -68,6 +69,7 @@ const dailyChartSettings = {
 }
 
 export function GroupDetailPageContent({ groupId }: { groupId: string }) {
+  const navigate = useNavigate()
   const data = useLiveQuery(async () => {
     const [group, transactions] = await Promise.all([
       repositories.transactionGroups.get(groupId),
@@ -222,9 +224,13 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
           <Button
             variant="destructive"
             onClick={() => {
-              void repositories.transactionGroups.remove(group.id).then(() => {
-                window.location.assign("/groups")
-              })
+              const snapshot = group
+              const memberIds = members.map((member) => member.id)
+              void (async () => {
+                await repositories.transactionGroups.remove(snapshot.id)
+                notifyDeletedWithUndo("Group", { kind: "group", group: snapshot, memberIds })
+                await navigate({ to: "/groups" })
+              })()
             }}
           >
             <Trash2 className="size-4" aria-hidden="true" /> Delete

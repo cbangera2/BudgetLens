@@ -18,6 +18,7 @@ import { formatMoney } from "@/features/dashboard/format"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
+import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
 
 import {
   defaultTransactionFilters,
@@ -773,7 +774,15 @@ export function TransactionsPageContent() {
                 <Button
                   variant="destructive"
                   onClick={() => {
-                    void repositories.transactions.remove(deleting.id).then(() => setDeleting(null))
+                    const snapshot = deleting
+                    setDeleting(null)
+                    void (async () => {
+                      await repositories.transactions.remove(snapshot.id)
+                      notifyDeletedWithUndo("Transaction", {
+                        kind: "transaction",
+                        transaction: snapshot,
+                      })
+                    })()
                   }}
                 >
                   Delete

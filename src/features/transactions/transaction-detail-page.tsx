@@ -11,6 +11,7 @@ import { effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
 import { ReceiptSection } from "@/features/receipts/receipt-section"
+import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
 
 import { TransactionForm } from "./transaction-form"
 
@@ -379,9 +380,15 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 <Button
                   variant="destructive"
                   onClick={() => {
-                    void repositories.transactions.remove(transaction.id).then(() => {
-                      void navigate({ to: "/transactions" })
-                    })
+                    const snapshot = transaction
+                    void (async () => {
+                      await repositories.transactions.remove(snapshot.id)
+                      notifyDeletedWithUndo("Transaction", {
+                        kind: "transaction",
+                        transaction: snapshot,
+                      })
+                      await navigate({ to: "/transactions" })
+                    })()
                   }}
                 >
                   Delete
