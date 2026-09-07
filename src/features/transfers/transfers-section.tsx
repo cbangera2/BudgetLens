@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,10 @@ function formatMoney(amountMinor: number): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
     amountMinor / 100,
   )
+}
+
+export function pairSelectionKey(pair: TransferPair): string {
+  return `${pair.expenseId}::${pair.incomeId}`
 }
 
 export function TransferBadge() {
@@ -46,17 +50,75 @@ export function TransfersSection({
   const pairs = useMemo(() => detectTransferPairs(transactions), [transactions])
   const { confirmedIds, dismissedIds, confirmPair, dismissPair, clearFlag } = flagActions
 
-  const suggested = pairs.filter(
-    (pair) =>
-      !dismissedIds.has(pair.expenseId) &&
-      !dismissedIds.has(pair.incomeId) &&
-      !confirmedIds.has(pair.expenseId) &&
-      !confirmedIds.has(pair.incomeId),
+  const suggested = useMemo(
+    () =>
+      pairs.filter(
+        (pair) =>
+          !dismissedIds.has(pair.expenseId) &&
+          !dismissedIds.has(pair.incomeId) &&
+          !confirmedIds.has(pair.expenseId) &&
+          !confirmedIds.has(pair.incomeId),
+      ),
+    [pairs, confirmedIds, dismissedIds],
   )
-  const confirmed = pairs.filter(
-    (pair) => confirmedIds.has(pair.expenseId) && confirmedIds.has(pair.incomeId),
+  const confirmed = useMemo(
+    () =>
+      pairs.filter((pair) => confirmedIds.has(pair.expenseId) && confirmedIds.has(pair.incomeId)),
+    [pairs, confirmedIds],
   )
   const totals = spendingExcludingTransfers(transactions, transferPairIds(confirmed))
+
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set())
+  const suggestedKeyList = useMemo(() => suggested.map(pairSelectionKey), [suggested])
+  const suggestedKeySet = useMemo(() => new Set(suggestedKeyList), [suggestedKeyList])
+  const selectAllRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    setSelectedKeys((previous) => {
+      let changed = false
+      const next = new Set<string>()
+      for (const key of previous) {
+        if (suggestedKeySet.has(key)) next.add(key)
+        else changed = true
+      }
+      return changed ? next : previous
+    })
+  }, [suggestedKeySet])
+
+  const selectedSuggested = suggested.filter((pair) => selectedKeys.has(pairSelectionKey(pair)))
+  const selectedCount = selectedSuggested.length
+  const allSelected = suggested.length > 0 && selectedCount === suggested.length
+  const someSelected = selectedCount > 0 && !allSelected
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected
+  }, [someSelected])
+
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedKeys(new Set())
+    else setSelectedKeys(new Set(suggestedKeyList))
+  }
+
+  const togglePairSelected = (key: string, checked: boolean) => {
+    setSelectedKeys((previous) => {
+      const next = new Set(previous)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+
+  const approveSelected = () => {
+    for (const pair of selectedSuggested) confirmPair(pair.expenseId, pair.incomeId)
+    setSelectedKeys((previous) => {
+      const approved = new Set(selectedSuggested.map(pairSelectionKey))
+      const next = new Set<string>()
+      for (const key of previous) {
+        if (!approved.has(key)) next.add(key)
+      }
+      return next
+    })
+  }
 
   return (
     <section aria-label="Transfers">
@@ -85,18 +147,54 @@ export function TransfersSection({
               <>
                 {suggested.length > 0 && (
                   <div className="grid gap-2">
-                    <h3 className="text-sm font-medium">Suggested transfers</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-medium">Suggested transfers</h3>
+                      <p className="text-xs text-muted-foreground" aria-live="polite">
+                        {selectedCount} of {suggested.length} selected
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          className="size-4 accent-primary"
+                          checked={allSelected}
+                          onChange={toggleSelectAll}
+                          aria-label="Select all suggested transfers"
+                        />
+                        Select all
+                      </label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={selectedCount === 0}
+                        onClick={approveSelected}
+                      >
+                        Approve all {selectedCount}
+                      </Button>
+                    </div>
                     <ul className="divide-y rounded-xl border">
                       {suggested.map((pair) => {
                         const { title, detail } = pairLabel(pair, byId)
+                        const key = pairSelectionKey(pair)
                         return (
                           <li
                             key={`${pair.expenseId}-${pair.incomeId}`}
                             className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm"
                           >
-                            <span>
-                              <span className="block font-medium">{title}</span>
-                              <span className="text-xs text-muted-foreground">{detail}</span>
+                            <span className="flex items-start gap-3">
+                              <input
+                                type="checkbox"
+                                className="mt-1 size-4 accent-primary"
+                                checked={selectedKeys.has(key)}
+                                onChange={(event) => togglePairSelected(key, event.target.checked)}
+                                aria-label={`Select transfer ${title}`}
+                              />
+                              <span>
+                                <span className="block font-medium">{title}</span>
+                                <span className="text-xs text-muted-foreground">{detail}</span>
+                              </span>
                             </span>
                             <span className="flex gap-2">
                               <Button
