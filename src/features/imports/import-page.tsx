@@ -31,6 +31,10 @@ function kindLabel(kind: ImportBatch["kind"]): string {
   return "Transactions"
 }
 
+function isTransactionCapableKind(kind: ImportBatch["kind"]): boolean {
+  return kind === "transactions" || kind === "bundle"
+}
+
 function useReturnFocusOnClose(open: boolean) {
   const savedRef = useRef<HTMLElement | null>(null)
   const wasOpenRef = useRef(false)
@@ -135,7 +139,7 @@ export function ImportPage() {
   const [rules, ruleActions] = useTransactionRules()
   const [categoryOverrides, setCategoryOverrides] = useState<Record<number, string>>({})
   const [lastImportedBatches, setLastImportedBatches] = useState<
-    { id: string; sourceName: string }[]
+    { id: string; sourceName: string; kind: ImportBatch["kind"] }[]
   >([])
 
   useEffect(() => {
@@ -255,6 +259,7 @@ export function ImportPage() {
         result.receipts.map((receipt) => ({
           id: receipt.batch.id,
           sourceName: receipt.batch.sourceName,
+          kind: receipt.batch.kind,
         })),
       )
       setStatus(
@@ -301,7 +306,13 @@ export function ImportPage() {
       setCategoryOverrides({})
       setHistory(await repositories.imports.list())
       setPreview(null)
-      setLastImportedBatches([{ id: receipt.batch.id, sourceName: receipt.batch.sourceName }])
+      setLastImportedBatches([
+        {
+          id: receipt.batch.id,
+          sourceName: receipt.batch.sourceName,
+          kind: receipt.batch.kind,
+        },
+      ])
       setStatus(
         `Imported ${receipt.batch.importedCount.toLocaleString()} ${kindLabel(receipt.batch.kind).toLocaleLowerCase()} row${receipt.batch.importedCount === 1 ? "" : "s"}.`,
       )
@@ -413,13 +424,15 @@ export function ImportPage() {
           <output aria-live="polite" className="block text-sm">
             {status || (busy ? "Reading and validating the file…" : "")}
           </output>
-          {lastImportedBatches.length > 0 ? (
+          {lastImportedBatches.some((batch) => isTransactionCapableKind(batch.kind)) ? (
             <div className="flex flex-wrap gap-2">
-              {lastImportedBatches.map((batch) => (
-                <Button key={batch.id} variant="outline" size="sm" asChild>
-                  <a href={transactionsByImportBatchPath(batch.id)}>View {batch.sourceName}</a>
-                </Button>
-              ))}
+              {lastImportedBatches
+                .filter((batch) => isTransactionCapableKind(batch.kind))
+                .map((batch) => (
+                  <Button key={batch.id} variant="outline" size="sm" asChild>
+                    <a href={transactionsByImportBatchPath(batch.id)}>View {batch.sourceName}</a>
+                  </Button>
+                ))}
             </div>
           ) : null}
         </CardContent>
@@ -799,13 +812,15 @@ export function ImportPage() {
                       <td className="py-3 pr-4">{new Date(batch.importedAt).toLocaleString()}</td>
                       <td className="py-3 text-right">
                         <span className="inline-flex items-center justify-end gap-1">
-                          <a
-                            href={transactionsByImportBatchPath(batch.id)}
-                            aria-label={`View ${batch.sourceName} transactions`}
-                            className="inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                          >
-                            View
-                          </a>
+                          {isTransactionCapableKind(batch.kind) ? (
+                            <a
+                              href={transactionsByImportBatchPath(batch.id)}
+                              aria-label={`View ${batch.sourceName} transactions`}
+                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            >
+                              View
+                            </a>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"
