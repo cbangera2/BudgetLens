@@ -1,6 +1,9 @@
 import type { Transaction } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 
+import { isIsoDate } from "./date-presets"
+import { matchesAmountConditions, parseSearchQuery } from "./search-operators"
+
 export type TransactionSort =
   | "date-desc"
   | "date-asc"
@@ -28,6 +31,9 @@ export interface TransactionViewFilters {
   group: string
   importBatch: string
   sort: TransactionSort
+  /** Inclusive ISO date bounds (`YYYY-MM-DD`); "" means unbounded. */
+  from: string
+  to: string
 }
 
 export const defaultTransactionFilters: TransactionViewFilters = {
@@ -50,6 +56,8 @@ export const defaultTransactionFilters: TransactionViewFilters = {
   group: "",
   importBatch: "",
   sort: "date-desc",
+  from: "",
+  to: "",
 }
 
 export function isTransactionSort(value: unknown): value is TransactionSort {
@@ -129,6 +137,10 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
   const rawExcludedProviders = params.get("excludedProviders") ?? ""
   const rawTypes = params.get("transactionTypes") ?? params.get("type") ?? ""
   const rawExcludedTypes = params.get("excludedTransactionTypes") ?? ""
+  // Date bounds are new params: the scheme previously had no date filters, so
+  // `from`/`to` do not collide with any legacy bookmark.
+  const from = params.get("from")?.slice(0, 10) ?? ""
+  const to = params.get("to")?.slice(0, 10) ?? ""
   return {
     search: params.get("q")?.slice(0, 200) ?? "",
     merchant: merchantSingular?.slice(0, 200) ?? "",
@@ -149,6 +161,8 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
     group: params.get("group")?.slice(0, 64) ?? "",
     importBatch: (params.get("importBatch") ?? params.get("batch") ?? "").slice(0, 64),
     sort: isTransactionSort(sort) ? sort : "date-desc",
+    from: isIsoDate(from) ? from : "",
+    to: isIsoDate(to) ? to : "",
   }
 }
 
@@ -203,6 +217,8 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
     params.set("excludedTransactionTypes", filters.excludedTransactionTypes.join(","))
   if (filters.group) params.set("group", filters.group)
   if (filters.importBatch) params.set("importBatch", filters.importBatch)
+  if (filters.from) params.set("from", filters.from)
+  if (filters.to) params.set("to", filters.to)
   if (filters.sort !== "date-desc") params.set("sort", filters.sort)
   return params.toString()
 }
@@ -211,7 +227,12 @@ export function filterAndSortTransactions(
   transactions: readonly Transaction[],
   filters: TransactionViewFilters,
 ): Transaction[] {
-  const query = filters.search.trim().toLocaleLowerCase()
+  // Structured operators live inside the search box; the remainder stays a
+  // plain-text query. Unknown `word:value` tokens fall back to plain text.
+  const parsed = parseSearchQuery(filters.search)
+  const query = parsed.text.trim().toLocaleLowerCase()
+  const merchantOperator = parsed.merchant?.toLocaleLowerCase() ?? null
+  const categoryOperator = parsed.category?.toLocaleLowerCase() ?? null
   const result = transactions.filter((transaction) => {
     const matchesSearch =
       !query ||
@@ -257,8 +278,23 @@ export function filterAndSortTransactions(
       if (filters.transactionType) return typeValue === filters.transactionType
       return true
     })()
+    const matchesOperators =
+      (!merchantOperator ||
+        transaction.description.toLocaleLowerCase().includes(merchantOperator)) &&
+      (!categoryOperator ||
+        (transaction.category ?? "").toLocaleLowerCase().includes(categoryOperator)) &&
+      (parsed.amounts.length === 0 ||
+        matchesAmountConditions(
+          normalizeTransactionAmountMinor(transaction.amountMinor, transaction.transactionType),
+          parsed.amounts,
+        ))
+    const matchesDates =
+      (!filters.from || transaction.date >= filters.from) &&
+      (!filters.to || transaction.date <= filters.to)
     return (
       matchesSearch &&
+      matchesOperators &&
+      matchesDates &&
       matchesMerchant &&
       matchesCategory &&
       matchesAccount &&

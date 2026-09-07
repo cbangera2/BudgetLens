@@ -20,6 +20,7 @@ import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
+import { DatePresetChips } from "./date-preset-chips"
 import {
   defaultTransactionFilters,
   filterAndSortTransactions,
@@ -28,6 +29,8 @@ import {
   serializeTransactionFilters,
   type TransactionViewFilters,
 } from "./filtering"
+import { SavedViewsBar } from "./saved-views-bar"
+import { SearchHintChips } from "./search-hint-chips"
 import { TransactionForm } from "./transaction-form"
 
 const pageSize = 50
@@ -306,7 +309,14 @@ export function TransactionsPageContent() {
               value={filters.search}
               onChange={(event) => patchFilter({ search: event.target.value })}
             />
+            <SearchHintChips search={filters.search} />
           </div>
+          <DatePresetChips
+            from={filters.from}
+            to={filters.to}
+            onChange={(range) => patchFilter(range)}
+          />
+          <SavedViewsBar filters={filters} onApply={setFilters} />
           <IncludeExcludeFilter
             label="Merchant"
             options={unique(transactions, "description")}

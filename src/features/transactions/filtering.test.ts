@@ -183,4 +183,93 @@ describe("transaction view filters", () => {
     expect(result.map(({ id }) => id)).toEqual(["1", "2"])
     expect(records.map(({ id }) => id)).toEqual(["1", "2"])
   })
+
+  it("narrows rows with amount operators in the search box", () => {
+    // Record 1 is a $5.00 expense, record 2 is $1,000.00 of income.
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "amount:>100",
+      }).map(({ id }) => id),
+    ).toEqual(["2"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "amount:<10",
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "coffee amount:<10",
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+  })
+
+  it("narrows rows with merchant and category operators", () => {
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "merchant:pay",
+      }).map(({ id }) => id),
+    ).toEqual(["2"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: 'merchant:"Coffee Shop"',
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "cat:dining",
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+  })
+
+  it("treats unknown operators as plain text without erroring", () => {
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "frobnicate:xyz",
+      }),
+    ).toEqual([])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        search: "amount:abc",
+      }),
+    ).toEqual([])
+  })
+
+  it("filters by inclusive date bounds with URL round-tripping", () => {
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        from: "2026-01-15",
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        to: "2026-01-15",
+      }).map(({ id }) => id),
+    ).toEqual(["2"])
+    expect(parseTransactionFilters("?from=2026-01-15&to=2026-02-01")).toMatchObject({
+      from: "2026-01-15",
+      to: "2026-02-01",
+    })
+    const roundTripped = parseTransactionFilters(
+      `?${serializeTransactionFilters({ ...defaultTransactionFilters, from: "2026-01-01", to: "2026-01-31" })}`,
+    )
+    expect(roundTripped).toMatchObject({ from: "2026-01-01", to: "2026-01-31" })
+    expect(serializeTransactionFilters(defaultTransactionFilters)).toBe("")
+  })
+
+  it("ignores malformed date params", () => {
+    expect(parseTransactionFilters("?from=not-a-date&to=2026-13-40")).toMatchObject({
+      from: "",
+      to: "",
+    })
+  })
 })
