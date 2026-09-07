@@ -205,6 +205,18 @@ export function clampPage(page: number, pageCount: number): number {
   return Math.min(Math.max(1, page), Math.max(1, pageCount))
 }
 
+/**
+ * Whether a row click should be ignored for selection. Clicks originating
+ * inside interactive descendants (including SVG icon nodes, which are Elements
+ * but not HTMLElements) must not toggle the row.
+ */
+export function shouldIgnoreRowClick(target: unknown): boolean {
+  if (target instanceof Element) {
+    return target.closest("button, a, input, select, label") !== null
+  }
+  return false
+}
+
 /** Inclusive id range between two anchors in display order (either direction). */
 export function orderedRangeIds(
   orderedIds: readonly string[],

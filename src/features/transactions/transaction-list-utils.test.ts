@@ -9,6 +9,7 @@ import {
   formatRelativeDate,
   nextColumnSort,
   orderedRangeIds,
+  shouldIgnoreRowClick,
   sortTransactionsByColumn,
   toggleIdInSelection,
   type TransactionColumnSortState,
@@ -234,6 +235,27 @@ describe("transaction pagination", () => {
     expect(clampPage(3, 5)).toBe(3)
     expect(clampPage(0, 4)).toBe(1)
     expect(clampPage(-2, 4)).toBe(1)
+  })
+})
+
+describe("transaction row clicks", () => {
+  it("ignores clicks from interactive descendants including SVG icons", () => {
+    const row = document.createElement("tr")
+    const cell = document.createElement("td")
+    const button = document.createElement("button")
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    svg.append(path)
+    button.append(svg)
+    cell.append(button, document.createTextNode("2026-01-04"))
+    row.append(cell)
+    expect(shouldIgnoreRowClick(button)).toBe(true)
+    expect(shouldIgnoreRowClick(svg)).toBe(true)
+    expect(shouldIgnoreRowClick(path)).toBe(true)
+    expect(shouldIgnoreRowClick(cell)).toBe(false)
+    expect(shouldIgnoreRowClick(row)).toBe(false)
+    expect(shouldIgnoreRowClick(null)).toBe(false)
+    expect(shouldIgnoreRowClick(undefined)).toBe(false)
   })
 })
 

@@ -50,6 +50,7 @@ import {
   computeRunningBalances,
   formatRelativeDate,
   nextColumnSort,
+  shouldIgnoreRowClick,
   sortTransactionsByColumn,
   type TransactionColumnKey,
   type TransactionColumnSortState,
@@ -255,11 +256,7 @@ export function TransactionsPageContent() {
   }
 
   function handleRowClick(event: React.MouseEvent, id: string) {
-    if (
-      event.target instanceof HTMLElement &&
-      event.target.closest("button, a, input, select, label")
-    )
-      return
+    if (shouldIgnoreRowClick(event.target)) return
     const checked = !selected.has(id)
     toggleRow(id, checked, event)
   }
