@@ -1,0 +1,133 @@
+name: iOS release
+
+# Unsigned device .ipa for AltStore sideloading. Tag-triggered only — PRs stay
+# on the fast ci.yml path. Tags use the `ios-v*` pattern (independent from the
+# desktop `app-v*` line: the two platforms ship on their own cadences).
+# Example: git tag ios-v1.0.0 && git push origin ios-v1.0.0
+#
+# Produces a DRAFT prerelease; publish manually after smoke-testing on a
+# device. No code signing in CI (no Apple credentials anywhere near it): the
+# .ipa is unsigned and AltStore re-signs with the installer's Apple ID, whose
+# auto-refresh handles the 7-day free-cert expiry.
+#
+# Proven flow (2026-09-06): CocoaPods platform (NOT the SPM default — SPM
+# builds fail under Xcode 26 CLI on remote transitive deps), unsigned Release
+# device build, manual Payload zip. See docs/ios/plan.md.
+
+on:
+  push:
+    tags: ["ios-v*"]
+
+permissions:
+  contents: read
+
+# One release at a time per tag; never cancel an in-progress production release.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build unsigned ipa
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web bundle and sync native shell
+        # prebuild:ios bootstraps the CocoaPods platform when ios/ is absent.
+        run: pnpm build:ios
+
+      - name: Install CocoaPods dependencies
+        # No-op when cap already installed them; explicit for determinism.
+        run: pod install --project-directory=ios/App
+
+      - name: Build unsigned Release archive
+        # CODE_SIGNING_ALLOWED=NO: no Apple credentials in CI. AltStore signs
+        # at install time. Never add signing secrets here without review.
+        # A hermetic derived-data path keeps the packaging step below exact.
+        run: >
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App
+          -configuration Release -destination 'generic/platform=iOS'
+          -derivedDataPath "$RUNNER_TEMP/dd"
+          CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
+
+      - name: Package unsigned ipa and draft prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          APP="$(find "$RUNNER_TEMP/dd" -path '*Release-iphoneos/App.app' -type d 2>/dev/null | head -1)"
+          if [ -z "$APP" ]; then
+            echo "::error::built App.app not found under Release-iphoneos."
+            exit 1
+          fi
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+          mkdir -p "$WORK/Payload"
+          cp -R "$APP" "$WORK/Payload/"
+          IPA="$WORK/BudgetLens-${TAG}-unsigned.ipa"
+          (cd "$WORK" && zip -qr "$IPA" Payload)
+          if ! gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --prerelease \
+              --title "BudgetLens iOS ${TAG} (prerelease)" \
+              --notes "Unsigned device build for AltStore sideloading. AltStore re-signs with your Apple ID and auto-refreshes."
+          fi
+          gh release upload "$TAG" "$IPA" --clobber
+
+  validate:
+    name: Validate unsigned ipa
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build]
+    steps:
+      - name: Check bundle id and executable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+          gh release download "$TAG" --pattern "*.ipa" --clobber --dir "$WORK"
+          IPA="$(ls "$WORK"/*.ipa | head -1)"
+          python3 - "$IPA" << 'EOF'
+          import plistlib
+          import sys
+          import zipfile
+          path = sys.argv[1]
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              info_name = next(
+                  (n for n in names if n.endswith(".app/Info.plist")), ""
+              )
+              assert info_name, "no .app/Info.plist inside ipa"
+              with archive.open(info_name) as entry:
+                  info = plistlib.load(entry)
+              assert info.get("CFBundleIdentifier") == "com.cbangera2.budgetlens", info.get(
+                  "CFBundleIdentifier"
+              )
+              print("bundle:", info.get("CFBundleIdentifier"))
+              print("version:", info.get("CFBundleShortVersionString"))
+          EOF
+          echo "ipa valid for $TAG."
