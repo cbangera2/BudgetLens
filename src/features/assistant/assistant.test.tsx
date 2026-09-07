@@ -13,14 +13,21 @@ import type {
 } from "@/domain/repositories"
 import { parseBudgetLensChartSpec } from "@/features/assistant/chart-block"
 import {
+  buildDashboardChartInputFromSaveChart,
   buildFinanceSnapshot,
   executeAssistantTool,
   ASSISTANT_SYSTEM_PROMPT,
+  extractProposeTransactionDescription,
+  guessProposeTransactionCategory,
   MAX_TOOL_ROWS,
   parseBudgetProposal,
   parseCreateTransactionProposal,
   parseDeleteTransactionProposal,
+  parseProposeTransaction,
+  parseProposeTransactionAmount,
   parseRecategorizeProposal,
+  parseSaveChartProposal,
+  resolveProposeTransactionDate,
   summarizeVariance,
 } from "@/features/assistant/data-tools"
 import { readAssistantSettings } from "@/features/assistant/provider"
@@ -732,5 +739,275 @@ describe("assistant chart instruction", () => {
         ],
       }),
     ).toMatchObject({ type: "line", title: "Net worth trend" })
+  })
+})
+
+describe("assistant propose_transaction", () => {
+  it("parses amount formats", () => {
+    expect(parseProposeTransactionAmount("spent $12 on coffee")?.amountMinor).toBe(-1200)
+    expect(parseProposeTransactionAmount("spent $12.50 on coffee")?.amountMinor).toBe(-1250)
+    expect(parseProposeTransactionAmount("spent $1,234.56 on rent")?.amountMinor).toBe(-123456)
+    expect(parseProposeTransactionAmount("spent 12 dollars on coffee")?.amountMinor).toBe(-1200)
+    expect(parseProposeTransactionAmount("received $20 paycheck")?.amountMinor).toBe(2000)
+    expect(parseProposeTransactionAmount("no money here")).toBeNull()
+  })
+
+  it("resolves relative dates", () => {
+    expect(resolveProposeTransactionDate("spent $12 today", "2026-09-07")).toBe("2026-09-07")
+    expect(resolveProposeTransactionDate("spent $12 on coffee yesterday", "2026-09-07")).toBe(
+      "2026-09-06",
+    )
+    expect(resolveProposeTransactionDate("spent $5 3 days ago", "2026-09-07")).toBe("2026-09-04")
+    expect(resolveProposeTransactionDate("spent $5 2 weeks ago", "2026-09-07")).toBe("2026-08-24")
+    expect(resolveProposeTransactionDate("spent $5 on 2026-08-01", "2026-09-07")).toBe("2026-08-01")
+    expect(resolveProposeTransactionDate("spent $5 last week", "2026-09-07")).toBe("2026-08-31")
+  })
+
+  it("extracts merchant text and guesses category", () => {
+    expect(extractProposeTransactionDescription("spent $12 on coffee yesterday", "$12")).toBe(
+      "coffee",
+    )
+    expect(guessProposeTransactionCategory("coffee")).toBe("Dining Out")
+    expect(guessProposeTransactionCategory("weekly groceries at market")).toBe("Groceries")
+    expect(guessProposeTransactionCategory("gas station fill")).toBe("Transport")
+    expect(guessProposeTransactionCategory("mystery widget xyz")).toBeNull()
+  })
+
+  it("parses a full NL draft and rejects junk", () => {
+    expect(
+      parseProposeTransaction({ text: "spent $12 on coffee yesterday", today: "2026-09-07" }),
+    ).toMatchObject({
+      date: "2026-09-06",
+      description: "coffee",
+      amountMinor: -1200,
+      category: "Dining Out",
+    })
+    expect(parseProposeTransaction({ text: "hello there" })).toBeNull()
+    expect(parseProposeTransaction({})).toBeNull()
+  })
+
+  it("drafts without applying", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-01", description: "Existing", amountMinor: -100, category: "Groceries" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "propose_transaction", {
+      text: "spent $12 on coffee yesterday",
+      today: "2026-09-07",
+    })
+    expect(output).toMatchObject({ draft: true, kind: "propose_transaction", amountMinor: -1200 })
+    const rows = await repos.transactions.list()
+    expect(rows).toHaveLength(1)
+  })
+
+  it("applies the approved draft via repositories.add", async () => {
+    const repos = stubRepositories({})
+    const added: Array<{ date: string; description: string; amountMinor: number }> = []
+    repos.transactions.add = async (draft) => {
+      added.push({
+        date: draft.date,
+        description: draft.description,
+        amountMinor: draft.amountMinor,
+      })
+      return {
+        id: "tx-new",
+        date: draft.date,
+        description: draft.description,
+        amountMinor: draft.amountMinor,
+        category: draft.category,
+        transactionType: null,
+        accountName: null,
+        accountType: null,
+        provider: null,
+        labels: [],
+        notes: null,
+        groupId: null,
+        shared: false,
+        shareCount: 2,
+        importBatchId: "manual",
+        fingerprint: "fp-new",
+        createdAt: "2026-09-07T00:00:00.000Z",
+        updatedAt: "2026-09-07T00:00:00.000Z",
+      }
+    }
+    const draft = parseProposeTransaction({
+      text: "spent $12 on coffee yesterday",
+      today: "2026-09-07",
+    })
+    expect(draft).not.toBeNull()
+    if (!draft) throw new Error("expected draft")
+    await repos.transactions.add({
+      date: draft.date,
+      description: draft.description,
+      amountMinor: draft.amountMinor,
+      category: draft.category,
+      transactionType: null,
+      accountName: draft.accountName,
+      accountType: null,
+      provider: null,
+      labels: [],
+      notes: draft.notes,
+    })
+    expect(added).toMatchObject([{ date: "2026-09-06", description: "coffee", amountMinor: -1200 }])
+  })
+})
+
+describe("assistant save_chart", () => {
+  it("parses a valid spec and rejects junk", () => {
+    expect(
+      parseSaveChartProposal({
+        title: "Spending by category",
+        type: "bar",
+        data: [
+          { label: "Groceries", value: 1141 },
+          { label: "Dining Out", value: 540 },
+        ],
+      }),
+    ).toMatchObject({ spec: { title: "Spending by category", type: "bar" } })
+    expect(
+      parseSaveChartProposal({
+        spec: { title: "Trend", type: "line", data: [{ label: "Jan", value: 1 }] },
+      }),
+    ).toMatchObject({ spec: { type: "line" } })
+    expect(parseSaveChartProposal({ title: "Nope", type: "pie", data: [] })).toBeNull()
+    expect(parseSaveChartProposal({})).toBeNull()
+  })
+
+  it("drafts without persisting", async () => {
+    const repos = stubRepositories({})
+    const output: unknown = await executeAssistantTool(repos, "save_chart", {
+      title: "Spending by category",
+      type: "bar",
+      data: [{ label: "Groceries", value: 1141 }],
+    })
+    expect(output).toMatchObject({ draft: true, kind: "save_chart" })
+    if (!isRecord(output) || !isRecord(output.spec)) throw new Error("expected spec in output")
+    expect(output.spec).toMatchObject({ title: "Spending by category" })
+  })
+
+  it("round-trips through dashboard storage helpers", async () => {
+    const { createChart, deserializeDashboardConfiguration } =
+      await import("@/features/charts/configuration")
+    const draft = parseSaveChartProposal({
+      title: "Spending by category",
+      type: "bar",
+      data: [
+        { label: "Groceries", value: 1141 },
+        { label: "Dining Out", value: 540 },
+      ],
+    })
+    if (!draft) throw new Error("expected chart draft")
+    const input = buildDashboardChartInputFromSaveChart(draft.spec, "test-chart-1")
+    const base = deserializeDashboardConfiguration(null)
+    const next = createChart(base, input)
+    const serialized = JSON.stringify(next)
+    const restored = deserializeDashboardConfiguration(serialized)
+    expect(restored.customCharts.map((chart) => chart.title)).toContain("Spending by category")
+    const saved = restored.customCharts.find((chart) => chart.id === "test-chart-1")
+    expect(saved?.type).toBe("bar-vertical")
+    expect(saved?.metrics).toContain("expenses")
+  })
+})
+
+describe("assistant anomaly detection", () => {
+  it("flags spikes above the threshold", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        {
+          date: "2026-09-05",
+          description: "Groceries",
+          amountMinor: -10000,
+          category: "Groceries",
+        },
+        { date: "2026-08-05", description: "Groceries", amountMinor: -2000, category: "Groceries" },
+        { date: "2026-07-05", description: "Groceries", amountMinor: -2000, category: "Groceries" },
+        { date: "2026-06-05", description: "Groceries", amountMinor: -2000, category: "Groceries" },
+        { date: "2026-09-05", description: "Bus", amountMinor: -2000, category: "Transport" },
+        { date: "2026-08-05", description: "Bus", amountMinor: -2000, category: "Transport" },
+        { date: "2026-07-05", description: "Bus", amountMinor: -2000, category: "Transport" },
+        { date: "2026-06-05", description: "Bus", amountMinor: -2000, category: "Transport" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "detect_spending_anomalies", {
+      thresholdPct: 50,
+      referenceDate: "2026-09-15",
+    })
+    if (!isRecord(output) || !Array.isArray(output.anomalies)) {
+      throw new Error("expected anomalies in output")
+    }
+    const categories = output.anomalies.map((entry) =>
+      isRecord(entry) ? entry.category : undefined,
+    )
+    expect(categories).toContain("Groceries")
+    expect(categories).not.toContain("Transport")
+  })
+
+  it("returns new-spend entries when there is no history", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-05", description: "Coffee", amountMinor: -1200, category: "Dining Out" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "detect_spending_anomalies", {
+      referenceDate: "2026-09-15",
+    })
+    if (!isRecord(output) || !Array.isArray(output.anomalies)) {
+      throw new Error("expected anomalies in output")
+    }
+    expect(output.anomalies).toHaveLength(1)
+    const entry: unknown = output.anomalies[0]
+    if (!isRecord(entry)) throw new Error("expected anomaly entry")
+    expect(entry).toMatchObject({ category: "Dining Out", direction: "new", changePct: null })
+  })
+
+  it("returns empty anomalies for empty repos", async () => {
+    const repos = stubRepositories({})
+    const output: unknown = await executeAssistantTool(repos, "detect_spending_anomalies", {
+      referenceDate: "2026-09-15",
+    })
+    expect(output).toMatchObject({ anomalies: [], checkedCategories: 0 })
+  })
+})
+
+describe("assistant compare_periods", () => {
+  it("computes this-month vs last-month math", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-05", description: "Store", amountMinor: -10000, category: "Groceries" },
+        { date: "2026-08-05", description: "Store", amountMinor: -4000, category: "Groceries" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "compare_periods", {
+      category: "Groceries",
+      referenceDate: "2026-09-15",
+    })
+    expect(output).toMatchObject({
+      category: "Groceries",
+      currentMonth: "2026-09",
+      previousMonth: "2026-08",
+      currentMinor: 10000,
+      previousMinor: 4000,
+      deltaMinor: 6000,
+      changePct: 150,
+    })
+  })
+
+  it("reports null change when there is no prior spend", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-05", description: "Store", amountMinor: -1000, category: "Groceries" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "compare_periods", {
+      category: "Groceries",
+      referenceDate: "2026-09-15",
+    })
+    expect(output).toMatchObject({ currentMinor: 1000, previousMinor: 0, changePct: null })
+  })
+
+  it("requires a category", async () => {
+    const repos = stubRepositories({})
+    await expect(executeAssistantTool(repos, "compare_periods", {})).rejects.toThrow("category")
   })
 })
