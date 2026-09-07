@@ -69,4 +69,20 @@ describe("budget form defaults store", () => {
     }
     expect(() => saveBudgetFormDefaults("yearly", failingSet)).not.toThrow()
   })
+
+  it("survives a throwing global localStorage getter", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("blocked")
+      },
+    })
+    try {
+      expect(loadBudgetFormDefaults()).toBeNull()
+      expect(() => saveBudgetFormDefaults("yearly")).not.toThrow()
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
+    }
+  })
 })

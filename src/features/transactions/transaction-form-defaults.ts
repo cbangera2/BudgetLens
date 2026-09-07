@@ -30,11 +30,13 @@ function asString(value: unknown): string {
 }
 
 export function loadTransactionFormDefaults(
-  storage: ReadableStorage = globalThis.localStorage,
+  storage?: ReadableStorage,
 ): TransactionFormDefaults | null {
   let raw: string | null
   try {
-    raw = storage.getItem(TRANSACTION_FORM_DEFAULTS_KEY)
+    // Resolve inside try: the global getter itself can throw when storage is
+    // blocked, and this helper must never throw.
+    raw = (storage ?? globalThis.localStorage).getItem(TRANSACTION_FORM_DEFAULTS_KEY)
   } catch {
     return null
   }
@@ -57,7 +59,7 @@ export function loadTransactionFormDefaults(
 
 export function saveTransactionFormDefaults(
   defaults: TransactionFormDefaults,
-  storage: WritableStorage = globalThis.localStorage,
+  storage?: WritableStorage,
 ): void {
   const record: VersionedTransactionFormDefaults = {
     version: TRANSACTION_FORM_DEFAULTS_VERSION,
@@ -67,7 +69,10 @@ export function saveTransactionFormDefaults(
     transactionType: asString(defaults.transactionType),
   }
   try {
-    storage.setItem(TRANSACTION_FORM_DEFAULTS_KEY, JSON.stringify(record))
+    ;(storage ?? globalThis.localStorage).setItem(
+      TRANSACTION_FORM_DEFAULTS_KEY,
+      JSON.stringify(record),
+    )
   } catch {
     // Best-effort: private-mode storage may throw; the form still saves.
   }

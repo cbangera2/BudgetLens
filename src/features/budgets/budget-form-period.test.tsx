@@ -103,4 +103,21 @@ describe("BudgetsPageContent period default", () => {
     const form = (await screen.findByLabelText("Period")).closest("form")!
     expect(within(form).getByLabelText("Period")).toHaveValue("monthly")
   })
+
+  it("does not rewrite the stored default when an edit is saved", async () => {
+    const user = userEvent.setup()
+    mocks.listBudgets.mockResolvedValue([{ ...GOAL, period: "yearly" }])
+    saveBudgetFormDefaults("monthly", window.localStorage)
+    renderWithRouter(<BudgetsPageContent />)
+
+    await user.click(await screen.findByRole("button", { name: "Edit Groceries budget" }))
+    const form = (await screen.findByLabelText("Period")).closest("form")!
+    expect(within(form).getByLabelText("Period")).toHaveValue("yearly")
+
+    await user.click(within(form).getByRole("button", { name: "Save goal" }))
+    expect(mocks.put).toHaveBeenCalledWith(expect.objectContaining({ period: "yearly" }))
+    expect(window.localStorage.getItem("budgetlens.budget-form-defaults.v1")).toContain(
+      '"period":"monthly"',
+    )
+  })
 })

@@ -25,12 +25,12 @@ function isBudgetFormPeriod(value: unknown): value is BudgetFormPeriod {
   return value === "monthly" || value === "yearly"
 }
 
-export function loadBudgetFormDefaults(
-  storage: ReadableStorage = globalThis.localStorage,
-): BudgetFormPeriod | null {
+export function loadBudgetFormDefaults(storage?: ReadableStorage): BudgetFormPeriod | null {
   let raw: string | null
   try {
-    raw = storage.getItem(BUDGET_FORM_DEFAULTS_KEY)
+    // Resolve inside try: the global getter itself can throw when storage is
+    // blocked, and this helper must never throw.
+    raw = (storage ?? globalThis.localStorage).getItem(BUDGET_FORM_DEFAULTS_KEY)
   } catch {
     return null
   }
@@ -47,16 +47,13 @@ export function loadBudgetFormDefaults(
   }
 }
 
-export function saveBudgetFormDefaults(
-  period: BudgetFormPeriod,
-  storage: WritableStorage = globalThis.localStorage,
-): void {
+export function saveBudgetFormDefaults(period: BudgetFormPeriod, storage?: WritableStorage): void {
   const record: VersionedBudgetFormDefaults = {
     version: BUDGET_FORM_DEFAULTS_VERSION,
     period,
   }
   try {
-    storage.setItem(BUDGET_FORM_DEFAULTS_KEY, JSON.stringify(record))
+    ;(storage ?? globalThis.localStorage).setItem(BUDGET_FORM_DEFAULTS_KEY, JSON.stringify(record))
   } catch {
     // Best-effort: private-mode storage may throw; the goal still saves.
   }

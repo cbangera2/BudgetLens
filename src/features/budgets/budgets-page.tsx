@@ -77,7 +77,9 @@ export function BudgetsPageContent() {
       updatedAt: now,
       ...values,
     })
-    saveBudgetFormDefaults(period)
+    // Create-only: editing an existing goal never rewrites the default that
+    // the next new-goal form pre-fills.
+    if (editing === "new") saveBudgetFormDefaults(period)
     setEditing(null)
   }
 

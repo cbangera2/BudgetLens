@@ -86,4 +86,20 @@ describe("transaction form defaults store", () => {
     }
     expect(() => saveTransactionFormDefaults(DEFAULTS, failingSet)).not.toThrow()
   })
+
+  it("survives a throwing global localStorage getter", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("blocked")
+      },
+    })
+    try {
+      expect(loadTransactionFormDefaults()).toBeNull()
+      expect(() => saveTransactionFormDefaults(DEFAULTS)).not.toThrow()
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
+    }
+  })
 })
