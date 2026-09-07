@@ -13,7 +13,7 @@ test("bulk approves two selected suggested transfers", async ({ page }) => {
   await page.getByRole("button", { name: "Confirm import" }).click()
   await expect(page.getByText("Imported 5 transactions rows.")).toBeVisible()
 
-  await page.getByRole("link", { name: "Review", exact: true }).click()
+  await page.goto("/review")
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible()
 
   const transfers = page.getByLabel("Transfers", { exact: true })

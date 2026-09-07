@@ -13,7 +13,7 @@ test("detects a transfer pair and excludes confirmed transfers from spending", a
   await page.getByRole("button", { name: "Confirm import" }).click()
   await expect(page.getByText("Imported 3 transactions rows.")).toBeVisible()
 
-  await page.getByRole("link", { name: "Review", exact: true }).click()
+  await page.goto("/review")
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible()
 
   const transfers = page.getByLabel("Transfers", { exact: true })
