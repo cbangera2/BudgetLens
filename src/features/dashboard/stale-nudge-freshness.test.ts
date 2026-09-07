@@ -124,6 +124,28 @@ describe("stale-nudge freshness", () => {
     expect(shouldShowStaleNudge(firstFreshness, storage)).toBe(true)
   })
 
+  it("reappears in the next 30-day stale window for the same import", () => {
+    const storage = memoryStorage()
+    const importedAt = new Date(NOW.getTime() - 45 * DAY_MS).toISOString()
+    const dismissedAt = getStaleNudgeFreshness([batch(importedAt)], NOW)
+    dismissStaleNudge(storage, getStaleNudgeDismissalKey(dismissedAt))
+    expect(shouldShowStaleNudge(dismissedAt, storage)).toBe(false)
+
+    const sameWindow = getStaleNudgeFreshness(
+      [batch(importedAt)],
+      new Date(NOW.getTime() + 5 * DAY_MS),
+    )
+    expect(sameWindow.variant).toBe("stale")
+    expect(shouldShowStaleNudge(sameWindow, storage)).toBe(false)
+
+    const nextWindow = getStaleNudgeFreshness(
+      [batch(importedAt)],
+      new Date(NOW.getTime() + 30 * DAY_MS),
+    )
+    expect(nextWindow.variant).toBe("stale")
+    expect(shouldShowStaleNudge(nextWindow, storage)).toBe(true)
+  })
+
   it("never shows when data is fresh and keeps empty dismissal scoped", () => {
     const storage = memoryStorage()
     const fresh = getStaleNudgeFreshness(

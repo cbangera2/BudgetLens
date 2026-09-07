@@ -67,7 +67,13 @@ export interface StaleNudgeDismissalRecord {
 }
 
 export function getStaleNudgeDismissalKey(freshness: StaleNudgeFreshness): string {
-  return freshness.lastImportAt ?? STALE_NUDGE_EMPTY_KEY
+  if (freshness.lastImportAt === null) return STALE_NUDGE_EMPTY_KEY
+  if (freshness.variant !== "stale") return freshness.lastImportAt
+  // Dismissals are scoped to one 30-day stale window: dismissing at 45 days
+  // stays dismissed at 59 days but the nudge reappears at 61 days for the
+  // same import, and for any new import (a new lastImportAt means a new key).
+  const period = Math.floor((freshness.daysSince ?? 0) / STALE_NUDGE_THRESHOLD_DAYS)
+  return `${freshness.lastImportAt}#stale-${period}`
 }
 
 function isDismissalRecord(value: unknown): value is StaleNudgeDismissalRecord {
