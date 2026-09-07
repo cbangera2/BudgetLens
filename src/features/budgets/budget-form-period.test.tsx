@@ -1,3 +1,10 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router"
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
@@ -20,6 +27,26 @@ vi.mock("@/db/repositories", () => ({
 import { saveBudgetFormDefaults } from "./budget-form-defaults"
 import { BudgetsPageContent } from "./budgets-page"
 
+// Goal cards link to /transactions, so the page needs a router context.
+function renderWithRouter(ui: React.ReactNode) {
+  const rootRoute = createRootRoute()
+  const indexRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/",
+    component: () => ui,
+  })
+  const transactionsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/transactions",
+    component: () => null,
+  })
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([indexRoute, transactionsRoute]),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  })
+  return render(<RouterProvider router={router} />)
+}
+
 const GOAL: BudgetGoal = {
   id: "goal-groceries",
   category: "Groceries",
@@ -40,7 +67,7 @@ describe("BudgetsPageContent period default", () => {
   it("prefills the last-used period when adding a goal", async () => {
     const user = userEvent.setup()
     saveBudgetFormDefaults("yearly", window.localStorage)
-    render(<BudgetsPageContent />)
+    renderWithRouter(<BudgetsPageContent />)
 
     await user.click(await screen.findByRole("button", { name: "Add goal" }))
     expect(await screen.findByLabelText("Period")).toHaveValue("yearly")
@@ -49,7 +76,7 @@ describe("BudgetsPageContent period default", () => {
   it("never overwrites an explicit period choice and remembers it", async () => {
     const user = userEvent.setup()
     saveBudgetFormDefaults("yearly", window.localStorage)
-    render(<BudgetsPageContent />)
+    renderWithRouter(<BudgetsPageContent />)
 
     await user.click(await screen.findByRole("button", { name: "Add goal" }))
     const form = (await screen.findByLabelText("Period")).closest("form")!
@@ -70,7 +97,7 @@ describe("BudgetsPageContent period default", () => {
     const user = userEvent.setup()
     mocks.listBudgets.mockResolvedValue([GOAL])
     saveBudgetFormDefaults("yearly", window.localStorage)
-    render(<BudgetsPageContent />)
+    renderWithRouter(<BudgetsPageContent />)
 
     await user.click(await screen.findByRole("button", { name: "Edit Groceries budget" }))
     const form = (await screen.findByLabelText("Period")).closest("form")!
