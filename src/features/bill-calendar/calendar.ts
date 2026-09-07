@@ -1,6 +1,8 @@
 import type { IsoDate } from "@/domain/models"
 import type { SubscriptionSummary } from "@/features/subscriptions/detect"
 
+import { DAY_OVERRIDE_CADENCE, type BillOverrides } from "./overrides"
+
 /**
  * Days past an expected bill date before it counts as overdue.
  *
@@ -163,6 +165,26 @@ function statusFor(date: IsoDate, today: IsoDate): BillStatus {
   return daysBetweenIso(date, today) > OVERDUE_TOLERANCE_DAYS ? "overdue" : "upcoming"
 }
 
+export interface ProjectionOptions {
+  /** Per-merchant user corrections (amount, day-of-month, dismiss). */
+  overrides?: BillOverrides | undefined
+  /** Normalized merchant keys hidden as transfers. */
+  excludedKeys?: ReadonlySet<string> | undefined
+}
+
+/**
+ * Pin a projected date to a day-of-month within its own month, clamping to
+ * the month length (day 31 in February becomes Feb 28/29). Only applied to
+ * monthly cadences: pinning a biweekly series to one day would collapse
+ * separate occurrences onto the same date.
+ */
+export function snapDayOfMonth(date: IsoDate, dayOfMonth: number): IsoDate {
+  const month = toMonthKey(date)
+  const lastDay = Number(monthEndIso(month).slice(8, 10))
+  const day = Math.min(Math.max(1, Math.floor(dayOfMonth)), lastDay)
+  return `${month}-${String(day).padStart(2, "0")}`
+}
+
 /**
  * Project recurring charges onto a calendar month.
  *
@@ -171,20 +193,40 @@ function statusFor(date: IsoDate, today: IsoDate): BillStatus {
  * this stays purely presentational over detection output. Occurrences land on
  * real calendar dates, which is what carries charges across month boundaries
  * (e.g. Jan 31 plus 30 days lands on Mar 2, skipping February entirely).
+ *
+ * User overrides and transfer exclusions filter or reshape the projection
+ * without touching detection: dismissed merchants and transfer-excluded keys
+ * never project, amount overrides replace the detected median, and
+ * day-of-month overrides re-anchor monthly occurrences (status and totals use
+ * the corrected dates and amounts). A pinned monthly bill occurs once per
+ * month: when two cadence steps collapse onto the same pinned day, only the
+ * first is kept so totals and overdue counts are not double-counted.
  */
 export function projectMonthBills(
   subscriptions: readonly SubscriptionSummary[],
   month: MonthKey,
   today: IsoDate,
+  options: ProjectionOptions = {},
 ): BillOccurrence[] {
   const start = monthStartIso(month)
   const end = monthEndIso(month)
+  const overrides = options.overrides ?? {}
+  const excludedKeys = options.excludedKeys
   const occurrences: BillOccurrence[] = []
+  const pinnedDates = new Set<string>()
 
   for (const subscription of subscriptions) {
+    if (excludedKeys?.has(subscription.key)) continue
+    const override = overrides[subscription.key]
+    if (override?.dismissed === true) continue
+    const amountMinor = override?.amountMinor ?? subscription.medianAmountMinor
     const intervalDays = Math.max(1, Math.round(subscription.medianIntervalDays))
     if (!isIsoDate(subscription.lastDate)) continue
-    if (!(subscription.medianAmountMinor > 0)) continue
+    if (!(amountMinor > 0)) continue
+    const pinDay =
+      override?.dayOfMonth !== undefined && subscription.cadence === DAY_OVERRIDE_CADENCE
+        ? override.dayOfMonth
+        : null
 
     // Jump straight to the cadence step nearest the month instead of walking
     // from lastDate, so very stale schedules stay cheap.
@@ -192,14 +234,23 @@ export function projectMonthBills(
     let step = Math.max(1, Math.floor(daysToStart / intervalDays))
     // Always terminates: each iteration advances one interval toward end.
     for (;;) {
-      const date = addDaysIso(subscription.lastDate, step * intervalDays)
-      if (date > end) break
-      if (date >= start) {
+      const gridDate = addDaysIso(subscription.lastDate, step * intervalDays)
+      if (gridDate > end) break
+      if (gridDate >= start) {
+        const date = pinDay === null ? gridDate : snapDayOfMonth(gridDate, pinDay)
+        const pinnedKey = `${subscription.key}|${date}`
+        // A pinned monthly bill fires once per month: collapse duplicate steps
+        // instead of counting the amount twice.
+        if (pinDay !== null && pinnedDates.has(pinnedKey)) {
+          step += 1
+          continue
+        }
+        if (pinDay !== null) pinnedDates.add(pinnedKey)
         occurrences.push({
           subscriptionKey: subscription.key,
           displayName: subscription.displayName,
           date,
-          amountMinor: subscription.medianAmountMinor,
+          amountMinor,
           status: statusFor(date, today),
         })
       }

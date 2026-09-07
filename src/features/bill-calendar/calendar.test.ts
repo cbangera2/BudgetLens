@@ -20,6 +20,7 @@ import {
   OVERDUE_TOLERANCE_DAYS,
   projectMonthBills,
   resolveMonthBounds,
+  snapDayOfMonth,
   toMonthKey,
 } from "./calendar"
 
@@ -242,5 +243,81 @@ describe("month helpers", () => {
 
   it("derives month keys from ISO dates", () => {
     expect(toMonthKey("2026-05-15")).toBe("2026-05")
+  })
+})
+
+describe("bill overrides in projection", () => {
+  it("replaces the detected amount everywhere it surfaces", () => {
+    const occurrences = projectMonthBills([subscription()], "2026-05", "2026-06-20", {
+      overrides: { "beacon streaming": { amountMinor: 2000 } },
+    })
+
+    expect(occurrences).toHaveLength(1)
+    expect(occurrences[0]).toMatchObject({ amountMinor: 2000, status: "overdue" })
+    expect(monthTotalMinor(occurrences)).toBe(2000)
+  })
+
+  it("pins monthly occurrences to the overridden day of month", () => {
+    // Interval grid lands on Jun 14; the user corrected it to the 15th.
+    const occurrences = projectMonthBills([subscription()], "2026-06", "2026-06-01", {
+      overrides: { "beacon streaming": { dayOfMonth: 15 } },
+    })
+
+    expect(occurrences.map((occurrence) => occurrence.date)).toEqual(["2026-06-15"])
+  })
+
+  it("clamps pinned days to short months", () => {
+    expect(snapDayOfMonth("2026-02-14", 31)).toBe("2026-02-28")
+    expect(snapDayOfMonth("2024-02-14", 31)).toBe("2024-02-29")
+    expect(snapDayOfMonth("2026-05-14", 15)).toBe("2026-05-15")
+  })
+
+  it("ignores day pinning for non-monthly cadences", () => {
+    const biweekly = subscription({
+      key: "gym",
+      displayName: "Gym",
+      medianIntervalDays: 14,
+      lastDate: "2026-05-20",
+      cadence: "biweekly",
+    })
+    const occurrences = projectMonthBills([biweekly], "2026-06", "2026-06-01", {
+      overrides: { gym: { dayOfMonth: 15 } },
+    })
+
+    // Unpinned grid dates survive untouched (no collapsing onto one day).
+    expect(occurrences.map((occurrence) => occurrence.date)).toEqual(["2026-06-03", "2026-06-17"])
+  })
+
+  it("hides dismissed merchants from projection and totals", () => {
+    const occurrences = projectMonthBills([subscription()], "2026-05", "2026-05-01", {
+      overrides: { "beacon streaming": { dismissed: true } },
+    })
+
+    expect(occurrences).toEqual([])
+    expect(monthTotalMinor(occurrences)).toBe(0)
+  })
+
+  it("hides transfer-excluded merchants", () => {
+    const occurrences = projectMonthBills([subscription()], "2026-05", "2026-05-01", {
+      excludedKeys: new Set(["beacon streaming"]),
+    })
+
+    expect(occurrences).toEqual([])
+  })
+})
+
+describe("pinned-day collisions", () => {
+  it("projects a pinned monthly bill once per month without double-counting", () => {
+    // 30-day steps from Apr 1 land May 1 and May 31; both pin to May 15 but
+    // only the first is kept, so the amount counts once.
+    const occurrences = projectMonthBills(
+      [subscription({ lastDate: "2026-04-01", medianIntervalDays: 30 })],
+      "2026-05",
+      "2026-05-01",
+      { overrides: { "beacon streaming": { dayOfMonth: 15, amountMinor: 2000 } } },
+    )
+
+    expect(occurrences.map((occurrence) => occurrence.date)).toEqual(["2026-05-15"])
+    expect(monthTotalMinor(occurrences)).toBe(2000)
   })
 })
