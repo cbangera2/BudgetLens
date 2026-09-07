@@ -240,8 +240,11 @@ describe("bill chip containment", () => {
     await screen.findByRole("heading", { name: "Bills" })
 
     // Layout contract: fixed columns so cells cannot grow, grid items that
-    // can shrink, clipped cell content, ellipsized names.
+    // can shrink, clipped cell content, ellipsized names. The section itself
+    // carries min-w-0 so the wide table cannot blow out the page grid and
+    // push the month navigation off narrow viewports.
     expect(container.querySelector("table")?.className).toContain("table-fixed")
+    expect(screen.getByRole("region", { name: "Bill calendar" }).className).toContain("min-w-0")
     const cell = container.querySelector('[data-date="2026-05-12"]')
     expect(cell).not.toBeNull()
     const chips = cell?.querySelectorAll("li") ?? []

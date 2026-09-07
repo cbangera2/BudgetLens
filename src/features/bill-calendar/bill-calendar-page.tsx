@@ -259,8 +259,8 @@ export function BillCalendarPageContent({
   }
 
   return (
-    <div className="grid gap-6">
-      <div>
+    <div className="grid min-w-0 gap-6">
+      <div className="min-w-0">
         <h1 className="text-3xl font-semibold tracking-tight">Bills</h1>
         <p className="mt-1 text-muted-foreground">
           Recurring charges projected from detected merchants. Bills more than{" "}
@@ -268,7 +268,7 @@ export function BillCalendarPageContent({
         </p>
       </div>
 
-      <section aria-label="Bill calendar">
+      <section aria-label="Bill calendar" className="min-w-0">
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
