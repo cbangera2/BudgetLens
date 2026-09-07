@@ -7,8 +7,20 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { repositories } from "@/db/repositories"
 import type { ImportBatch } from "@/domain/models"
+import type { CsvColumnMapping, CsvMappableField } from "@/features/imports/csv-mapping"
+import {
+  CSV_MAPPABLE_FIELDS,
+  missingRequiredCsvFields,
+  suggestCsvMapping,
+  validateCsvMapping,
+} from "@/features/imports/csv-mapping"
 import { importService } from "@/features/imports/import-service"
-import { importFileType, sanitizeImportSourceName } from "@/features/imports/parser"
+import {
+  importFileType,
+  isUnsupportedHeadersError,
+  readCsvHeaders,
+  sanitizeImportSourceName,
+} from "@/features/imports/parser"
 import {
   DEFAULT_IMPORT_LIMITS,
   type DuplicatePolicy,
@@ -59,6 +71,38 @@ function formatPreviewAmountMinor(amountMinor: number): string {
   const dollars = Math.floor(absolute / 100).toLocaleString("en-US")
   const cents = (absolute % 100).toString().padStart(2, "0")
   return `${sign}$${dollars}.${cents}`
+}
+
+const mappingSelectClass =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+interface PendingMappingFile {
+  file: File
+  content: string
+  headers: string[]
+  message: string
+}
+
+function toMappingSelectState(mapping: CsvColumnMapping): Record<CsvMappableField, string> {
+  return {
+    date: mapping.date ?? "",
+    amount: mapping.amount ?? "",
+    description: mapping.description ?? "",
+    category: mapping.category ?? "",
+    account: mapping.account ?? "",
+    type: mapping.type ?? "",
+  }
+}
+
+function toCsvColumnMapping(state: Record<CsvMappableField, string>): CsvColumnMapping {
+  return {
+    date: state.date.trim() ? state.date : null,
+    amount: state.amount.trim() ? state.amount : null,
+    description: state.description.trim() ? state.description : null,
+    category: state.category.trim() ? state.category : null,
+    account: state.account.trim() ? state.account : null,
+    type: state.type.trim() ? state.type : null,
+  }
 }
 
 interface ReadableImportFile {
@@ -138,6 +182,16 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false)
   const [rules, ruleActions] = useTransactionRules()
   const [categoryOverrides, setCategoryOverrides] = useState<Record<number, string>>({})
+  const [mappingFile, setMappingFile] = useState<PendingMappingFile | null>(null)
+  const [columnMapping, setColumnMapping] = useState<Record<CsvMappableField, string>>({
+    date: "",
+    amount: "",
+    description: "",
+    category: "",
+    account: "",
+    type: "",
+  })
+  const [mappingError, setMappingError] = useState("")
   const [lastImportedBatches, setLastImportedBatches] = useState<
     { id: string; sourceName: string; kind: ImportBatch["kind"] }[]
   >([])
@@ -165,6 +219,8 @@ export function ImportPage() {
     setPreview(null)
     setCollection(null)
     setCategoryOverrides({})
+    setMappingFile(null)
+    setMappingError("")
     setResultFailures([])
     setStatus("")
     setLastImportedBatches([])
@@ -191,20 +247,48 @@ export function ImportPage() {
         }
         setStatus("Reading and validating the selected file…")
         setSelectedFile(file)
-        const next = await importService.preview(
-          await file.text(),
-          file.name,
-          "skip",
-          policy,
-          effectiveRules,
-        )
-        setPreview(next)
-        setCategoryOverrides({})
-        setStatus(
-          next.duplicateFile && next.duplicatePolicy === "skip"
-            ? "This exact file was already imported. Nothing will be written."
-            : "Preview ready. Review the counts before importing.",
-        )
+        let content: string
+        try {
+          content = await file.text()
+        } catch {
+          setImportError("The file could not be read.")
+          return
+        }
+        try {
+          const next = await importService.preview(
+            content,
+            file.name,
+            "skip",
+            policy,
+            effectiveRules,
+          )
+          setPreview(next)
+          setCategoryOverrides({})
+          setStatus(
+            next.duplicateFile && next.duplicatePolicy === "skip"
+              ? "This exact file was already imported. Nothing will be written."
+              : "Preview ready. Review the counts before importing.",
+          )
+        } catch (error) {
+          if (importFileType(file.name) === "csv" && isUnsupportedHeadersError(error)) {
+            try {
+              const headers = readCsvHeaders(content)
+              const message = error instanceof Error ? error.message : "The file could not be read."
+              setMappingFile({ file, content, headers, message })
+              setColumnMapping(toMappingSelectState(suggestCsvMapping(headers)))
+              setMappingError("")
+              setStatus(
+                "This CSV uses unfamiliar headers. Map each field to a column, then preview.",
+              )
+              return
+            } catch {
+              setImportError(error instanceof Error ? error.message : "The file could not be read.")
+              return
+            }
+          }
+          setImportError(error instanceof Error ? error.message : "The file could not be read.")
+          return
+        }
       } else {
         setStatus(`Reading file 0 of ${files.length.toLocaleString()}…`)
         const read = await readFilesIndependently(files, DEFAULT_IMPORT_LIMITS, (done, total) =>
@@ -326,6 +410,44 @@ export function ImportPage() {
   async function changeDuplicatePolicy(policy: DuplicatePolicy) {
     setDuplicatePolicy(policy)
     if (selectedFiles.length > 0) await selectFiles(selectedFiles, policy, rules)
+  }
+
+  async function previewWithMapping() {
+    if (!mappingFile) return
+    const mapping = toCsvColumnMapping(columnMapping)
+    const failure = validateCsvMapping(mapping)
+    if (failure) {
+      setMappingError(failure)
+      return
+    }
+    setBusy(true)
+    setMappingError("")
+    try {
+      const next = await importService.preview(
+        mappingFile.content,
+        mappingFile.file.name,
+        "skip",
+        duplicatePolicy,
+        rules,
+        mapping,
+      )
+      setPreview(next)
+      setCategoryOverrides({})
+      setMappingFile(null)
+      setStatus("Preview ready. Review the counts before importing.")
+    } catch (error) {
+      setMappingError(error instanceof Error ? error.message : "The file could not be read.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function cancelMapping() {
+    if (!mappingFile) return
+    setImportError(mappingFile.message)
+    setMappingFile(null)
+    setMappingError("")
+    setStatus("")
   }
 
   async function deleteImportBatch() {
@@ -565,6 +687,71 @@ export function ImportPage() {
               Transaction rules were applied automatically to transaction files. Open a single file
               to review per-row categories before confirming.
             </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {mappingFile ? (
+        <Card aria-labelledby="csv-mapping-title">
+          <CardHeader>
+            <CardTitle id="csv-mapping-title">Map CSV columns</CardTitle>
+            <CardDescription>
+              {mappingFile.file.name} uses headers we don&apos;t recognize. Map each field to a
+              column, then preview. Extra columns are ignored. Date, Amount, and Description are
+              required.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Found columns: {mappingFile.headers.join(", ")}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {CSV_MAPPABLE_FIELDS.map((field) => (
+                <div key={field.key} className="grid gap-1.5">
+                  <Label htmlFor={`csv-map-${field.key}`}>
+                    {field.label}
+                    {field.required ? " (required)" : " (optional)"}
+                  </Label>
+                  <select
+                    id={`csv-map-${field.key}`}
+                    className={mappingSelectClass}
+                    disabled={busy}
+                    value={columnMapping[field.key]}
+                    onChange={(event) =>
+                      setColumnMapping((current) => ({
+                        ...current,
+                        [field.key]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">{field.required ? "Select a column" : "Do not import"}</option>
+                    {mappingFile.headers.map((header) => (
+                      <option key={header} value={header}>
+                        {header}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            {missingRequiredCsvFields(toCsvColumnMapping(columnMapping)).length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Select a column for each required field to continue.
+              </p>
+            ) : null}
+            {mappingError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {mappingError}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" disabled={busy} onClick={() => void previewWithMapping()}>
+                Preview with mapping
+              </Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={cancelMapping}>
+                Cancel
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : null}

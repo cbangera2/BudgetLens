@@ -14,7 +14,12 @@ import type {
 } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
-import { parseImportContent, sanitizeImportSourceName } from "@/features/imports/parser"
+import type { CsvColumnMapping } from "@/features/imports/csv-mapping"
+import {
+  parseImportContent,
+  parseImportTextWithMapping,
+  sanitizeImportSourceName,
+} from "@/features/imports/parser"
 import {
   DEFAULT_IMPORT_LIMITS,
   type ImportCollectionPreview,
@@ -102,8 +107,11 @@ export class ImportService {
     wealthPolicy: WealthConflictPolicy = "skip",
     duplicatePolicy: DuplicatePolicy = "skip",
     rules?: readonly TransactionRule[],
+    columnMapping?: CsvColumnMapping | null,
   ): Promise<ImportPreview> {
-    const parsed = await parseImportContent(content, sourceName)
+    const parsed = columnMapping
+      ? await parseImportTextWithMapping(content, sourceName, columnMapping)
+      : await parseImportContent(content, sourceName)
     const effectiveRules = resolveTransactionRules(rules)
     const ruleResult = applyTransactionRulesToDrafts(effectiveRules, parsed.transactions)
     const ruleTransactions = ruleResult.applied
