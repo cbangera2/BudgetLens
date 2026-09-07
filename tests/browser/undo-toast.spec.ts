@@ -1,10 +1,17 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 const fixture = (name: string) => path.resolve(directory, "../fixtures", name)
+
+// Keyboard activation instead of coordinate clicks for transactions-table
+// row buttons: on narrow viewports scrolled rows can sit underneath sticky
+// overlays and pointer hit-testing flakes (same pattern as receipts.spec.ts).
+async function activate(button: Locator) {
+  await button.press("Enter")
+}
 
 async function importCsv(page: Page, name: string, expectedRows: number) {
   await page.goto("/imports")
@@ -45,7 +52,7 @@ test("deleting a transaction toasts Undo and restores the row", async ({ page })
   const row = page.getByRole("rowheader", { name: "Example Market, North" })
   await expect(row).toBeVisible()
 
-  await page.getByRole("button", { name: "Delete Example Market, North" }).click()
+  await activate(page.getByRole("button", { name: "Delete Example Market, North" }))
   const dialog = page.getByRole("alertdialog", { name: "Delete transaction?" })
   await expect(dialog).toBeVisible()
   await dialog.getByRole("button", { name: "Delete" }).click()

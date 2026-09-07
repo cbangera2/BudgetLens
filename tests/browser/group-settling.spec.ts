@@ -1,20 +1,30 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 const fixture = path.resolve(directory, "../fixtures/settling-shared.csv")
 
+// Keyboard activation instead of coordinate clicks for transactions-table
+// targets: on narrow viewports scrolled rows can sit underneath sticky
+// overlays and pointer hit-testing flakes (same pattern as receipts.spec.ts).
+async function activate(button: Locator) {
+  await button.press("Enter")
+}
+
 async function markSharedInGroup(page: Page, description: string, groupName: string) {
-  await page.getByRole("button", { name: `Edit ${description}` }).click()
+  await activate(page.getByRole("button", { name: `Edit ${description}` }))
   const dialog = page.getByRole("dialog", { name: `Edit ${description}` })
   await expect(dialog).toBeVisible()
   await dialog.getByLabel("Group (optional)").selectOption({ label: groupName })
   const shared = dialog.getByLabel("Shared (split cost)")
-  if (!(await shared.isChecked())) await shared.check()
+  if (!(await shared.isChecked())) {
+    await shared.focus()
+    await shared.press("Space")
+  }
   await dialog.getByLabel("Divide by").fill("2")
-  await dialog.getByRole("button", { name: "Save changes" }).click()
+  await activate(dialog.getByRole("button", { name: "Save changes" }))
   await expect(page.getByRole("dialog")).toHaveCount(0)
 }
 
