@@ -701,5 +701,16 @@ describe("assistant chart instruction", () => {
         data: [{ label: "Example", value: 1 }],
       }),
     ).toBeNull()
+    expect(
+      parseBudgetLensChartSpec({
+        type: "line",
+        title: "Net worth trend",
+        unit: "$",
+        data: [
+          { label: "Jan", value: 10000 },
+          { label: "Feb", value: 10500 },
+        ],
+      }),
+    ).toMatchObject({ type: "line", title: "Net worth trend" })
   })
 })
