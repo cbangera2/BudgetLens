@@ -160,7 +160,10 @@ describe("ImportPage", () => {
     )
     expect(screen.getByLabelText("CSV or JSON files")).toHaveAttribute("multiple")
     expect(screen.getByRole("checkbox", { name: /skip duplicate rows/i })).toBeChecked()
-    expect(await screen.findByText("No completed imports yet.")).toBeInTheDocument()
+    expect(await screen.findByText(/No completed imports yet\./)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Select CSV or JSON files above to preview your first import\./),
+    ).toBeInTheDocument()
   })
 
   it("previews and confirms a net-worth file", async () => {
@@ -295,5 +298,45 @@ describe("ImportPage", () => {
       await screen.findByText("Removed 2 stored rows from synthetic-transactions.json."),
     ).toBeInTheDocument()
     expect(screen.queryByText("synthetic-transactions.json")).not.toBeInTheDocument()
+  })
+
+  it("links import history rows to their filtered transaction batch", async () => {
+    const batch: ImportBatch = {
+      id: "batch-1",
+      kind: "transactions",
+      sourceName: "synthetic-transactions.csv",
+      sourceHash: "synthetic-hash",
+      rowCount: 1,
+      importedCount: 1,
+      skippedCount: 0,
+      replacedCount: 0,
+      importedAt: "2026-07-22T12:00:00.000Z",
+    }
+    mocks.list.mockResolvedValueOnce([batch])
+    render(<ImportPage />)
+
+    const view = await screen.findByRole("link", {
+      name: "View synthetic-transactions.csv transactions",
+    })
+    expect(view).toHaveAttribute("href", "/transactions?importBatch=batch-1")
+  })
+
+  it("links a confirmed import result to its transaction batch", async () => {
+    const user = userEvent.setup()
+    render(<ImportPage />)
+    const file = new File(["Date,Net Worth\n2026-01-01,1000"], "synthetic-net-worth.csv", {
+      type: "text/csv",
+    })
+    Object.defineProperty(file, "text", {
+      value: () => Promise.resolve("Date,Net Worth\n2026-01-01,1000"),
+    })
+
+    await user.upload(screen.getByLabelText("CSV or JSON files"), file)
+    await user.click(await screen.findByRole("button", { name: "Confirm import" }))
+
+    const view = await screen.findByRole("link", {
+      name: "View synthetic-net-worth.csv",
+    })
+    expect(view).toHaveAttribute("href", "/transactions?importBatch=batch")
   })
 })

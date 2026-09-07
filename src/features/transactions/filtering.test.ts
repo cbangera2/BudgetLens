@@ -41,6 +41,28 @@ describe("transaction view filters", () => {
     expect(serializeTransactionFilters(defaultTransactionFilters)).toBe("")
   })
 
+  it("parses and round-trips import-batch filters", () => {
+    expect(parseTransactionFilters("?importBatch=batch-1")).toMatchObject({
+      importBatch: "batch-1",
+    })
+    expect(parseTransactionFilters("?batch=batch-1")).toMatchObject({
+      importBatch: "batch-1",
+    })
+    const roundTripped = parseTransactionFilters(
+      `?${serializeTransactionFilters({ ...defaultTransactionFilters, importBatch: "batch-1" })}`,
+    )
+    expect(roundTripped.importBatch).toBe("batch-1")
+    expect(
+      filterAndSortTransactions(
+        [
+          buildTransaction({ id: "a", importBatchId: "batch-1" }),
+          buildTransaction({ id: "b", importBatchId: "batch-2" }),
+        ],
+        { ...defaultTransactionFilters, importBatch: "batch-1" },
+      ).map(({ id }) => id),
+    ).toEqual(["a"])
+  })
+
   it("parses merchant, category, and account facets as combinable params", () => {
     expect(
       parseTransactionFilters("?merchant=Coffee%20Shop&category=Dining&account=Card"),

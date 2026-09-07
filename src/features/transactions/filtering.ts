@@ -26,6 +26,7 @@ export interface TransactionViewFilters {
   transactionTypes: string[]
   excludedTransactionTypes: string[]
   group: string
+  importBatch: string
   sort: TransactionSort
 }
 
@@ -47,6 +48,7 @@ export const defaultTransactionFilters: TransactionViewFilters = {
   transactionTypes: [],
   excludedTransactionTypes: [],
   group: "",
+  importBatch: "",
   sort: "date-desc",
 }
 
@@ -145,6 +147,7 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
     transactionTypes: parseList(rawTypes),
     excludedTransactionTypes: parseList(rawExcludedTypes),
     group: params.get("group")?.slice(0, 64) ?? "",
+    importBatch: (params.get("importBatch") ?? params.get("batch") ?? "").slice(0, 64),
     sort: isTransactionSort(sort) ? sort : "date-desc",
   }
 }
@@ -199,6 +202,7 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
   if (filters.excludedTransactionTypes.length)
     params.set("excludedTransactionTypes", filters.excludedTransactionTypes.join(","))
   if (filters.group) params.set("group", filters.group)
+  if (filters.importBatch) params.set("importBatch", filters.importBatch)
   if (filters.sort !== "date-desc") params.set("sort", filters.sort)
   return params.toString()
 }
@@ -260,7 +264,8 @@ export function filterAndSortTransactions(
       matchesAccount &&
       matchesProvider &&
       matchesType &&
-      (!filters.group || transaction.groupId === filters.group)
+      (!filters.group || transaction.groupId === filters.group) &&
+      (!filters.importBatch || transaction.importBatchId === filters.importBatch)
     )
   })
 
