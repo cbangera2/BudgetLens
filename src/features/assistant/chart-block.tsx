@@ -4,7 +4,7 @@
 //
 // ```budgetlens-chart
 // {
-//   "type": "bar" | "donut",
+//   "type": "bar" | "donut" | "line",
 //   "title": "Spending by category",
 //   "unit": "$",
 //   "data": [{ "label": "Groceries", "value": 1141 }]
@@ -12,13 +12,15 @@
 // ```
 //
 // Rules:
-// - `type` is exactly "bar" or "donut".
+// - `type` is exactly "bar", "donut", or "line" ("line" is for trends over
+//   time: points render left-to-right in the given order).
 // - `title` is a non-empty string (1..120 chars after trimming).
 // - `unit` is optional; when present it must be a string (1..24 chars after
 //   trimming, e.g. "$"). Empty/whitespace-only units are treated as absent.
 // - `data` has 1..12 slices; each slice is { label: 1..40 chars, value: finite
 //   number }. Bar lengths and donut fractions use |value| so negative finance
-//   totals still chart; displayed values keep their sign.
+//   totals still chart; displayed values keep their sign. Line charts scale to
+//   the data min/max (flat line when all values are equal).
 // - Anything else -> ChartBlock renders a friendly fallback box, never throws.
 // - Existing dashboard chart infra (src/features/charts, recharts-based
 //   CustomChartRenderer) was intentionally NOT reused: it needs dashboard
@@ -31,7 +33,7 @@ export interface BudgetLensChartDatum {
 }
 
 export interface BudgetLensChartSpec {
-  type: "bar" | "donut"
+  type: "bar" | "donut" | "line"
   title: string
   data: readonly BudgetLensChartDatum[]
   unit?: string
@@ -70,7 +72,7 @@ function formatChartValue(value: number, unit: string | undefined): string {
 export function parseBudgetLensChartSpec(input: unknown): BudgetLensChartSpec | null {
   if (!isRecord(input)) return null
   const rawType = input["type"]
-  const chartType = rawType === "bar" || rawType === "donut" ? rawType : null
+  const chartType = rawType === "bar" || rawType === "donut" || rawType === "line" ? rawType : null
   if (chartType === null) return null
 
   const rawTitle = input["title"]
@@ -284,6 +286,93 @@ function DonutChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
   )
 }
 
+function LineChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
+  const width = 360
+  const height = 180
+  const padLeft = 8
+  const padRight = 8
+  const padTop = 10
+  const padBottom = 22
+  const values = spec.data.map((row) => row.value)
+  const min = values.reduce((acc, value) => (value < acc ? value : acc), values[0] ?? 0)
+  const max = values.reduce((acc, value) => (value > acc ? value : acc), values[0] ?? 0)
+  const span = max - min
+  const plotWidth = width - padLeft - padRight
+  const plotHeight = height - padTop - padBottom
+  const points = spec.data.map((row, index) => {
+    const x =
+      spec.data.length === 1
+        ? padLeft + plotWidth / 2
+        : padLeft + (index / (spec.data.length - 1)) * plotWidth
+    const y =
+      span === 0
+        ? padTop + plotHeight / 2
+        : padTop + plotHeight - ((row.value - min) / span) * plotHeight
+    return { x, y, row }
+  })
+  const path = points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+    .join(" ")
+  const firstLabel = spec.data[0]?.label ?? ""
+  const lastLabel = spec.data.length > 1 ? (spec.data[spec.data.length - 1]?.label ?? "") : ""
+
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="h-auto w-full"
+      aria-label={`${spec.title}: trend over ${spec.data.length} points`}
+    >
+      <title>{spec.title}</title>
+      <line
+        x1={padLeft}
+        y1={padTop + plotHeight}
+        x2={padLeft + plotWidth}
+        y2={padTop + plotHeight}
+        stroke="var(--border)"
+        strokeWidth={1}
+      />
+      {span === 0 || spec.data.length === 1 ? null : (
+        <text x={padLeft} y={padTop - 2} fontSize={10} fill="currentColor" className="tabular-nums">
+          {formatChartValue(max, spec.unit)}
+        </text>
+      )}
+      <path
+        d={path}
+        fill="none"
+        stroke={colorFor(0)}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      {points.map((point) => (
+        <circle
+          key={`dot-${point.x.toFixed(1)}-${point.row.label}`}
+          cx={point.x}
+          cy={point.y}
+          r={3}
+          fill={colorFor(0)}
+        >
+          <title>{`${point.row.label}: ${formatChartValue(point.row.value, spec.unit)}`}</title>
+        </circle>
+      ))}
+      <text x={padLeft} y={height - 6} fontSize={10} fill="currentColor">
+        {firstLabel.length > 14 ? `${firstLabel.slice(0, 13)}…` : firstLabel}
+      </text>
+      {lastLabel && lastLabel !== firstLabel ? (
+        <text
+          x={padLeft + plotWidth}
+          y={height - 6}
+          fontSize={10}
+          fill="currentColor"
+          textAnchor="end"
+        >
+          {lastLabel.length > 14 ? `${lastLabel.slice(0, 13)}…` : lastLabel}
+        </text>
+      ) : null}
+    </svg>
+  )
+}
+
 export function ChartBlock({ spec }: { spec: unknown }) {
   const parsed = parseBudgetLensChartSpec(spec)
   if (parsed === null) {
@@ -301,7 +390,13 @@ export function ChartBlock({ spec }: { spec: unknown }) {
       className="space-y-3 rounded-xl border bg-card p-4 text-card-foreground"
     >
       <figcaption className="text-sm font-medium">{parsed.title}</figcaption>
-      {parsed.type === "bar" ? <BarChartSvg spec={parsed} /> : <DonutChartSvg spec={parsed} />}
+      {parsed.type === "bar" ? (
+        <BarChartSvg spec={parsed} />
+      ) : parsed.type === "line" ? (
+        <LineChartSvg spec={parsed} />
+      ) : (
+        <DonutChartSvg spec={parsed} />
+      )}
       <ChartDataTable spec={parsed} />
     </figure>
   )

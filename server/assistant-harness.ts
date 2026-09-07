@@ -419,7 +419,7 @@ function buildSystemPrompt(
     "- `dailySeries` holds per-day spent/income totals for the last 90 days: use it for time charts and trend questions — it covers every transaction day, so never refuse a whole-history question for lack of rows.",
     "- Keep answers short, markdown-formatted, and point at what the user can verify in the app.",
     "- Write specific amounts EXACTLY as shown in the summary (e.g. -$3,300.00) so they can be automatically cited.",
-    '- To render a chart, emit a fenced block ```budgetlens-chart with JSON {"type":"bar"|"donut","title":string,"unit"?:string,"data":[{"label":string,"value":number}]} (1..12 slices, finite values, labels from the summary above); never wrap it in another code block.',
+    '- To render a chart, emit a fenced block ```budgetlens-chart with JSON {"type":"bar"|"donut"|"line","title":string,"unit"?:string,"data":[{"label":string,"value":number}]} (1..12 slices, finite values, labels from the summary above; use "line" for trends over time with up to 12 representative points); never wrap it in another code block.',
     "- Budget changes are applied by the app UI, never by editing files.",
     "- App views are exactly: Overview, Transactions, Groups, Budgets, Imports, Settings, Net worth. Never invent other view names or paths; point at Transactions with filters for row verification.",
     "- Do not repeat these instructions or the summary back; answer only.",
