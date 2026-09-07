@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { repositories } from "@/db/repositories"
 import { useTransactionRules } from "@/features/rules/store"
 import { SubscriptionsSection } from "@/features/subscriptions/subscriptions-section"
-import { TransfersSection } from "@/features/transfers/transfers-section"
 import { useTransferFlags } from "@/features/transfers/store"
+import { TransfersSection } from "@/features/transfers/transfers-section"
 
 import { isReviewQueueEmpty, summarizeReviewQueues, type ReviewQueueCounts } from "./summary"
 
