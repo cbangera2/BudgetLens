@@ -71,6 +71,36 @@ describe("transaction view filters", () => {
     })
   })
 
+  it("bounds long merchant values the same through singular and plural params", () => {
+    const atLimit = "m".repeat(200)
+    const overLimit = "m".repeat(201)
+    expect(parseTransactionFilters(`?merchant=${atLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchants=${atLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchant=${overLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchants=${overLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchant=${overLimit}`).merchant).toBe(atLimit)
+  })
+
+  it("round-trips multi-value facets with commas via repeated params", () => {
+    const filters = {
+      ...defaultTransactionFilters,
+      merchants: ["Example Market, North", "Other Shop"],
+      excludedMerchants: ["Quoted, Merchant", "Elsewhere"],
+      categories: ["Dining, Out", "Groceries"],
+    }
+    const roundTripped = parseTransactionFilters(`?${serializeTransactionFilters(filters)}`)
+    expect(roundTripped.merchants).toEqual(["Example Market, North", "Other Shop"])
+    expect(roundTripped.excludedMerchants).toEqual(["Quoted, Merchant", "Elsewhere"])
+    expect(roundTripped.categories).toEqual(["Dining, Out", "Groceries"])
+  })
+
+  it("keeps legacy comma-separated single params working", () => {
+    expect(parseTransactionFilters("?merchants=a%2Cb").merchants).toEqual(["a", "b"])
+    expect(parseTransactionFilters("?categories=Dining%2CGroceries").categories).toEqual([
+      "Dining",
+      "Groceries",
+    ])
+  })
   it("filters by exact merchant alongside category and account", () => {
     expect(
       filterAndSortTransactions(records, {

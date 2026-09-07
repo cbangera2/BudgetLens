@@ -62,6 +62,20 @@ test("links merchant and category facets to a pre-filtered transactions view", a
   await expect(page.getByRole("rowheader", { name: "Example Market, North" })).toBeVisible()
 })
 
+test("clearing a URL-backed merchant filter stops filtering", async ({ page }) => {
+  await importCsv(page, "current-transactions.csv", 2)
+
+  await page.goto(`/transactions?merchant=${encodeURIComponent("Example Market, North")}`)
+  await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
+  await expect(page.getByRole("rowheader", { name: "Example Market, North" })).toBeVisible()
+  await expect(page.getByRole("rowheader", { name: 'Quoted "Merchant"' })).toBeHidden()
+
+  await page.getByRole("button", { name: "Merchant" }).click()
+  await page.getByRole("button", { name: "Clear merchant" }).click()
+  await expect(page.getByRole("rowheader", { name: 'Quoted "Merchant"' })).toBeVisible()
+  await expect(page).not.toHaveURL(/merchant=/)
+})
+
 test("budgets category combobox suggests existing categories but accepts custom text", async ({
   page,
 }) => {

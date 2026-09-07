@@ -285,7 +285,9 @@ export function TransactionsPageContent() {
             options={unique(transactions, "description")}
             included={filters.merchants}
             excluded={filters.excludedMerchants}
-            onIncludedChange={(next) => setFilters((current) => ({ ...current, merchants: next }))}
+            onIncludedChange={(next) =>
+              setFilters((current) => ({ ...current, merchants: next, merchant: "" }))
+            }
             onExcludedChange={(next) =>
               setFilters((current) => ({ ...current, excludedMerchants: next }))
             }
@@ -295,7 +297,9 @@ export function TransactionsPageContent() {
             options={unique(transactions, "category")}
             included={filters.categories}
             excluded={filters.excludedCategories}
-            onIncludedChange={(next) => setFilters((current) => ({ ...current, categories: next }))}
+            onIncludedChange={(next) =>
+              setFilters((current) => ({ ...current, categories: next, category: "" }))
+            }
             onExcludedChange={(next) =>
               setFilters((current) => ({ ...current, excludedCategories: next }))
             }
@@ -305,7 +309,9 @@ export function TransactionsPageContent() {
             options={unique(transactions, "accountName")}
             included={filters.accounts}
             excluded={filters.excludedAccounts}
-            onIncludedChange={(next) => setFilters((current) => ({ ...current, accounts: next }))}
+            onIncludedChange={(next) =>
+              setFilters((current) => ({ ...current, accounts: next, account: "" }))
+            }
             onExcludedChange={(next) =>
               setFilters((current) => ({ ...current, excludedAccounts: next }))
             }
@@ -315,7 +321,9 @@ export function TransactionsPageContent() {
             options={unique(transactions, "provider")}
             included={filters.providers}
             excluded={filters.excludedProviders}
-            onIncludedChange={(next) => setFilters((current) => ({ ...current, providers: next }))}
+            onIncludedChange={(next) =>
+              setFilters((current) => ({ ...current, providers: next, provider: "" }))
+            }
             onExcludedChange={(next) =>
               setFilters((current) => ({ ...current, excludedProviders: next }))
             }
@@ -326,7 +334,7 @@ export function TransactionsPageContent() {
             included={filters.transactionTypes}
             excluded={filters.excludedTransactionTypes}
             onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, transactionTypes: next }))
+              setFilters((current) => ({ ...current, transactionTypes: next, transactionType: "" }))
             }
             onExcludedChange={(next) =>
               setFilters((current) => ({ ...current, excludedTransactionTypes: next }))

@@ -12,7 +12,6 @@ import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
 import { ReceiptSection } from "@/features/receipts/receipt-section"
 
-import { transactionsFilteredPath } from "./links"
 import { TransactionForm } from "./transaction-form"
 
 function unique(transactions: readonly Transaction[], field: keyof Transaction): string[] {
@@ -234,22 +233,22 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button variant="outline" asChild>
-            <a href={transactionsFilteredPath({ merchant: transaction.description })}>
+            <Link to="/transactions" search={{ merchant: transaction.description }}>
               Same merchant
-            </a>
+            </Link>
           </Button>
           {transaction.category ? (
             <Button variant="outline" asChild>
-              <a href={transactionsFilteredPath({ category: transaction.category })}>
+              <Link to="/transactions" search={{ category: transaction.category }}>
                 Same category
-              </a>
+              </Link>
             </Button>
           ) : null}
           {transaction.accountName ? (
             <Button variant="outline" asChild>
-              <a href={transactionsFilteredPath({ account: transaction.accountName })}>
+              <Link to="/transactions" search={{ account: transaction.accountName }}>
                 Same account
-              </a>
+              </Link>
             </Button>
           ) : null}
         </CardContent>

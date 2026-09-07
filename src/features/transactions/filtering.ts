@@ -60,17 +60,38 @@ export function isTransactionSort(value: unknown): value is TransactionSort {
   )
 }
 
-function parseList(raw: string): string[] {
+function parseList(raw: string, max = 100): string[] {
   return raw
     .split(",")
-    .map((value) => value.trim().slice(0, 100))
+    .map((value) => value.trim().slice(0, max))
     .filter(Boolean)
 }
 
-function parseSingleOrList(singular: string | null, plural: string | null, max = 100): string[] {
-  if (plural !== null) return parseList(plural)
+// Repeated query params preserve commas inside values (e.g. "Example Market,
+// North"). A single occurrence keeps legacy comma-separated parsing so existing
+// bookmarks continue to work.
+function parseRepeatedOrLegacy(params: URLSearchParams, name: string, max = 100): string[] {
+  const occurrences = params.getAll(name)
+  if (occurrences.length > 1)
+    return occurrences.map((value) => value.trim().slice(0, max)).filter(Boolean)
+  if (occurrences.length === 1) return parseList(occurrences[0] ?? "", max)
+  return []
+}
+
+function parseFacetList(
+  params: URLSearchParams,
+  singularName: string,
+  pluralName: string,
+  max = 100,
+): string[] {
+  if (params.has(pluralName)) return parseRepeatedOrLegacy(params, pluralName, max)
+  const singular = params.get(singularName)
   if (singular !== null && singular.trim()) return [singular.trim().slice(0, max)]
   return []
+}
+
+function appendListParam(params: URLSearchParams, name: string, values: readonly string[]) {
+  for (const value of values) params.append(name, value)
 }
 
 export function parseTransactionFilters(search: string): TransactionViewFilters {
@@ -79,9 +100,7 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
   const merchantSingular = params.get("merchant")
   const categorySingular = params.get("category")
   const accountSingular = params.get("account")
-  const rawExcludedMerchants = params.get("excludedMerchants") ?? ""
   const rawExcluded = params.get("excludedCategories") ?? params.get("excludeCategory") ?? ""
-  const rawExcludedAccounts = params.get("excludedAccounts") ?? ""
   const rawProviders = params.get("providers") ?? params.get("provider") ?? ""
   const rawExcludedProviders = params.get("excludedProviders") ?? ""
   const rawTypes = params.get("transactionTypes") ?? params.get("type") ?? ""
@@ -89,14 +108,16 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
   return {
     search: params.get("q")?.slice(0, 200) ?? "",
     merchant: merchantSingular?.slice(0, 200) ?? "",
-    merchants: parseSingleOrList(merchantSingular, params.get("merchants"), 200),
-    excludedMerchants: parseList(rawExcludedMerchants),
+    merchants: parseFacetList(params, "merchant", "merchants", 200),
+    excludedMerchants: parseRepeatedOrLegacy(params, "excludedMerchants", 200),
     category: categorySingular?.slice(0, 100) ?? "",
-    categories: parseSingleOrList(categorySingular, params.get("categories")),
-    excludedCategories: parseList(rawExcluded),
+    categories: parseFacetList(params, "category", "categories"),
+    excludedCategories: params.has("excludedCategories")
+      ? parseRepeatedOrLegacy(params, "excludedCategories")
+      : parseList(rawExcluded),
     account: accountSingular?.slice(0, 100) ?? "",
-    accounts: parseSingleOrList(accountSingular, params.get("accounts")),
-    excludedAccounts: parseList(rawExcludedAccounts),
+    accounts: parseFacetList(params, "account", "accounts"),
+    excludedAccounts: parseRepeatedOrLegacy(params, "excludedAccounts"),
     provider: params.get("provider")?.slice(0, 100) ?? "",
     providers: parseList(rawProviders),
     excludedProviders: parseList(rawExcludedProviders),
@@ -112,27 +133,40 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
   const params = new URLSearchParams()
   if (filters.search) params.set("q", filters.search)
   // Merchants (description facet): single values use the singular param so
-  // commas in merchant names survive the round-trip.
+  // commas in merchant names survive the round-trip; multiple values use
+  // repeated params for the same reason.
   const [singleMerchant] = filters.merchants
-  if (filters.merchants.length > 1) params.set("merchants", filters.merchants.join(","))
+  if (filters.merchants.length > 1) appendListParam(params, "merchants", filters.merchants)
   else if (singleMerchant) params.set("merchant", singleMerchant)
   else if (filters.merchant) params.set("merchant", filters.merchant)
-  if (filters.excludedMerchants.length)
-    params.set("excludedMerchants", filters.excludedMerchants.join(","))
+  if (filters.excludedMerchants.length > 1)
+    appendListParam(params, "excludedMerchants", filters.excludedMerchants)
+  else if (filters.excludedMerchants.length === 1) {
+    const [single] = filters.excludedMerchants
+    if (single) params.append("excludedMerchants", single)
+  }
   // Categories
   const [singleCategory] = filters.categories
-  if (filters.categories.length > 1) params.set("categories", filters.categories.join(","))
+  if (filters.categories.length > 1) appendListParam(params, "categories", filters.categories)
   else if (singleCategory) params.set("category", singleCategory)
   else if (filters.category) params.set("category", filters.category)
-  if (filters.excludedCategories.length)
-    params.set("excludedCategories", filters.excludedCategories.join(","))
+  if (filters.excludedCategories.length > 1)
+    appendListParam(params, "excludedCategories", filters.excludedCategories)
+  else if (filters.excludedCategories.length === 1) {
+    const [single] = filters.excludedCategories
+    if (single) params.append("excludedCategories", single)
+  }
   // Accounts
   const [singleAccount] = filters.accounts
-  if (filters.accounts.length > 1) params.set("accounts", filters.accounts.join(","))
+  if (filters.accounts.length > 1) appendListParam(params, "accounts", filters.accounts)
   else if (singleAccount) params.set("account", singleAccount)
   else if (filters.account) params.set("account", filters.account)
-  if (filters.excludedAccounts.length)
-    params.set("excludedAccounts", filters.excludedAccounts.join(","))
+  if (filters.excludedAccounts.length > 1)
+    appendListParam(params, "excludedAccounts", filters.excludedAccounts)
+  else if (filters.excludedAccounts.length === 1) {
+    const [single] = filters.excludedAccounts
+    if (single) params.append("excludedAccounts", single)
+  }
   // Providers
   if (filters.providers.length) params.set("providers", filters.providers.join(","))
   else if (filters.provider) params.set("provider", filters.provider)
