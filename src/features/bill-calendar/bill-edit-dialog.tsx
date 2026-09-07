@@ -141,10 +141,9 @@ export function BillEditDialog({
             <Label htmlFor="bill-edit-amount">Expected amount (USD)</Label>
             <Input
               id="bill-edit-amount"
-              type="number"
+              type="text"
               inputMode="decimal"
-              min="0.01"
-              step="0.01"
+              autoComplete="off"
               autoFocus
               placeholder={dollarsPlaceholder(subscription.medianAmountMinor)}
               value={amount}

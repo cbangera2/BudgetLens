@@ -333,6 +333,28 @@ describe("bill overrides", () => {
     expect(screen.getByText(/Month total \$12\.99/)).toBeInTheDocument()
   })
 
+  it("rejects comma-decimal amounts with a visible error instead of dropping them", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    const amount = screen.getByLabelText("Expected amount (USD)")
+    await user.clear(amount)
+    await user.type(amount, "12,99")
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+
+    // A text field surfaces the raw input so the parser can reject it loudly;
+    // a number field would sanitize it to empty and silently keep detected.
+    expect(screen.getByRole("alert")).toHaveTextContent(/greater than \$0/)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText(/Month total \$12\.99/)).toBeInTheDocument()
+  })
+
   it("dismisses a merchant everywhere", async () => {
     const user = userEvent.setup()
     renderPage({
