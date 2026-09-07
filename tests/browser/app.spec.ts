@@ -60,7 +60,9 @@ test("imports multiple JSON files and reports partial-invalid selections", async
 
   await page.getByRole("link", { name: "Transactions", exact: true }).click()
   await expect(page.getByRole("rowheader", { name: "Invented Corner Shop" })).toBeVisible()
-  await expect(page.getByText("-$18.75")).toBeVisible()
+  // Scoped to the Amount cell: the per-account running Balance column can
+  // render the same value for single-transaction accounts.
+  await expect(page.getByRole("cell", { name: "-$18.75" }).first()).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Imaginary Transit" })).toBeVisible()
 })
 

@@ -185,6 +185,18 @@ export function toggleIdInSelection(
   return next
 }
 
+/** True when two per-transaction receipt-count maps hold the same entries. */
+export function areReceiptCountsEqual(
+  left: ReadonlyMap<string, number>,
+  right: ReadonlyMap<string, number>,
+): boolean {
+  if (left.size !== right.size) return false
+  for (const [id, count] of left) {
+    if (right.get(id) !== count) return false
+  }
+  return true
+}
+
 /** Inclusive id range between two anchors in display order (either direction). */
 export function orderedRangeIds(
   orderedIds: readonly string[],

@@ -2,6 +2,7 @@ import { buildTransaction } from "@/test/factories"
 
 import {
   applyRangeToSelection,
+  areReceiptCountsEqual,
   compareTransactionsByColumn,
   computeRunningBalances,
   formatRelativeDate,
@@ -204,6 +205,24 @@ describe("transaction running balances", () => {
     const balances = computeRunningBalances(rows)
     expect(balances.get("credit")).toBe(2500)
     expect(balances.get("debit")).toBe(1500)
+  })
+})
+
+describe("transaction receipt counts", () => {
+  it("compares per-transaction counts by value", () => {
+    expect(areReceiptCountsEqual(new Map(), new Map())).toBe(true)
+    expect(areReceiptCountsEqual(new Map([["a", 1]]), new Map([["a", 1]]))).toBe(true)
+    expect(
+      areReceiptCountsEqual(
+        new Map([["a", 1]]),
+        new Map([
+          ["a", 1],
+          ["b", 2],
+        ]),
+      ),
+    ).toBe(false)
+    expect(areReceiptCountsEqual(new Map([["a", 1]]), new Map([["a", 2]]))).toBe(false)
+    expect(areReceiptCountsEqual(new Map([["a", 1]]), new Map([["b", 1]]))).toBe(false)
   })
 })
 

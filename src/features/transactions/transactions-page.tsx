@@ -45,6 +45,7 @@ import { SavedViewsBar } from "./saved-views-bar"
 import { SearchHintChips } from "./search-hint-chips"
 import { TransactionForm } from "./transaction-form"
 import {
+  areReceiptCountsEqual,
   computeRunningBalances,
   formatRelativeDate,
   nextColumnSort,
@@ -118,11 +119,12 @@ export function TransactionsPageContent() {
 
   useEffect(() => {
     const refreshReceipts = () => {
-      setReceiptCounts(
-        new Map(
-          Object.entries(readReceiptSidecar()).map(([id, refs]) => [id, refs.length] as const),
-        ),
+      const next = new Map(
+        Object.entries(readReceiptSidecar()).map(([id, refs]) => [id, refs.length] as const),
       )
+      // Keep the previous state when nothing changed so the interval tick
+      // does not re-render the table every two seconds.
+      setReceiptCounts((current) => (areReceiptCountsEqual(current, next) ? current : next))
     }
     refreshReceipts()
     window.addEventListener("storage", refreshReceipts)
@@ -290,15 +292,29 @@ export function TransactionsPageContent() {
       : `Sort by ${label}, currently descending`
   }
 
+  // Sort direction icons stay hidden below the md breakpoint: even a 12px
+  // icon per header adds enough table min-content to push this already-wide
+  // page past the mobile layout viewport and break dialog hit-testing.
   function sortIcon(key: TransactionColumnKey) {
+    const className = "hidden size-3 md:inline-flex"
     if (!columnSort || columnSort.key !== key) {
-      return <ArrowUpDown className="size-3" aria-hidden="true" />
+      return <ArrowUpDown className={className} aria-hidden="true" />
     }
     return columnSort.direction === "asc" ? (
-      <ArrowUp className="size-3" aria-hidden="true" />
+      <ArrowUp className={className} aria-hidden="true" />
     ) : (
-      <ArrowDown className="size-3" aria-hidden="true" />
+      <ArrowDown className={className} aria-hidden="true" />
     )
+  }
+
+  // Active-column styling uses underline variants only: they add no width,
+  // so the table keeps its baseline min-content on narrow viewports.
+  function sortButtonClassName(key: TransactionColumnKey): string {
+    if (!columnSort || columnSort.key !== key) {
+      return "inline-flex items-center gap-1 font-medium hover:text-foreground"
+    }
+    const decoration = columnSort.direction === "asc" ? "decoration-solid" : "decoration-dotted"
+    return `inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-4 ${decoration} hover:text-foreground`
   }
 
   function ariaSortFor(key: TransactionColumnKey): "ascending" | "descending" | "none" {
@@ -674,7 +690,7 @@ export function TransactionsPageContent() {
                         type="button"
                         aria-label={sortButtonLabel("date", "date")}
                         onClick={() => setColumnSort(nextColumnSort(columnSort, "date"))}
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        className={sortButtonClassName("date")}
                       >
                         Date {sortIcon("date")}
                       </button>
@@ -684,7 +700,7 @@ export function TransactionsPageContent() {
                         type="button"
                         aria-label={sortButtonLabel("merchant", "merchant")}
                         onClick={() => setColumnSort(nextColumnSort(columnSort, "merchant"))}
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        className={sortButtonClassName("merchant")}
                       >
                         Description {sortIcon("merchant")}
                       </button>
@@ -697,7 +713,7 @@ export function TransactionsPageContent() {
                         type="button"
                         aria-label={sortButtonLabel("amount", "amount")}
                         onClick={() => setColumnSort(nextColumnSort(columnSort, "amount"))}
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        className={sortButtonClassName("amount")}
                       >
                         Amount {sortIcon("amount")}
                       </button>

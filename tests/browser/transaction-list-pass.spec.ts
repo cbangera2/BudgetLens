@@ -47,30 +47,44 @@ test("column headers toggle date and merchant sort order", async ({ page }) => {
   await expect(page.getByRole("rowheader", { name: "Example Market, North" })).toBeVisible()
 
   // Default base sort is newest first: Quoted Merchant (01-04) before Example (01-03).
-  expect(await merchantOrder(page)).toEqual(['Quoted "Merchant"', "Example Market, North"])
+  // Order reads are polled: locator.click() returns after dispatch, not after
+  // React commits the re-render.
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(['Quoted "Merchant"', "Example Market, North"])
 
   await page.getByRole("button", { name: "Sort by date" }).click()
-  expect(await merchantOrder(page)).toEqual(["Example Market, North", 'Quoted "Merchant"'])
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(["Example Market, North", 'Quoted "Merchant"'])
   await expect(page.locator("thead th").filter({ hasText: "Date" })).toHaveAttribute(
     "aria-sort",
     "ascending",
   )
 
   await page.getByRole("button", { name: /Sort by date/ }).click()
-  expect(await merchantOrder(page)).toEqual(['Quoted "Merchant"', "Example Market, North"])
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(['Quoted "Merchant"', "Example Market, North"])
 
   await page.getByRole("button", { name: /Sort by date/ }).click()
   await expect(page.locator("thead th").filter({ hasText: "Date" })).toHaveAttribute(
     "aria-sort",
     "none",
   )
-  expect(await merchantOrder(page)).toEqual(['Quoted "Merchant"', "Example Market, North"])
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(['Quoted "Merchant"', "Example Market, North"])
 
   await page.getByRole("button", { name: "Sort by merchant" }).click()
-  expect(await merchantOrder(page)).toEqual(["Example Market, North", 'Quoted "Merchant"'])
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(["Example Market, North", 'Quoted "Merchant"'])
 
   await page.getByRole("button", { name: /Sort by merchant/ }).click()
-  expect(await merchantOrder(page)).toEqual(['Quoted "Merchant"', "Example Market, North"])
+  await expect
+    .poll(async () => merchantOrder(page))
+    .toEqual(['Quoted "Merchant"', "Example Market, North"])
 })
 
 test("rows show relative dates, running balances, and receipt badges", async ({ page }) => {
