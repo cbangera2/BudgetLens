@@ -33,6 +33,7 @@ const navigation = [
   { to: "/review", label: "Review", icon: Inbox },
   { to: "/net-worth", label: "Net worth", icon: Landmark },
   { to: "/transactions", label: "Transactions", icon: ReceiptText },
+  { to: "/bills", label: "Bills", icon: ReceiptText },
   { to: "/groups", label: "Groups", icon: Layers },
   { to: "/budgets", label: "Budgets", icon: Target },
   { to: "/imports", label: "Imports", icon: Upload },
