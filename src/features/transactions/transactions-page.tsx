@@ -16,9 +16,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { IncludeExcludeFilter } from "@/components/ui/include-exclude-filter"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { repositories } from "@/db/repositories"
 import type { Transaction, TransactionDraft } from "@/domain/models"
@@ -32,17 +29,14 @@ import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
-import { DatePresetChips } from "./date-preset-chips"
 import {
   defaultTransactionFilters,
   filterAndSortTransactions,
-  isTransactionSort,
   parseTransactionFilters,
   serializeTransactionFilters,
   type TransactionViewFilters,
 } from "./filtering"
-import { SavedViewsBar } from "./saved-views-bar"
-import { SearchHintChips } from "./search-hint-chips"
+import { TransactionFilterBar } from "./transaction-filter-bar"
 import { TransactionForm } from "./transaction-form"
 import {
   areReceiptCountsEqual,
@@ -436,120 +430,19 @@ export function TransactionsPageContent() {
           <CardTitle>Filters</CardTitle>
           <CardDescription>Filter choices are saved in the page URL.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor="transaction-search">Search</Label>
-            <Input
-              id="transaction-search"
-              type="search"
-              placeholder="Description, category, account, provider, or notes"
-              value={filters.search}
-              onChange={(event) => patchFilter({ search: event.target.value })}
-            />
-            <SearchHintChips search={filters.search} />
-          </div>
-          <DatePresetChips
-            from={filters.from}
-            to={filters.to}
-            onChange={(range) => patchFilter(range)}
+        <CardContent>
+          <TransactionFilterBar
+            filters={filters}
+            groups={groups}
+            merchantOptions={unique(transactions, "description")}
+            categoryOptions={unique(transactions, "category")}
+            accountOptions={unique(transactions, "accountName")}
+            providerOptions={unique(transactions, "provider")}
+            transactionTypeOptions={unique(transactions, "transactionType")}
+            onPatch={patchFilter}
+            onApply={setFilters}
+            onReset={() => setFilters(defaultTransactionFilters)}
           />
-          <SavedViewsBar filters={filters} onApply={setFilters} />
-          <IncludeExcludeFilter
-            label="Merchant"
-            options={unique(transactions, "description")}
-            included={filters.merchants}
-            excluded={filters.excludedMerchants}
-            onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, merchants: next, merchant: "" }))
-            }
-            onExcludedChange={(next) =>
-              setFilters((current) => ({ ...current, excludedMerchants: next }))
-            }
-          />
-          <IncludeExcludeFilter
-            label="Category"
-            options={unique(transactions, "category")}
-            included={filters.categories}
-            excluded={filters.excludedCategories}
-            onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, categories: next, category: "" }))
-            }
-            onExcludedChange={(next) =>
-              setFilters((current) => ({ ...current, excludedCategories: next }))
-            }
-          />
-          <IncludeExcludeFilter
-            label="Account"
-            options={unique(transactions, "accountName")}
-            included={filters.accounts}
-            excluded={filters.excludedAccounts}
-            onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, accounts: next, account: "" }))
-            }
-            onExcludedChange={(next) =>
-              setFilters((current) => ({ ...current, excludedAccounts: next }))
-            }
-          />
-          <IncludeExcludeFilter
-            label="Provider"
-            options={unique(transactions, "provider")}
-            included={filters.providers}
-            excluded={filters.excludedProviders}
-            onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, providers: next, provider: "" }))
-            }
-            onExcludedChange={(next) =>
-              setFilters((current) => ({ ...current, excludedProviders: next }))
-            }
-          />
-          <IncludeExcludeFilter
-            label="Transaction type"
-            options={unique(transactions, "transactionType")}
-            included={filters.transactionTypes}
-            excluded={filters.excludedTransactionTypes}
-            onIncludedChange={(next) =>
-              setFilters((current) => ({ ...current, transactionTypes: next, transactionType: "" }))
-            }
-            onExcludedChange={(next) =>
-              setFilters((current) => ({ ...current, excludedTransactionTypes: next }))
-            }
-          />
-          <div className="grid gap-1.5">
-            <Label htmlFor="filter-group">Group</Label>
-            <Select
-              id="filter-group"
-              aria-label="Group"
-              value={filters.group || "__all__"}
-              onValueChange={(value) => patchFilter({ group: value === "__all__" ? "" : value })}
-              options={[
-                { value: "__all__", label: "All" },
-                ...groups.map((group) => ({ value: group.id, label: group.name })),
-              ]}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="transaction-sort">Sort</Label>
-            <Select
-              id="transaction-sort"
-              aria-label="Sort"
-              value={filters.sort}
-              onValueChange={(value) => {
-                if (isTransactionSort(value)) patchFilter({ sort: value })
-              }}
-              options={[
-                { value: "date-desc", label: "Newest first" },
-                { value: "date-asc", label: "Oldest first" },
-                { value: "amount-desc", label: "Amount: high to low" },
-                { value: "amount-asc", label: "Amount: low to high" },
-                { value: "description", label: "Description" },
-              ]}
-            />
-          </div>
-          <div className="flex items-end">
-            <Button variant="ghost" onClick={() => setFilters(defaultTransactionFilters)}>
-              Clear filters
-            </Button>
-          </div>
         </CardContent>
       </Card>
 

@@ -13,7 +13,7 @@ interface DatePresetChipsProps {
 export function DatePresetChips({ from, to, onChange }: DatePresetChipsProps) {
   const active = matchDatePreset(from, to)
   return (
-    <div className="grid gap-1.5 sm:col-span-2">
+    <div className="grid gap-1.5">
       <fieldset className="grid gap-1.5">
         <legend className="text-sm leading-none font-medium">Date</legend>
         <div className="flex flex-wrap gap-1.5">

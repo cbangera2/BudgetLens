@@ -77,6 +77,7 @@ test("clearing a URL-backed merchant filter stops filtering", async ({ page }) =
   await expect(page.getByRole("rowheader", { name: "Example Market, North" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: 'Quoted "Merchant"' })).toBeHidden()
 
+  await page.getByRole("button", { name: "More filters" }).click()
   await page.getByRole("button", { name: "Merchant", exact: true }).click()
   await page.getByRole("button", { name: "Clear merchant" }).click()
   await expect(page.getByRole("rowheader", { name: 'Quoted "Merchant"' })).toBeVisible()
