@@ -54,10 +54,12 @@ function stripQuotes(value: string): string {
   return value
 }
 
-// Matches one operator token at the current position. Quoted values may
-// contain spaces; unquoted values run to the next whitespace.
-const OPERATOR_PATTERN = /\s*(amount|merchant|cat|category)\s*:\s*("[^"]*"|'[^']*'|\S*)/gi
+// Matches one operator token at the start of the query or after whitespace,
+// so `giftamount:>100` stays plain text. Quoted values may contain spaces;
+// unquoted values run to the next whitespace.
+const OPERATOR_PATTERN = /(?:^|\s)(amount|merchant|cat|category)\s*:\s*("[^"]*"|'[^']*'|\S*)/gi
 const AMOUNT_VALUE_PATTERN = /^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)$/
+const DECIMAL_PATTERN = /^(-?)(\d+)(?:\.(\d+))?$/
 
 function comparisonLabel(op: AmountComparison): string {
   if (op === "gt") return ">"
@@ -65,6 +67,27 @@ function comparisonLabel(op: AmountComparison): string {
   if (op === "lt") return "<"
   if (op === "lte") return "<="
   return "="
+}
+
+/**
+ * Converts a decimal dollar string to integer minor units without binary
+ * floating point, so `1.005` rounds to 101 cents instead of 100. Returns null
+ * for malformed input.
+ */
+export function parseDollarsToMinor(text: string): number | null {
+  const parsed = DECIMAL_PATTERN.exec(text)
+  if (!parsed) return null
+  const negative = parsed[1] === "-"
+  const dollars = Number(parsed[2])
+  const fraction = parsed[3] ?? ""
+  if (!Number.isSafeInteger(dollars)) return null
+  const cents = Number((fraction + "00").slice(0, 2))
+  // Round half-up on any further fractional digits (e.g. `1.005` -> 101).
+  const roundUp = fraction.length > 2 && (fraction[2] ?? "0") >= "5"
+  let valueMinor = dollars * 100 + cents + (roundUp ? 1 : 0)
+  if (!Number.isSafeInteger(valueMinor)) return null
+  if (negative) valueMinor = -valueMinor
+  return valueMinor
 }
 
 function toComparison(symbol: string | undefined): AmountComparison {
@@ -94,10 +117,8 @@ export function parseSearchQuery(input: string): ParsedSearch {
       const parsed = AMOUNT_VALUE_PATTERN.exec(value)
       if (!parsed || amounts.length >= MAX_CONDITIONS) return match
       const op = toComparison(parsed[1])
-      const dollars = Number(parsed[2])
-      if (!Number.isFinite(dollars)) return match
-      const valueMinor = Math.round(dollars * 100)
-      if (!Number.isSafeInteger(valueMinor)) return match
+      const valueMinor = parseDollarsToMinor(parsed[2] ?? "")
+      if (valueMinor === null || amounts.length >= MAX_CONDITIONS) return match
       amounts.push({ op, valueMinor, raw: match.trim() })
       chips.push({
         kind: "amount",

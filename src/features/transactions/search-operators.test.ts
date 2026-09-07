@@ -1,4 +1,4 @@
-import { matchesAmountConditions, parseSearchQuery } from "./search-operators"
+import { matchesAmountConditions, parseDollarsToMinor, parseSearchQuery } from "./search-operators"
 
 describe("search operators", () => {
   it("parses amount comparisons as integer minor units", () => {
@@ -87,6 +87,39 @@ describe("search operators", () => {
     expect(parseSearchQuery("")).toMatchObject({ text: "", amounts: [], chips: [] })
   })
 
+  it("requires a token boundary before each operator", () => {
+    for (const query of [
+      "giftamount:>100",
+      "giftmerchant:deli",
+      "giftcat:food",
+      "somecategory:x",
+    ]) {
+      const parsed = parseSearchQuery(query)
+      expect(parsed.amounts).toEqual([])
+      expect(parsed.merchant).toBeNull()
+      expect(parsed.category).toBeNull()
+      expect(parsed.chips).toEqual([])
+      expect(parsed.text).toBe(query)
+    }
+    // Operators after whitespace still parse.
+    expect(parseSearchQuery("lunch amount:>100").amounts).toHaveLength(1)
+    expect(parseSearchQuery("lunch merchant:deli").merchant).toBe("deli")
+  })
+
+  it("converts decimal strings to minor units without binary float error", () => {
+    expect(parseDollarsToMinor("1.005")).toBe(101)
+    expect(parseDollarsToMinor("1.004")).toBe(100)
+    expect(parseDollarsToMinor("0.07")).toBe(7)
+    expect(parseDollarsToMinor("100")).toBe(10_000)
+    expect(parseDollarsToMinor("-20")).toBe(-2_000)
+    expect(parseDollarsToMinor("-0.07")).toBe(-7)
+    expect(parseDollarsToMinor("abc")).toBeNull()
+    expect(parseDollarsToMinor("")).toBeNull()
+    expect(parseSearchQuery("amount:=1.005").amounts[0]).toMatchObject({
+      op: "eq",
+      valueMinor: 101,
+    })
+  })
   it("supports combined amount bounds as a range", () => {
     const parsed = parseSearchQuery("amount:>100 amount:<500")
     expect(parsed.amounts).toHaveLength(2)

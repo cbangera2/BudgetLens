@@ -1,3 +1,4 @@
+import { isTransactionSort } from "./filtering"
 import type { TransactionViewFilters } from "./filtering"
 
 // Saved transaction filter views, persisted in localStorage under a versioned
@@ -28,6 +29,49 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
+const FILTER_TEXT_KEYS = [
+  "search",
+  "merchant",
+  "category",
+  "account",
+  "provider",
+  "transactionType",
+  "group",
+  "from",
+  "to",
+] as const
+
+const FILTER_LIST_KEYS = [
+  "merchants",
+  "excludedMerchants",
+  "categories",
+  "excludedCategories",
+  "accounts",
+  "excludedAccounts",
+  "providers",
+  "excludedProviders",
+  "transactionTypes",
+  "excludedTransactionTypes",
+] as const
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+// Stored views replace the whole filter state on apply, so every required
+// field is validated up front; a partial payload (e.g. `filters: {}`) would
+// otherwise crash filtering on the first `.includes` call.
+function isFilterState(value: unknown): value is TransactionViewFilters {
+  if (!isRecord(value)) return false
+  for (const key of FILTER_TEXT_KEYS) {
+    if (typeof value[key] !== "string") return false
+  }
+  for (const key of FILTER_LIST_KEYS) {
+    if (!isStringList(value[key])) return false
+  }
+  return isTransactionSort(value.sort)
+}
+
 function isSavedView(value: unknown): value is SavedView {
   if (!isRecord(value)) return false
   return (
@@ -35,7 +79,7 @@ function isSavedView(value: unknown): value is SavedView {
     value.id.length > 0 &&
     typeof value.name === "string" &&
     value.name.length > 0 &&
-    isRecord(value.filters) &&
+    isFilterState(value.filters) &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string"
   )

@@ -89,6 +89,31 @@ describe("saved views", () => {
     expect(JSON.parse(storage.getItem(SAVED_VIEWS_KEY) ?? "")).toMatchObject({ version: 1 })
   })
 
+  it("drops stored views with malformed filter payloads", () => {
+    const valid = createSavedView([], "Good", filters)[0]
+    if (!valid) throw new Error("expected a valid view")
+    const malformed = [
+      {
+        id: "bad-empty",
+        name: "Bad",
+        filters: {},
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "bad-types",
+        name: "Bad",
+        filters: { ...filters, search: 42, merchants: "nope", sort: "newest" },
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]
+    const storage = memoryStorage({
+      [SAVED_VIEWS_KEY]: JSON.stringify({ version: 1, views: [...malformed, valid] }),
+    })
+    expect(loadSavedViews(storage)).toEqual([valid])
+  })
+
   it("treats corrupt or missing payloads as an empty list", () => {
     expect(loadSavedViews(memoryStorage())).toEqual([])
     expect(loadSavedViews(memoryStorage({ [SAVED_VIEWS_KEY]: "not json" }))).toEqual([])
