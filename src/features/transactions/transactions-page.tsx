@@ -267,12 +267,18 @@ export function TransactionsPageContent() {
 
   async function bulkRemove() {
     const ids = [...selected]
+    const byId = new Map((transactions ?? []).map((row) => [row.id, row]))
+    const removed: Transaction[] = []
+    let failed = false
     for (const id of ids) {
+      const snapshot = byId.get(id)
       try {
         // oxlint-disable-next-line no-await-in-loop -- Deterministic removal order.
         await repositories.transactions.remove(id)
       } catch {
         // A missing row is already gone; keep removing the rest.
+        failed = true
+        continue
       }
       try {
         // oxlint-disable-next-line no-await-in-loop -- Per-row receipt cleanup.
@@ -280,9 +286,25 @@ export function TransactionsPageContent() {
       } catch {
         // Receipt cleanup is best-effort and never blocks bulk delete.
       }
+      if (snapshot) removed.push(snapshot)
     }
-    setSelected(new Set())
+    setSelected((current) => {
+      const next = new Set(current)
+      for (const row of removed) next.delete(row.id)
+      return next
+    })
+    if (failed) {
+      // Matches the single-delete failure contract: keep the dialog open and
+      // report, so the remaining selection can be retried.
+      toastDeleteFailed("Transactions")
+      return
+    }
     setBulkDeleting(false)
+    setSelected(new Set())
+    const [single] = removed
+    if (removed.length === 1 && single) {
+      notifyDeletedWithUndo("Transaction", { kind: "transaction", transaction: single })
+    }
   }
 
   function sortButtonLabel(key: TransactionColumnKey, label: string): string {
