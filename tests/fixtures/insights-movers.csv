@@ -1,0 +1,10 @@
+Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Provider,Labels,Notes
+2026-08-05,Insight Neighborhood Market,-50.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-08
+2026-08-12,Insight Neighborhood Market,-30.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-08
+2026-08-06,Insight Corner Deli,-60.00,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-08
+2026-08-13,Insight Corner Deli,-40.00,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-08
+2026-08-02,Insight Iron Gym,-25.00,Fitness,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-08
+2026-09-05,Insight Neighborhood Market,-120.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-09
+2026-09-12,Insight Neighborhood Market,-80.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-09
+2026-09-06,Insight Corner Deli,-20.00,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-09
+2026-09-07,Insight Juniper Outfitters,-45.00,Shopping,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic fixture period 2026-09
