@@ -694,6 +694,12 @@ describe("assistant chart instruction", () => {
         ],
       }),
     ).toMatchObject({ type: "bar", title: "Spending by category" })
-    expect(parseBudgetLensChartSpec({ type: "pie", title: "Nope", data: [] })).toBeNull()
+    expect(
+      parseBudgetLensChartSpec({
+        type: "pie",
+        title: "Nope",
+        data: [{ label: "Example", value: 1 }],
+      }),
+    ).toBeNull()
   })
 })
