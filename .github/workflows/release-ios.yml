@@ -71,7 +71,10 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/dd"
           CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" build
 
-      - name: Package unsigned ipa and draft prerelease
+      - name: Package, validate, and upload unsigned ipa
+        # Validates the just-built bundle BEFORE uploading, in this same
+        # write-token job: draft releases are invisible to read-only tokens,
+        # so a separate least-privilege validate job can never read them back.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
@@ -88,43 +91,6 @@ jobs:
           cp -R "$APP" "$WORK/Payload/"
           IPA="$WORK/BudgetLens-${TAG}-unsigned.ipa"
           (cd "$WORK" && zip -qr "$IPA" Payload)
-          if ! gh release view "$TAG" --json tagName > /dev/null 2>&1; then
-            gh release create "$TAG" --draft --prerelease \
-              --title "BudgetLens iOS ${TAG} (prerelease)" \
-              --notes "Unsigned device build for AltStore sideloading. AltStore re-signs with your Apple ID and auto-refreshes."
-          fi
-          gh release upload "$TAG" "$IPA" --clobber
-
-  validate:
-    name: Validate unsigned ipa
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [build]
-    steps:
-      - name: Check bundle id and executable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          WORK="$(mktemp -d)"
-          trap 'rm -rf "$WORK"' EXIT
-          # No checkout in this job: every gh call names the repo with -R.
-          # A just-created draft can take minutes to become listable (observed
-          # >60s API lag): poll up to 5 minutes, same budget as desktop.
-          for attempt in $(seq 1 30); do
-            if gh release view "$TAG" -R "${{ github.repository }}" --json assets \
-              --jq -e '.assets | map(select(.name | endswith(".ipa"))) | length > 0' > /dev/null 2>&1; then
-              break
-            fi
-            if [ "$attempt" = "30" ]; then
-              echo "::error::no ipa asset visible on $TAG."
-              exit 1
-            fi
-            sleep 10
-          done
-          gh release download "$TAG" -R "${{ github.repository }}" --pattern "*.ipa" --clobber --dir "$WORK"
-          IPA="$(ls "$WORK"/*.ipa | head -1)"
           python3 - "$IPA" << 'EOF'
           import plistlib
           import sys
@@ -145,3 +111,9 @@ jobs:
               print("version:", info.get("CFBundleShortVersionString"))
           EOF
           echo "ipa valid for $TAG."
+          if ! gh release view "$TAG" --json tagName > /dev/null 2>&1; then
+            gh release create "$TAG" --draft --prerelease \
+              --title "BudgetLens iOS ${TAG} (prerelease)" \
+              --notes "Unsigned device build for AltStore sideloading. AltStore re-signs with your Apple ID and auto-refreshes."
+          fi
+          gh release upload "$TAG" "$IPA" --clobber
