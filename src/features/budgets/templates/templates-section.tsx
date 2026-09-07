@@ -45,6 +45,7 @@ export function TemplatesSection({ goals, transactions }: TemplatesSectionProps)
   const [period, setPeriod] = useState<BudgetGoal["period"]>("monthly")
   const [result, setResult] = useState<string | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
 
   const detected = useMemo(() => detectMonthlyIncomeAverage(transactions), [transactions])
   const weights = useMemo(() => collectExpenseWeights(transactions), [transactions])
@@ -98,7 +99,10 @@ export function TemplatesSection({ goals, transactions }: TemplatesSectionProps)
   const unitSuffix = period === "yearly" ? "/yr" : "/mo"
 
   async function apply() {
-    if (!partition) return
+    // Single-flight: the goals list refreshes asynchronously after each put,
+    // so a second click before that refresh would reuse the same stale create
+    // list and duplicate every goal with fresh ids.
+    if (!partition || pending) return
     setApplyError(null)
     if (partition.create.length === 0) {
       const skippedNames = partition.skipped.map((goal) => goal.category).toSorted()
@@ -109,6 +113,7 @@ export function TemplatesSection({ goals, transactions }: TemplatesSectionProps)
       )
       return
     }
+    setPending(true)
     const now = new Date().toISOString()
     try {
       for (const goal of partition.create) {
@@ -125,6 +130,8 @@ export function TemplatesSection({ goals, transactions }: TemplatesSectionProps)
     } catch {
       setApplyError("Could not create all goals. Please try again.")
       return
+    } finally {
+      setPending(false)
     }
     const skippedNames = partition.skipped.map((goal) => goal.category).toSorted()
     setResult(
@@ -367,12 +374,13 @@ export function TemplatesSection({ goals, transactions }: TemplatesSectionProps)
             <div className="flex justify-end">
               <Button
                 type="button"
+                disabled={pending}
                 onClick={() => {
                   void apply()
                 }}
               >
-                Apply template
-                {partition.create.length > 0 ? ` (${partition.create.length})` : ""}
+                {pending ? "Applying…" : "Apply template"}
+                {!pending && partition.create.length > 0 ? ` (${partition.create.length})` : ""}
               </Button>
             </div>
           </div>

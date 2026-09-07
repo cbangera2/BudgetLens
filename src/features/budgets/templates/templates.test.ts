@@ -132,6 +132,25 @@ describe("planTemplateGoals", () => {
     ])
   })
 
+  it("falls back to bucket goals when only a Savings weight exists", () => {
+    const goals = planTemplateGoals({
+      incomeMinor: 300_000,
+      needsPct: 50,
+      wantsPct: 30,
+      savingsPct: 20,
+      period: "monthly",
+      weights: [{ category: "Savings", spendMinor: 50_000 }],
+    })
+    // The needs+wants pool must not be discarded: with nothing spendable to
+    // map it onto, it lands in the named Needs/Wants buckets instead.
+    expect(goals).toEqual([
+      { category: "Needs", amountMinor: 150_000, period: "monthly", bucket: "needs" },
+      { category: "Savings", amountMinor: 60_000, period: "monthly", bucket: "savings" },
+      { category: "Wants", amountMinor: 90_000, period: "monthly", bucket: "wants" },
+    ])
+    expect(goals.reduce((sum, goal) => sum + goal.amountMinor, 0)).toBe(300_000)
+  })
+
   it("annualizes goals twelvefold for the yearly period", () => {
     const goals = planTemplateGoals({
       incomeMinor: 300_000,

@@ -132,8 +132,9 @@ export interface PlanTemplateGoalsInput {
  * - The savings share becomes a single "Savings" goal. Expense weights already
  *   named "Savings" are excluded from the spending pool so the plan never
  *   contains two goals for one category.
- * - With no expense categories, the three bucket totals become "Needs",
- *   "Wants", and "Savings" goals directly.
+ * - With no spendable expense categories (none at all, or only "Savings"),
+ *   the three bucket totals become "Needs", "Wants", and "Savings" goals
+ *   directly.
  * - Yearly goals are the monthly amounts times 12. Zero-amount goals are
  *   omitted. The planned amounts always sum to incomeMinor (times 12 yearly).
  */
@@ -150,7 +151,11 @@ export function planTemplateGoals(input: PlanTemplateGoalsInput): PlannedGoal[] 
   )
   const factor = period === "yearly" ? 12 : 1
 
-  if (weights.length === 0) {
+  const spendWeights = weights.filter(
+    (weight) => normalizeKey(weight.category) !== normalizeKey(SAVINGS_CATEGORY),
+  )
+
+  if (spendWeights.length === 0) {
     const fallback: Array<{ category: string; amount: number; bucket: PlannedGoalBucket }> = [
       { category: NEEDS_CATEGORY, amount: needsMinor, bucket: "needs" },
       { category: WANTS_CATEGORY, amount: wantsMinor, bucket: "wants" },
@@ -167,9 +172,6 @@ export function planTemplateGoals(input: PlanTemplateGoalsInput): PlannedGoal[] 
       .toSorted((left, right) => left.category.localeCompare(right.category))
   }
 
-  const spendWeights = weights.filter(
-    (weight) => normalizeKey(weight.category) !== normalizeKey(SAVINGS_CATEGORY),
-  )
   const spendPool = needsMinor + wantsMinor
   const shares = splitMinorUnits(
     spendPool,
