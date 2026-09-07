@@ -15,6 +15,7 @@ import { formatMoney } from "@/features/dashboard/format"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { loadBudgetFormDefaults, saveBudgetFormDefaults } from "./budget-form-defaults"
+import { TemplatesSection } from "./templates/templates-section"
 
 const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -126,6 +127,8 @@ export function BudgetsPageContent() {
           />
         </CardContent>
       </Card>
+
+      <TemplatesSection goals={goals} transactions={transactions} />
 
       {editing && (
         <Card aria-labelledby="goal-form-title">
