@@ -37,6 +37,7 @@ const FILTER_TEXT_KEYS = [
   "provider",
   "transactionType",
   "group",
+  "importBatch",
   "from",
   "to",
 ] as const
