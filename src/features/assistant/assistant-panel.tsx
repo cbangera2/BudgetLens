@@ -33,6 +33,7 @@ import {
   buildDashboardChartInputFromSaveChart,
   buildFinanceSnapshot,
   executeAssistantTool,
+  intersectChartCategories,
   parseBudgetProposal,
   parseCreateTransactionProposal,
   parseDeleteTransactionProposal,
@@ -1009,8 +1010,6 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setRecatState("idle")
     setCreateState("idle")
     setDeleteState("idle")
-    setNlState("idle")
-    setChartState("idle")
     const userMessage: PanelMessage = { id: messageId(), role: "user", content: question }
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
@@ -1136,6 +1135,23 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       const chartInput = buildDashboardChartInputFromSaveChart(
         chartProposal.spec,
         globalThis.crypto.randomUUID(),
+      )
+      // Dashboard category filters match exactly: drop labels that match no
+      // known category so the saved chart never renders empty. No overlap
+      // keeps the filter empty (all categories).
+      const transactions = await repositories.transactions.list()
+      const knownCategories = [
+        ...new Set(
+          transactions
+            .map((transaction) => transaction.category)
+            .filter(
+              (category): category is string => typeof category === "string" && category.length > 0,
+            ),
+        ),
+      ]
+      chartInput.filters.categories = intersectChartCategories(
+        chartInput.filters.categories,
+        knownCategories,
       )
       const next = createChart(configuration, chartInput)
       window.localStorage.setItem(DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY, JSON.stringify(next))

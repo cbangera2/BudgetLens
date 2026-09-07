@@ -19,6 +19,7 @@ import {
   ASSISTANT_SYSTEM_PROMPT,
   extractProposeTransactionDescription,
   guessProposeTransactionCategory,
+  intersectChartCategories,
   MAX_TOOL_ROWS,
   parseBudgetProposal,
   parseCreateTransactionProposal,
@@ -908,6 +909,17 @@ describe("assistant save_chart", () => {
     expect(saved?.type).toBe("bar-vertical")
     expect(saved?.metrics).toContain("expenses")
   })
+
+  it("keeps only labels that match known categories", () => {
+    expect(
+      intersectChartCategories(
+        ["Groceries", "Starbucks", "Groceries", "  "],
+        ["Groceries", "Dining Out"],
+      ),
+    ).toEqual(["Groceries"])
+    expect(intersectChartCategories(["2026-09", "Starbucks"], ["Groceries"])).toEqual([])
+    expect(intersectChartCategories([], ["Groceries"])).toEqual([])
+  })
 })
 
 describe("assistant anomaly detection", () => {
@@ -990,6 +1002,43 @@ describe("assistant compare_periods", () => {
       previousMinor: 4000,
       deltaMinor: 6000,
       changePct: 150,
+      matchedTransactions: 2,
+    })
+  })
+
+  it("matches categories case-insensitively and counts matches", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-05", description: "Store", amountMinor: -10000, category: "Groceries" },
+        { date: "2026-08-05", description: "Store", amountMinor: -4000, category: "Groceries" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "compare_periods", {
+      category: "groceries",
+      referenceDate: "2026-09-15",
+    })
+    expect(output).toMatchObject({
+      currentMinor: 10000,
+      previousMinor: 4000,
+      matchedTransactions: 2,
+    })
+  })
+
+  it("distinguishes unmatched categories from zero spend", async () => {
+    const repos = stubRepositories({
+      transactions: [
+        { date: "2026-09-05", description: "Store", amountMinor: -1000, category: "Groceries" },
+      ],
+    })
+    const output: unknown = await executeAssistantTool(repos, "compare_periods", {
+      category: "Travel",
+      referenceDate: "2026-09-15",
+    })
+    expect(output).toMatchObject({
+      currentMinor: 0,
+      previousMinor: 0,
+      changePct: 0,
+      matchedTransactions: 0,
     })
   })
 

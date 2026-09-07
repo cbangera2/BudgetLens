@@ -4,7 +4,7 @@ import type { BudgetLensChartSpec } from "@/features/assistant/chart-block"
 import { parseBudgetLensChartSpec } from "@/features/assistant/chart-block"
 import type { ChatFunctionTool } from "@/features/assistant/provider"
 import { formatMinor } from "@/features/assistant/provider"
-import type { ChartConfigurationInput } from "@/features/charts/model"
+import type { ChartConfigurationInput, ChartFilters } from "@/features/charts/model"
 
 export const MAX_TOOL_ROWS = 50
 const MAX_DESCRIPTION_LENGTH = 60
@@ -1264,7 +1264,7 @@ export function parseSaveChartProposal(args: unknown): SaveChartProposal | null 
 export function buildDashboardChartInputFromSaveChart(
   spec: BudgetLensChartSpec,
   id: string,
-): ChartConfigurationInput {
+): ChartConfigurationInput & { filters: ChartFilters } {
   const type = spec.type === "donut" ? "pie" : spec.type === "line" ? "line" : "bar-vertical"
   if (spec.type === "line") {
     const isoLabels = spec.data
@@ -1305,6 +1305,27 @@ export function buildDashboardChartInputFromSaveChart(
   }
 }
 
+/**
+ * Narrow chart label candidates to categories that actually exist in the
+ * user's transactions (dashboard filters match categories exactly, so unknown
+ * labels would filter out every transaction and render an empty chart).
+ * Returns an empty list when nothing matches; callers leave the dashboard
+ * filter empty (all categories) in that case.
+ */
+export function intersectChartCategories(labels: string[], knownCategories: string[]): string[] {
+  const known = new Set(knownCategories)
+  const seen = new Set<string>()
+  const kept: string[] = []
+  for (const label of labels) {
+    const trimmed = label.trim()
+    if (!trimmed || seen.has(trimmed) || !known.has(trimmed)) continue
+    seen.add(trimmed)
+    kept.push(trimmed)
+    if (kept.length >= 100) break
+  }
+  return kept
+}
+
 export interface SpendingAnomaly {
   category: string
   currentMinor: number
@@ -1314,7 +1335,6 @@ export interface SpendingAnomaly {
   average: string
   direction: "spike" | "drop" | "new"
 }
-
 export interface AnomalyOptions {
   thresholdPct: number
   trailingMonths: number
@@ -1431,6 +1451,7 @@ export interface ComparePeriodsResult {
   current: string
   previous: string
   delta: string
+  matchedTransactions: number
 }
 
 export async function comparePeriodSpend(
@@ -1443,12 +1464,15 @@ export async function comparePeriodSpend(
   const referenceDate = parseReferenceDate(record.referenceDate)
   const currentMonth = referenceDate.slice(0, 7)
   const previousMonth = shiftISOMonth(referenceDate, -1).slice(0, 7)
+  const wanted = rawCategory.toLowerCase()
   const transactions = await repositories.transactions.list()
   let currentMinor = 0
   let previousMinor = 0
+  let matchedTransactions = 0
   for (const transaction of transactions) {
     const category = transaction.category ?? "Uncategorized"
-    if (category !== rawCategory) continue
+    if (category.toLowerCase() !== wanted) continue
+    matchedTransactions += 1
     const normalized = normalizeTransactionAmountMinor(
       transaction.amountMinor,
       transaction.transactionType,
@@ -1477,5 +1501,6 @@ export async function comparePeriodSpend(
     current: formatMinor(currentMinor),
     previous: formatMinor(previousMinor),
     delta: formatMinor(deltaMinor),
+    matchedTransactions,
   }
 }
