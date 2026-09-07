@@ -29,6 +29,7 @@ import {
   CHART_METRICS,
   createChart,
   createDefaultChart,
+  DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY,
   deserializeDashboardConfiguration,
   removeChart,
   reorderChart,
@@ -46,7 +47,7 @@ import {
 } from "@/features/charts/render"
 import { buildCategoryChartData, buildMonthlyChartData } from "@/features/charts/transforms"
 
-const storageKey = "budgetlens.custom-charts.v1"
+export const storageKey = DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY
 const selectClass =
   "min-h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
