@@ -18,7 +18,7 @@ import { formatMoney } from "@/features/dashboard/format"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
-import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
+import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import {
   defaultTransactionFilters,
@@ -775,9 +775,14 @@ export function TransactionsPageContent() {
                   variant="destructive"
                   onClick={() => {
                     const snapshot = deleting
-                    setDeleting(null)
                     void (async () => {
-                      await repositories.transactions.remove(snapshot.id)
+                      try {
+                        await repositories.transactions.remove(snapshot.id)
+                      } catch {
+                        toastDeleteFailed("Transaction")
+                        return
+                      }
+                      setDeleting(null)
                       notifyDeletedWithUndo("Transaction", {
                         kind: "transaction",
                         transaction: snapshot,

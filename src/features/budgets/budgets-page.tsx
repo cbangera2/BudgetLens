@@ -12,7 +12,7 @@ import { repositories } from "@/db/repositories"
 import type { BudgetGoal } from "@/domain/models"
 import { calculateBudgetProgress } from "@/features/dashboard/calculations"
 import { formatMoney } from "@/features/dashboard/format"
-import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
+import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { loadBudgetFormDefaults, saveBudgetFormDefaults } from "./budget-form-defaults"
 
@@ -281,7 +281,12 @@ export function BudgetsPageContent() {
                       onClick={() => {
                         const snapshot = item.goal
                         void (async () => {
-                          await repositories.budgets.remove(snapshot.id)
+                          try {
+                            await repositories.budgets.remove(snapshot.id)
+                          } catch {
+                            toastDeleteFailed("Budget")
+                            return
+                          }
                           notifyDeletedWithUndo("Budget", { kind: "budget", budget: snapshot })
                         })()
                       }}

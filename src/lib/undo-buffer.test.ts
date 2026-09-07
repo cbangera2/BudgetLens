@@ -37,6 +37,7 @@ import {
   restoreUndo,
   stashUndo,
   takeUndo,
+  toastDeleteFailed,
   type UndoSnapshot,
 } from "@/lib/undo-buffer"
 
@@ -103,13 +104,13 @@ describe("undo buffer", () => {
     expect(takeUndo(undefined, 1_000)).toBe(entry)
   })
 
-  it("expires entries after the TTL", () => {
+  it("expires entries at the TTL boundary", () => {
     const entry = transactionEntry()
     stashUndo(entry, 1_000)
 
-    expect(peekUndo(1_000 + UNDO_TTL_MS)).toBe(entry)
-    expect(takeUndo(undefined, 1_000 + UNDO_TTL_MS + 1)).toBeNull()
-    expect(peekUndo(1_000 + UNDO_TTL_MS + 1)).toBeNull()
+    expect(peekUndo(1_000 + UNDO_TTL_MS - 1)).toBe(entry)
+    expect(takeUndo(undefined, 1_000 + UNDO_TTL_MS)).toBeNull()
+    expect(peekUndo(1_000 + UNDO_TTL_MS)).toBeNull()
   })
 
   it("discards the previous snapshot when a second delete lands", () => {
@@ -303,5 +304,11 @@ describe("notifyDeletedWithUndo", () => {
     } finally {
       nowSpy.mockRestore()
     }
+  })
+
+  it("reports a delete that never happened", () => {
+    toastDeleteFailed("Transaction")
+
+    expect(sonnerMocks.error).toHaveBeenCalledWith("Could not delete transaction")
   })
 })

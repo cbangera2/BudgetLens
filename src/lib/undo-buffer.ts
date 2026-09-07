@@ -35,7 +35,7 @@ export function stashUndo(entry: UndoSnapshot, now: number = Date.now()): number
 /** Inspect the buffered snapshot without consuming it. Returns null when empty/expired. */
 export function peekUndo(now: number = Date.now()): UndoSnapshot | null {
   if (!slot) return null
-  if (now > slot.expiresAt) {
+  if (now >= slot.expiresAt) {
     slot = null
     return null
   }
@@ -49,7 +49,7 @@ export function peekUndo(now: number = Date.now()): UndoSnapshot | null {
  */
 export function takeUndo(token?: number, now: number = Date.now()): UndoSnapshot | null {
   if (!slot) return null
-  if (now > slot.expiresAt) {
+  if (now >= slot.expiresAt) {
     slot = null
     return null
   }
@@ -132,6 +132,11 @@ export async function restoreUndo(
 interface NotifyOptions {
   onRestored?: () => void
   repos?: BudgetLensRepositories
+}
+
+/** Report a delete that never happened; callers leave pending UI untouched. */
+export function toastDeleteFailed(label: string): void {
+  toast.error(`Could not delete ${label.toLowerCase()}`)
 }
 
 /**

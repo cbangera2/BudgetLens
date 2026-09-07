@@ -19,7 +19,7 @@ import {
 } from "@/features/charts/render"
 import { formatMoney } from "@/features/dashboard/format"
 import { SettleUpSection } from "@/features/settling/settle-up-section"
-import { notifyDeletedWithUndo } from "@/lib/undo-buffer"
+import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { calculateGroupSummary, groupContributionMinor } from "./calculations"
 import { GroupEditorCard, groupColorHex } from "./group-form"
@@ -225,11 +225,21 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
             variant="destructive"
             onClick={() => {
               const snapshot = group
-              const memberIds = members.map((member) => member.id)
               void (async () => {
-                await repositories.transactionGroups.remove(snapshot.id)
-                notifyDeletedWithUndo("Group", { kind: "group", group: snapshot, memberIds })
-                await navigate({ to: "/groups" })
+                try {
+                  // Read members at delete time (not render time) so undo
+                  // covers the memberships the removal detaches.
+                  const currentMembers = await repositories.transactionGroups.members(snapshot.id)
+                  await repositories.transactionGroups.remove(snapshot.id)
+                  notifyDeletedWithUndo("Group", {
+                    kind: "group",
+                    group: snapshot,
+                    memberIds: currentMembers.map((member) => member.id),
+                  })
+                  await navigate({ to: "/groups" })
+                } catch {
+                  toastDeleteFailed("Group")
+                }
               })()
             }}
           >
