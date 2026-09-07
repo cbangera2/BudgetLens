@@ -30,6 +30,7 @@ import {
   type SeriesSummary,
   summarizeWealth,
 } from "@/features/net-worth/calculations"
+import { withBase } from "@/features/transactions/links"
 
 const STALE_AFTER_DAYS = 45
 const EMPTY_BREAKDOWN: readonly WealthBreakdownSnapshot[] = []
@@ -313,7 +314,10 @@ export function NetWorthDashboard({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <a className="font-medium text-primary underline underline-offset-4" href="/imports">
+            <a
+              className="font-medium text-primary underline underline-offset-4"
+              href={withBase("/imports")}
+            >
               Go to Imports
             </a>
           </CardContent>
