@@ -25,6 +25,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import { transactionsFilteredPath } from "@/features/transactions/links"
 
 export type ChartKind = "bar" | "line" | "area" | "pie"
 export type BarDirection = "vertical" | "horizontal"
@@ -67,6 +68,30 @@ export interface ChartDataRow {
   values: Readonly<Record<string, number | null | undefined>>
 }
 
+/**
+ * Maps one chart row to a Transactions URL, or null when the row cannot be
+ * expressed with the existing Transactions filter params.
+ */
+export type ChartDrilldownResolver = (row: ChartDataRow) => string | null
+
+const periodRowPattern = /^\d{4}-\d{2}(-\d{2})?$/
+const opaqueIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function chartDrilldownHref(rowId: string): string | null {
+  const value = rowId.trim()
+  if (!value) return null
+  // The Transactions view filters by category/merchant/account and has no date
+  // filter, so month/date rows cannot be pre-filtered and stay unlinked.
+  if (periodRowPattern.test(value)) return null
+  // Aggregate rollups and opaque technical ids are not categories either.
+  if (value === "totals" || opaqueIdPattern.test(value)) return null
+  return transactionsFilteredPath({ category: value })
+}
+
+function followDrilldown(href: string | null | undefined): void {
+  if (href) window.location.assign(href)
+}
+
 export interface CustomChartRendererProps {
   title: string
   description?: string
@@ -76,6 +101,12 @@ export interface CustomChartRendererProps {
   emptyMessage?: string
   tableInitiallyOpen?: boolean
   actions?: ReactNode
+  /**
+   * Click-through to the Transactions view. Defaults to category drilldown for
+   * pie and bar charts (their rows are category facets); line/area charts stay
+   * unlinked unless a custom resolver or `true` opts in. `false` disables.
+   */
+  drilldown?: boolean | ChartDrilldownResolver
 }
 
 const palettes: Record<ChartPalette, readonly string[]> = {
@@ -228,9 +259,17 @@ interface ChartBodyProps {
   settings: ChartPresentationSettings
   colors: readonly string[]
   config: ChartConfig
+  drilldownHrefFor: (row: ChartDataRow) => string | null
 }
 
-function CartesianChartBody({ rows, metrics, settings, colors, config }: ChartBodyProps) {
+function CartesianChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+  config,
+  drilldownHrefFor,
+}: ChartBodyProps) {
   const gradientId = useId().replaceAll(":", "")
   const chartData = rows.map((row) => ({ name: row.label, ...row.values }))
   const totals = Object.fromEntries(
@@ -303,6 +342,10 @@ function CartesianChartBody({ rows, metrics, settings, colors, config }: ChartBo
               radius={horizontalBars ? [0, 5, 5, 0] : [5, 5, 0, 0]}
               isAnimationActive={settings.animationDuration > 0}
               animationDuration={settings.animationDuration}
+              onClick={(_datum: unknown, rowIndex: number) => {
+                const row = rows[rowIndex]
+                followDrilldown(row ? drilldownHrefFor(row) : null)
+              }}
             >
               {settings.labelDisplay !== "none" && (
                 <LabelList
@@ -433,7 +476,15 @@ function CartesianChartBody({ rows, metrics, settings, colors, config }: ChartBo
   )
 }
 
-function PieChartBody({ rows, metrics, settings, colors, config }: ChartBodyProps) {
+function PieChartBody({
+  rows,
+  metrics,
+  settings,
+  colors,
+  config,
+  drilldownHrefFor,
+}: ChartBodyProps) {
+  const rowById = new Map(rows.map((row) => [row.id, row]))
   const slices = metrics.flatMap((metric) => {
     const metricTotal = totalForMetric(rows, metric.key)
     return rows.flatMap((row) => {
@@ -442,6 +493,7 @@ function PieChartBody({ rows, metrics, settings, colors, config }: ChartBodyProp
       return [
         {
           id: `${metric.key}:${row.id}`,
+          rowId: row.id,
           name: metrics.length === 1 ? row.label : `${row.label} · ${metric.label}`,
           value: Math.abs(value),
           originalValue: value,
@@ -487,6 +539,11 @@ function PieChartBody({ rows, metrics, settings, colors, config }: ChartBodyProp
           paddingAngle={1}
           isAnimationActive={settings.animationDuration > 0}
           animationDuration={settings.animationDuration}
+          onClick={(_datum: unknown, sliceIndex: number) => {
+            const slice = slices[sliceIndex]
+            const row = slice ? rowById.get(slice.rowId) : undefined
+            followDrilldown(row ? drilldownHrefFor(row) : null)
+          }}
           labelLine={settings.labelDisplay !== "none" && settings.pieLabelPosition === "outside"}
           label={
             settings.labelDisplay === "none" || settings.pieLabelPosition === "none"
@@ -518,6 +575,7 @@ export function CustomChartRenderer({
   emptyMessage = "There is no data to chart yet.",
   tableInitiallyOpen = false,
   actions,
+  drilldown,
 }: CustomChartRendererProps) {
   const generatedId = useId().replaceAll(":", "")
   const selectedMetrics = useMemo(() => {
@@ -561,6 +619,18 @@ export function CustomChartRenderer({
       ? "Select at least one metric to display this chart."
       : emptyMessage
   const hasChartData = selectedMetrics.length > 0 && rowsWithValues.length > 0
+  const drilldownHrefFor =
+    typeof drilldown === "function"
+      ? drilldown
+      : drilldown === false
+        ? () => null
+        : drilldown === true || settings.kind === "pie" || settings.kind === "bar"
+          ? (row: ChartDataRow) => chartDrilldownHref(row.id)
+          : () => null
+  const drillLinks = rowsWithValues.flatMap((row) => {
+    const href = drilldownHrefFor(row)
+    return href ? [{ row, href }] : []
+  })
 
   return (
     <Card className="pt-0" aria-labelledby={`${generatedId}-title`}>
@@ -591,6 +661,7 @@ export function CustomChartRenderer({
                   settings={settings}
                   colors={colors}
                   config={config}
+                  drilldownHrefFor={drilldownHrefFor}
                 />
               ) : (
                 <CartesianChartBody
@@ -599,6 +670,7 @@ export function CustomChartRenderer({
                   settings={settings}
                   colors={seriesColors}
                   config={config}
+                  drilldownHrefFor={drilldownHrefFor}
                 />
               )}
               <figcaption className="sr-only">
@@ -607,6 +679,23 @@ export function CustomChartRenderer({
               </figcaption>
             </figure>
           </div>
+        )}
+        {drillLinks.length > 0 && (
+          <nav
+            aria-label={`View transactions for ${title}`}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-sm"
+          >
+            <span className="text-muted-foreground">View transactions:</span>
+            <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {drillLinks.map(({ row, href }) => (
+                <li key={row.id}>
+                  <a href={href} className="text-primary underline-offset-4 hover:underline">
+                    {row.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
         )}
         {data.length > 0 && selectedMetrics.length > 0 && (
           <AccessibleDataTable
