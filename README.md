@@ -83,11 +83,20 @@ Zod, Oxlint/Oxfmt, Vitest, Playwright, Tauri (desktop). See [CONTRIBUTING.md](CO
 - Desktop apps for macOS (Apple Silicon) and Windows with signed in-app auto-update.
 - Local-first assistant: Ollama and OpenAI-compatible providers, OS-keychain keys, local/cloud
   badges, and approval-gated writes.
-- Transaction groups with shared-cost splits, import rules, subscription detection with
-  monthly burn, golden demo data, first-run onboarding, automatic backup on suspend, mobile
-  shell pass, iOS shell groundwork.
-- One-file BudgetLens bundle imports, multi-file previews with failure isolation, dated
-  asset/debt breakdown and account-source imports, removable import batches.
+- Transaction groups with shared-cost splits and settling, import rules, subscription
+  detection with monthly burn, bulk transfer approval with self-transfer exclusion.
+- Transaction lists: deep links, clickable facets, search operators, date presets, saved views,
+  compact filter bar with active-filter chips, bulk select/sort/balances, smart form defaults,
+  undo toasts, receipt photos.
+- Budgets: templates (50/30/20 + custom), progress links to backing transactions, local
+  reminders, cash-flow forecast with cushion warnings, bill calendar.
+- Charts that deep-link to filtered transactions, auto-insights digest, year-in-review share
+  card, stale-data nudge, command palette, home-screen quick actions.
+- Data: one-file bundle imports, bank-agnostic CSV mapping, dated breakdown/account imports,
+  removable batches, backup restore v3, automatic backup on suspend, golden demo data and
+  dataset templates, first-run onboarding.
+- Mobile: bottom tabs, sheets, safe areas, Face ID lock, hosted consent gate, iOS shell and
+  release workflow groundwork, widget/Siri scaffold.
 
 ### 1.0.0 — July 2026
 
