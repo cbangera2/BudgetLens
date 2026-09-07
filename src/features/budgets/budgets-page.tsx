@@ -12,6 +12,7 @@ import { repositories } from "@/db/repositories"
 import type { BudgetGoal } from "@/domain/models"
 import { calculateBudgetProgress } from "@/features/dashboard/calculations"
 import { formatMoney } from "@/features/dashboard/format"
+import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { loadBudgetFormDefaults, saveBudgetFormDefaults } from "./budget-form-defaults"
 
@@ -278,7 +279,16 @@ export function BudgetsPageContent() {
                       variant="ghost"
                       aria-label={`Delete ${item.goal.category} budget`}
                       onClick={() => {
-                        void repositories.budgets.remove(item.goal.id)
+                        const snapshot = item.goal
+                        void (async () => {
+                          try {
+                            await repositories.budgets.remove(snapshot.id)
+                          } catch {
+                            toastDeleteFailed("Budget")
+                            return
+                          }
+                          notifyDeletedWithUndo("Budget", { kind: "budget", budget: snapshot })
+                        })()
                       }}
                     >
                       <Trash2 className="size-4" />

@@ -10,6 +10,7 @@ import { repositories } from "@/db/repositories"
 import type { Transaction, TransactionGroup } from "@/domain/models"
 import type { TransactionGroupInput } from "@/domain/repositories"
 import { formatMoney } from "@/features/dashboard/format"
+import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { calculateGroupSummary } from "./calculations"
 import { GroupEditorCard, groupColorHex } from "./group-form"
@@ -211,7 +212,24 @@ export function GroupsPageContent() {
                         onClick={(event) => {
                           event.preventDefault()
                           event.stopPropagation()
-                          void repositories.transactionGroups.remove(group.id)
+                          const snapshot = group
+                          void (async () => {
+                            try {
+                              // Read members at delete time (not render time) so
+                              // undo covers the memberships the removal detaches.
+                              const currentMembers = await repositories.transactionGroups.members(
+                                snapshot.id,
+                              )
+                              await repositories.transactionGroups.remove(snapshot.id)
+                              notifyDeletedWithUndo("Group", {
+                                kind: "group",
+                                group: snapshot,
+                                memberIds: currentMembers.map((member) => member.id),
+                              })
+                            } catch {
+                              toastDeleteFailed("Group")
+                            }
+                          })()
                         }}
                       >
                         <Trash2 className="size-4" />
