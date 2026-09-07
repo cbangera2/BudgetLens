@@ -44,7 +44,16 @@ describe("activeFilters", () => {
       [],
     )
     const dining = chips.find((chip) => chip.key === "categories:Dining")
-    expect(dining?.clear).toEqual({ categories: ["Groceries"] })
+    expect(dining?.clear).toEqual({ categories: ["Groceries"], category: "" })
+  })
+
+  it("dedupes legacy singular aliases covered by the plural list", () => {
+    const chips = activeFilters(
+      { ...defaultTransactionFilters, category: "Dining", categories: ["Dining"] },
+      [],
+    )
+    expect(chips.map((chip) => chip.label)).toEqual(["Category: Dining"])
+    expect(chips[0]?.clear).toEqual({ categories: [], category: "" })
   })
 })
 

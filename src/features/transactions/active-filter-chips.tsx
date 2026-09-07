@@ -33,31 +33,42 @@ function dateLabel(filters: TransactionViewFilters): string | null {
   return `Until ${filters.to}`
 }
 
-function listChips(
+type IncludeSingle = "merchant" | "category" | "account" | "provider" | "transactionType"
+type IncludePlural = "merchants" | "categories" | "accounts" | "providers" | "transactionTypes"
+type ExcludeList =
+  | "excludedMerchants"
+  | "excludedCategories"
+  | "excludedAccounts"
+  | "excludedProviders"
+  | "excludedTransactionTypes"
+
+function facetChips(
   label: string,
-  field: "merchants" | "categories" | "accounts" | "providers" | "transactionTypes",
-  excludedField:
-    | "excludedMerchants"
-    | "excludedCategories"
-    | "excludedAccounts"
-    | "excludedProviders"
-    | "excludedTransactionTypes",
+  singleKey: IncludeSingle,
+  pluralKey: IncludePlural,
+  excludedKey: ExcludeList,
   filters: TransactionViewFilters,
 ): ActiveFilter[] {
-  const chips: ActiveFilter[] = []
-  for (const value of filters[field]) {
+  // The plural list wins in filtering; a lone singular is its legacy alias.
+  // Show each effective value once, and clear from both fields so × always
+  // deactivates the filter.
+  const single = filters[singleKey].trim()
+  const plural = filters[pluralKey]
+  const effective = plural.length > 0 ? [...plural] : single ? [single] : []
+  const chips = effective.map((value) => ({
+    key: `${pluralKey}:${value}`,
+    label: `${label}: ${value}`,
+    clear: {
+      [singleKey]: single === value ? "" : filters[singleKey],
+      [pluralKey]: plural.filter((item) => item !== value),
+    },
+  }))
+  for (const value of filters[excludedKey]) {
     chips.push({
-      key: `${field}:${value}`,
-      label: `${label}: ${value}`,
-      clear: { [field]: filters[field].filter((item) => item !== value) },
-    })
-  }
-  for (const value of filters[excludedField]) {
-    chips.push({
-      key: `${excludedField}:${value}`,
+      key: `${excludedKey}:${value}`,
       label: `${label} ≠ ${value}`,
       clear: {
-        [excludedField]: filters[excludedField].filter((item) => item !== value),
+        [excludedKey]: filters[excludedKey].filter((item) => item !== value),
       },
     })
   }
@@ -75,46 +86,19 @@ export function activeFilters(
   }
   const date = dateLabel(filters)
   if (date) chips.push({ key: "date", label: `Date: ${date}`, clear: { from: "", to: "" } })
-  if (filters.merchant.trim()) {
-    chips.push({
-      key: "merchant",
-      label: `Merchant: ${filters.merchant.trim()}`,
-      clear: { merchant: "" },
-    })
-  }
-  if (filters.category.trim()) {
-    chips.push({
-      key: "category",
-      label: `Category: ${filters.category.trim()}`,
-      clear: { category: "" },
-    })
-  }
-  if (filters.account.trim()) {
-    chips.push({
-      key: "account",
-      label: `Account: ${filters.account.trim()}`,
-      clear: { account: "" },
-    })
-  }
-  if (filters.provider.trim()) {
-    chips.push({
-      key: "provider",
-      label: `Provider: ${filters.provider.trim()}`,
-      clear: { provider: "" },
-    })
-  }
-  if (filters.transactionType.trim()) {
-    chips.push({
-      key: "transactionType",
-      label: `Type: ${filters.transactionType.trim()}`,
-      clear: { transactionType: "" },
-    })
-  }
-  chips.push(...listChips("Merchant", "merchants", "excludedMerchants", filters))
-  chips.push(...listChips("Category", "categories", "excludedCategories", filters))
-  chips.push(...listChips("Account", "accounts", "excludedAccounts", filters))
-  chips.push(...listChips("Provider", "providers", "excludedProviders", filters))
-  chips.push(...listChips("Type", "transactionTypes", "excludedTransactionTypes", filters))
+  chips.push(...facetChips("Merchant", "merchant", "merchants", "excludedMerchants", filters))
+  chips.push(...facetChips("Category", "category", "categories", "excludedCategories", filters))
+  chips.push(...facetChips("Account", "account", "accounts", "excludedAccounts", filters))
+  chips.push(...facetChips("Provider", "provider", "providers", "excludedProviders", filters))
+  chips.push(
+    ...facetChips(
+      "Type",
+      "transactionType",
+      "transactionTypes",
+      "excludedTransactionTypes",
+      filters,
+    ),
+  )
   if (filters.group) {
     const name = groups.find((group) => group.id === filters.group)?.name ?? filters.group
     chips.push({ key: "group", label: `Group: ${name}`, clear: { group: "" } })
