@@ -1,6 +1,7 @@
 import { Link, Outlet } from "@tanstack/react-router"
 import {
   BarChart3,
+  Inbox,
   Landmark,
   Layers,
   Moon,
@@ -29,6 +30,7 @@ import { AppLockGate } from "@/features/security/app-lock-gate"
 
 const navigation = [
   { to: "/", label: "Overview", icon: BarChart3 },
+  { to: "/review", label: "Review", icon: Inbox },
   { to: "/net-worth", label: "Net worth", icon: Landmark },
   { to: "/transactions", label: "Transactions", icon: ReceiptText },
   { to: "/groups", label: "Groups", icon: Layers },

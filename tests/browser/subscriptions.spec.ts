@@ -14,9 +14,9 @@ test("detects subscriptions and shows monthly burn from a fixture import", async
   await page.getByRole("button", { name: "Confirm import" }).click()
   await expect(page.getByText(/Imported 13 .*rows?\./)).toBeVisible()
 
-  await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible()
-  await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible()
+  await page.goto("/review")
+  await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Subscriptions", exact: true })).toBeVisible()
 
   const section = page.getByRole("region", { name: "Subscriptions" })
   await expect(section).toBeVisible()
