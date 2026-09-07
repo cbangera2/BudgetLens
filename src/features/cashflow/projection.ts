@@ -51,7 +51,10 @@ function localTodayIso(): IsoDate {
 
 function parseUtcMs(date: IsoDate): number | null {
   const time = Date.parse(`${date}T00:00:00Z`)
-  return Number.isNaN(time) ? null : time
+  if (Number.isNaN(time)) return null
+  // Date.parse normalizes calendar-invalid input ("2026-02-30" becomes March
+  // 2), so require the parsed date to round-trip exactly.
+  return new Date(time).toISOString().slice(0, 10) === date ? time : null
 }
 
 export function addDaysIso(date: IsoDate, days: number): IsoDate {
@@ -153,14 +156,16 @@ export function projectCashflow(input: ProjectCashflowInput): ProjectCashflowRes
     const intervalDays = Math.max(1, Math.round(subscription.medianIntervalDays))
     if (!isIsoDate(subscription.lastDate)) continue
     if (!(subscription.medianAmountMinor > 0)) continue
-    let next = addDaysIso(subscription.lastDate, intervalDays)
-    let guard = 0
-    while (next <= today && guard < 1000) {
-      next = addDaysIso(next, intervalDays)
-      guard += 1
-    }
-    guard = 0
-    while (next <= endDate && guard < 1000) {
+    // Jump directly to the first occurrence after today instead of stepping
+    // forward one interval at a time, so very stale schedules cannot exhaust
+    // a stepping guard and silently drop charges.
+    const elapsedDays = Math.max(0, daysBetween(subscription.lastDate, today))
+    let next = addDaysIso(
+      subscription.lastDate,
+      (Math.floor(elapsedDays / intervalDays) + 1) * intervalDays,
+    )
+    // Always terminates: `next` strictly increases toward the fixed endDate.
+    while (next <= endDate) {
       scheduledCharges.push({
         subscriptionKey: subscription.key,
         displayName: subscription.displayName,
@@ -168,7 +173,6 @@ export function projectCashflow(input: ProjectCashflowInput): ProjectCashflowRes
         amountMinor: subscription.medianAmountMinor,
       })
       next = addDaysIso(next, intervalDays)
-      guard += 1
     }
   }
   scheduledCharges.sort((left, right) =>

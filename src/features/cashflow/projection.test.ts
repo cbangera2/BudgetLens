@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import type { BudgetGoal } from "@/domain/models"
-import { detectSubscriptions } from "@/features/subscriptions/detect"
+import { detectSubscriptions, type SubscriptionSummary } from "@/features/subscriptions/detect"
 import { buildTransaction } from "@/test/factories"
 
-import { addDaysIso, projectCashflow } from "./projection"
+import { addDaysIso, daysBetween, isIsoDate, projectCashflow } from "./projection"
 
 function expense(id: string, date: string, description: string, amountMinor = -1500) {
   return buildTransaction({ id, date, description, amountMinor, transactionType: "Debit" })
@@ -218,5 +218,53 @@ describe("projectCashflow", () => {
     })
     expect(result.scheduledCharges.length).toBeGreaterThan(0)
     expect(result.scheduledCharges.every((charge) => charge.date > "2026-04-20")).toBe(true)
+  })
+
+  it("rejects calendar-invalid dates instead of normalizing them", () => {
+    expect(isIsoDate("2026-02-28")).toBe(true)
+    expect(isIsoDate("2026-02-30")).toBe(false)
+    expect(isIsoDate("2026-13-01")).toBe(false)
+    expect(() =>
+      projectCashflow({
+        transactions: [],
+        subscriptions: [],
+        goals: [],
+        today: "2026-02-30",
+      }),
+    ).toThrow("Invalid today ISO date")
+  })
+
+  it("schedules very stale subscriptions without dropping charges", () => {
+    const stale: SubscriptionSummary = {
+      key: "stale weekly",
+      displayName: "Stale Weekly",
+      occurrences: 4,
+      medianIntervalDays: 7,
+      medianAmountMinor: 5_000,
+      monthlyBurnMinor: 21_741,
+      lastDate: "2000-01-05",
+      cadence: "recurring",
+    }
+    const result = projectCashflow({
+      transactions: [],
+      subscriptions: [stale],
+      goals: [],
+      today: "2026-09-07",
+      horizonDays: 90,
+    })
+
+    // More than a thousand weekly intervals stale: the old stepping guard
+    // would have exhausted itself and scheduled nothing.
+    expect(daysBetween("2000-01-05", "2026-09-07") / 7).toBeGreaterThan(1_000)
+    expect(result.scheduledCharges.length).toBeGreaterThan(0)
+    const endDate = addDaysIso("2026-09-07", 90)
+    for (const charge of result.scheduledCharges) {
+      expect(charge.date > "2026-09-07" && charge.date <= endDate).toBe(true)
+      expect(charge.amountMinor).toBe(5_000)
+    }
+    const first = result.scheduledCharges[0]?.date ?? ""
+    // First occurrence after today, still on the weekly cadence grid.
+    expect(addDaysIso(first, -7) <= "2026-09-07").toBe(true)
+    expect(result.scheduledCharges.every((charge) => charge.date > "2026-09-07")).toBe(true)
   })
 })
