@@ -31,6 +31,14 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/transactions/$transactionId",
+    component: lazyRouteComponent(
+      () => import("@/routes/transaction-detail"),
+      "TransactionDetailPage",
+    ),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/groups",
     component: lazyRouteComponent(() => import("@/routes/groups"), "GroupsPage"),
   }),

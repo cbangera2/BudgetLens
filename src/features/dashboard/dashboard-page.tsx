@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { Upload } from "lucide-react"
 import { useState } from "react"
@@ -65,14 +66,23 @@ function BudgetsWidget({
       <CardContent>
         {progress.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Create a budget goal to track category spending.
+            Create a budget goal to track category spending.{" "}
+            <Link to="/budgets" className="text-primary underline underline-offset-4">
+              Open budgets
+            </Link>
           </p>
         ) : (
           <ul className="grid gap-3">
             {progress.map((item) => (
               <li key={item.goal.id} className="flex items-center justify-between gap-4 text-sm">
                 <span>
-                  {item.goal.category}{" "}
+                  <Link
+                    to="/transactions"
+                    search={{ category: item.goal.category }}
+                    className="font-medium underline-offset-4 hover:underline"
+                  >
+                    {item.goal.category}
+                  </Link>{" "}
                   <span className="text-muted-foreground">({item.goal.period})</span>
                 </span>
                 <Badge variant={item.status === "on-track" ? "secondary" : "outline"}>
@@ -97,15 +107,37 @@ function RecentWidget({ transactions }: { transactions: readonly Transaction[] }
       </CardHeader>
       <CardContent>
         {recent.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No transactions imported yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No transactions imported yet.{" "}
+            <Link to="/imports" className="text-primary underline underline-offset-4">
+              Open imports
+            </Link>
+          </p>
         ) : (
           <ul className="divide-y">
             {recent.map((transaction) => (
               <li className="flex justify-between gap-4 py-3 text-sm" key={transaction.id}>
                 <span>
-                  <span className="block font-medium">{transaction.description}</span>
+                  <Link
+                    to="/transactions/$transactionId"
+                    params={{ transactionId: transaction.id }}
+                    className="block font-medium underline-offset-4 hover:underline"
+                  >
+                    {transaction.description}
+                  </Link>
                   <span className="text-xs text-muted-foreground">
-                    {transaction.date} · {transaction.category ?? "Uncategorized"}
+                    {transaction.date} ·{" "}
+                    {transaction.category ? (
+                      <Link
+                        to="/transactions"
+                        search={{ category: transaction.category }}
+                        className="underline-offset-4 hover:underline"
+                      >
+                        {transaction.category}
+                      </Link>
+                    ) : (
+                      "Uncategorized"
+                    )}
                   </span>
                 </span>
                 <span className="font-medium tabular-nums">

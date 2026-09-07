@@ -529,7 +529,7 @@ describe("assistant chart fence", () => {
 })
 
 describe("assistant citations", () => {
-  it("links exact snapshot amounts to filtered transaction views", async () => {
+  it("links exact snapshot amounts to transaction detail pages", async () => {
     const { extractCitations } = await import("@/features/assistant/citations")
     const { text, cites } = extractCitations(
       "Top outflow Housing: -$3,300.00 (2). Income was $15,750.00.",
@@ -553,6 +553,26 @@ describe("assistant citations", () => {
     )
     expect(cites).toHaveLength(2)
     expect(text).toContain("-$3,300.00[[cite:1]]")
+    expect(cites[0]?.href).toBe("/transactions/a")
+    expect(cites[1]?.href).toBe("/transactions/b")
+  })
+
+  it("links category aggregates to filtered transaction views", async () => {
+    const { extractCitations } = await import("@/features/assistant/citations")
+    const { cites } = extractCitations(
+      "Housing total -$3,300.00 this month.",
+      [
+        {
+          id: "cat:Housing",
+          date: "2026-08-01",
+          description: null,
+          amount: "-$3,300.00",
+          category: "Housing",
+        },
+      ],
+      "/",
+    )
+    expect(cites).toHaveLength(1)
     expect(cites[0]?.href).toContain("/transactions?")
     expect(cites[0]?.href).toContain("sort=amount-desc")
     expect(cites[0]?.href).toContain("categories=Housing")
@@ -579,7 +599,7 @@ describe("assistant citations", () => {
     )
     expect(cites.length).toBeLessThanOrEqual(MAX_CITATIONS)
     expect(text.startsWith("```\n-$1.00 should stay plain\n```")).toBe(true)
-    expect(cites[0]?.href.startsWith("/BudgetLens/transactions?")).toBe(true)
+    expect(cites[0]?.href.startsWith("/BudgetLens/transactions/r")).toBe(true)
   })
 
   it("renders cite markers as links", async () => {

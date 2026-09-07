@@ -10,6 +10,9 @@ export type TransactionSort =
 
 export interface TransactionViewFilters {
   search: string
+  merchant: string
+  merchants: string[]
+  excludedMerchants: string[]
   category: string
   categories: string[]
   excludedCategories: string[]
@@ -28,6 +31,9 @@ export interface TransactionViewFilters {
 
 export const defaultTransactionFilters: TransactionViewFilters = {
   search: "",
+  merchant: "",
+  merchants: [],
+  excludedMerchants: [],
   category: "",
   categories: [],
   excludedCategories: [],
@@ -61,12 +67,20 @@ function parseList(raw: string): string[] {
     .filter(Boolean)
 }
 
+function parseSingleOrList(singular: string | null, plural: string | null, max = 100): string[] {
+  if (plural !== null) return parseList(plural)
+  if (singular !== null && singular.trim()) return [singular.trim().slice(0, max)]
+  return []
+}
+
 export function parseTransactionFilters(search: string): TransactionViewFilters {
   const params = new URLSearchParams(search)
   const sort = params.get("sort")
-  const rawCategories = params.get("categories") ?? params.get("category") ?? ""
+  const merchantSingular = params.get("merchant")
+  const categorySingular = params.get("category")
+  const accountSingular = params.get("account")
+  const rawExcludedMerchants = params.get("excludedMerchants") ?? ""
   const rawExcluded = params.get("excludedCategories") ?? params.get("excludeCategory") ?? ""
-  const rawAccounts = params.get("accounts") ?? params.get("account") ?? ""
   const rawExcludedAccounts = params.get("excludedAccounts") ?? ""
   const rawProviders = params.get("providers") ?? params.get("provider") ?? ""
   const rawExcludedProviders = params.get("excludedProviders") ?? ""
@@ -74,11 +88,14 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
   const rawExcludedTypes = params.get("excludedTransactionTypes") ?? ""
   return {
     search: params.get("q")?.slice(0, 200) ?? "",
-    category: params.get("category")?.slice(0, 100) ?? "",
-    categories: parseList(rawCategories),
+    merchant: merchantSingular?.slice(0, 200) ?? "",
+    merchants: parseSingleOrList(merchantSingular, params.get("merchants"), 200),
+    excludedMerchants: parseList(rawExcludedMerchants),
+    category: categorySingular?.slice(0, 100) ?? "",
+    categories: parseSingleOrList(categorySingular, params.get("categories")),
     excludedCategories: parseList(rawExcluded),
-    account: params.get("account")?.slice(0, 100) ?? "",
-    accounts: parseList(rawAccounts),
+    account: accountSingular?.slice(0, 100) ?? "",
+    accounts: parseSingleOrList(accountSingular, params.get("accounts")),
     excludedAccounts: parseList(rawExcludedAccounts),
     provider: params.get("provider")?.slice(0, 100) ?? "",
     providers: parseList(rawProviders),
@@ -94,13 +111,25 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
 export function serializeTransactionFilters(filters: TransactionViewFilters): string {
   const params = new URLSearchParams()
   if (filters.search) params.set("q", filters.search)
+  // Merchants (description facet): single values use the singular param so
+  // commas in merchant names survive the round-trip.
+  const [singleMerchant] = filters.merchants
+  if (filters.merchants.length > 1) params.set("merchants", filters.merchants.join(","))
+  else if (singleMerchant) params.set("merchant", singleMerchant)
+  else if (filters.merchant) params.set("merchant", filters.merchant)
+  if (filters.excludedMerchants.length)
+    params.set("excludedMerchants", filters.excludedMerchants.join(","))
   // Categories
-  if (filters.categories.length) params.set("categories", filters.categories.join(","))
+  const [singleCategory] = filters.categories
+  if (filters.categories.length > 1) params.set("categories", filters.categories.join(","))
+  else if (singleCategory) params.set("category", singleCategory)
   else if (filters.category) params.set("category", filters.category)
   if (filters.excludedCategories.length)
     params.set("excludedCategories", filters.excludedCategories.join(","))
   // Accounts
-  if (filters.accounts.length) params.set("accounts", filters.accounts.join(","))
+  const [singleAccount] = filters.accounts
+  if (filters.accounts.length > 1) params.set("accounts", filters.accounts.join(","))
+  else if (singleAccount) params.set("account", singleAccount)
   else if (filters.account) params.set("account", filters.account)
   if (filters.excludedAccounts.length)
     params.set("excludedAccounts", filters.excludedAccounts.join(","))
@@ -135,6 +164,13 @@ export function filterAndSortTransactions(
         transaction.provider,
         transaction.notes,
       ].some((value) => value?.toLocaleLowerCase().includes(query))
+    const merchantValue = transaction.description ?? ""
+    const matchesMerchant = (() => {
+      if (filters.excludedMerchants.includes(merchantValue)) return false
+      if (filters.merchants.length) return filters.merchants.includes(merchantValue)
+      if (filters.merchant) return merchantValue === filters.merchant
+      return true
+    })()
     const categoryValue = transaction.category ?? ""
     const matchesCategory = (() => {
       if (filters.excludedCategories.includes(categoryValue)) return false
@@ -165,6 +201,7 @@ export function filterAndSortTransactions(
     })()
     return (
       matchesSearch &&
+      matchesMerchant &&
       matchesCategory &&
       matchesAccount &&
       matchesProvider &&

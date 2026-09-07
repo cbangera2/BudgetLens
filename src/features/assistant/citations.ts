@@ -84,6 +84,9 @@ export function rowsFromSnapshot(snapshot: SnapshotLike): CitationRow[] {
 }
 
 function transactionsHref(row: CitationRow, base: string): string {
+  if (row.id && !row.id.startsWith("cat:")) {
+    return `${base}transactions/${encodeURIComponent(row.id)}`
+  }
   const params = new URLSearchParams()
   const query = (row.description ?? "").replace(/…/g, "").trim().split(/\s+/).slice(0, 4).join(" ")
   if (query) params.set("q", query)

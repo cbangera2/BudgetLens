@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { Pencil, Plus, Trash2, Users, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -280,6 +281,16 @@ export function TransactionsPageContent() {
             />
           </div>
           <IncludeExcludeFilter
+            label="Merchant"
+            options={unique(transactions, "description")}
+            included={filters.merchants}
+            excluded={filters.excludedMerchants}
+            onIncludedChange={(next) => setFilters((current) => ({ ...current, merchants: next }))}
+            onExcludedChange={(next) =>
+              setFilters((current) => ({ ...current, excludedMerchants: next }))
+            }
+          />
+          <IncludeExcludeFilter
             label="Category"
             options={unique(transactions, "category")}
             included={filters.categories}
@@ -470,8 +481,20 @@ export function TransactionsPageContent() {
             <div className="rounded-xl border border-dashed p-8 text-center">
               <p className="font-medium">No matching transactions</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Adjust the filters, add a transaction, or import a CSV file.
+                Adjust the filters, add a transaction, or{" "}
+                <Link to="/imports" className="text-primary underline underline-offset-4">
+                  import a CSV file
+                </Link>
+                .
               </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <Button variant="outline" onClick={() => setFilters(defaultTransactionFilters)}>
+                  Clear filters
+                </Button>
+                <Button variant="outline" onClick={() => setEditing("new")}>
+                  Add transaction
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -536,15 +559,27 @@ export function TransactionsPageContent() {
                           {transaction.date}
                         </td>
                         <th scope="row" className="p-2 font-medium md:p-3">
-                          {transaction.description}
+                          <Link
+                            to="/transactions/$transactionId"
+                            params={{ transactionId: transaction.id }}
+                            className="underline-offset-4 hover:underline"
+                          >
+                            {transaction.description}
+                          </Link>
                           {(group ||
                             transaction.shared ||
                             flaggedTransferIds.has(transaction.id)) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
                               {group && (
-                                <Badge variant="outline" className="max-w-40 truncate">
-                                  {group.name}
-                                </Badge>
+                                <Link
+                                  to="/groups/$groupId"
+                                  params={{ groupId: group.id }}
+                                  className="max-w-40 truncate"
+                                >
+                                  <Badge variant="outline" className="max-w-40 truncate">
+                                    {group.name}
+                                  </Badge>
+                                </Link>
                               )}
                               {transaction.shared && (
                                 <Badge variant="secondary">shared ÷{transaction.shareCount}</Badge>
@@ -554,12 +589,46 @@ export function TransactionsPageContent() {
                           )}
                         </th>
                         <td className="hidden p-3 sm:table-cell">
-                          {transaction.category ?? (
+                          {transaction.category ? (
+                            <button
+                              type="button"
+                              className="text-primary underline-offset-4 hover:underline"
+                              onClick={() => {
+                                const value = transaction.category
+                                if (value)
+                                  setFilters((current) => ({
+                                    ...current,
+                                    categories: [value],
+                                    category: value,
+                                  }))
+                              }}
+                            >
+                              {transaction.category}
+                            </button>
+                          ) : (
                             <span className="text-muted-foreground">Uncategorized</span>
                           )}
                         </td>
                         <td className="hidden p-3 md:table-cell">
-                          <span className="block">{transaction.accountName ?? "—"}</span>
+                          {transaction.accountName ? (
+                            <button
+                              type="button"
+                              className="block text-primary underline-offset-4 hover:underline"
+                              onClick={() => {
+                                const value = transaction.accountName
+                                if (value)
+                                  setFilters((current) => ({
+                                    ...current,
+                                    accounts: [value],
+                                    account: value,
+                                  }))
+                              }}
+                            >
+                              {transaction.accountName}
+                            </button>
+                          ) : (
+                            <span className="block">—</span>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             {transaction.accountType}
                           </span>
