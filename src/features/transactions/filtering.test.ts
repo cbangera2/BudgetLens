@@ -41,6 +41,103 @@ describe("transaction view filters", () => {
     expect(serializeTransactionFilters(defaultTransactionFilters)).toBe("")
   })
 
+  it("parses merchant, category, and account facets as combinable params", () => {
+    expect(
+      parseTransactionFilters("?merchant=Coffee%20Shop&category=Dining&account=Card"),
+    ).toMatchObject({
+      merchant: "Coffee Shop",
+      merchants: ["Coffee Shop"],
+      category: "Dining",
+      categories: ["Dining"],
+      account: "Card",
+      accounts: ["Card"],
+    })
+    expect(parseTransactionFilters("?merchants=a%2Cb&excludedMerchants=c")).toMatchObject({
+      merchants: ["a", "b"],
+      excludedMerchants: ["c"],
+    })
+    const roundTripped = parseTransactionFilters(
+      `?${serializeTransactionFilters({
+        ...defaultTransactionFilters,
+        merchant: "Coffee Shop",
+        category: "Dining",
+        account: "Card",
+      })}`,
+    )
+    expect(roundTripped).toMatchObject({
+      merchant: "Coffee Shop",
+      category: "Dining",
+      account: "Card",
+    })
+  })
+
+  it("bounds long merchant values the same through singular and plural params", () => {
+    const atLimit = "m".repeat(200)
+    const overLimit = "m".repeat(201)
+    expect(parseTransactionFilters(`?merchant=${atLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchants=${atLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchant=${overLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchants=${overLimit}`).merchants).toEqual([atLimit])
+    expect(parseTransactionFilters(`?merchant=${overLimit}`).merchant).toBe(atLimit)
+  })
+
+  it("round-trips multi-value facets with commas via repeated params", () => {
+    const filters = {
+      ...defaultTransactionFilters,
+      merchants: ["Example Market, North", "Other Shop"],
+      excludedMerchants: ["Quoted, Merchant", "Elsewhere"],
+      categories: ["Dining, Out", "Groceries"],
+    }
+    const roundTripped = parseTransactionFilters(`?${serializeTransactionFilters(filters)}`)
+    expect(roundTripped.merchants).toEqual(["Example Market, North", "Other Shop"])
+    expect(roundTripped.excludedMerchants).toEqual(["Quoted, Merchant", "Elsewhere"])
+    expect(roundTripped.categories).toEqual(["Dining, Out", "Groceries"])
+  })
+
+  it("round-trips single excluded values with commas via singular params", () => {
+    const filters = {
+      ...defaultTransactionFilters,
+      excludedMerchants: ["Example Market, North"],
+      excludedCategories: ["Dining, Out"],
+      excludedAccounts: ["Everyday, Checking"],
+    }
+    const roundTripped = parseTransactionFilters(`?${serializeTransactionFilters(filters)}`)
+    expect(roundTripped.excludedMerchants).toEqual(["Example Market, North"])
+    expect(roundTripped.excludedCategories).toEqual(["Dining, Out"])
+    expect(roundTripped.excludedAccounts).toEqual(["Everyday, Checking"])
+  })
+
+  it("keeps legacy comma-separated single params working", () => {
+    expect(parseTransactionFilters("?merchants=a%2Cb").merchants).toEqual(["a", "b"])
+    expect(parseTransactionFilters("?categories=Dining%2CGroceries").categories).toEqual([
+      "Dining",
+      "Groceries",
+    ])
+    expect(parseTransactionFilters("?excludeCategory=A%2CB").excludedCategories).toEqual(["A", "B"])
+  })
+  it("filters by exact merchant alongside category and account", () => {
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        merchant: "Coffee Shop",
+        category: "Dining",
+        account: "Card",
+      }).map(({ id }) => id),
+    ).toEqual(["1"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        merchants: ["Payroll"],
+      }).map(({ id }) => id),
+    ).toEqual(["2"])
+    expect(
+      filterAndSortTransactions(records, {
+        ...defaultTransactionFilters,
+        excludedMerchants: ["Coffee Shop"],
+      }).map(({ id }) => id),
+    ).toEqual(["2"])
+  })
+
   it("searches across useful fields and combines exact filters", () => {
     expect(
       filterAndSortTransactions(records, {

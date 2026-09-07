@@ -73,6 +73,13 @@ export function BudgetsPageContent() {
   if (!data) return <output>Loading budgets…</output>
   const [goals, transactions] = data
   const progress = goals.map((goal) => calculateBudgetProgress(goal, transactions, referenceDate))
+  const existingCategories = [
+    ...new Set(
+      transactions
+        .map((transaction) => transaction.category)
+        .filter((value): value is string => typeof value === "string" && value.length > 0),
+    ),
+  ].toSorted()
 
   return (
     <div className="grid gap-6">
@@ -132,9 +139,18 @@ export function BudgetsPageContent() {
                   id="goal-category"
                   required
                   maxLength={100}
+                  list="goal-category-options"
+                  autoComplete="off"
                   value={category}
                   onChange={(event) => setCategory(event.target.value)}
                 />
+                <datalist id="goal-category-options">
+                  {existingCategories.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </datalist>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="goal-amount">Goal amount</Label>

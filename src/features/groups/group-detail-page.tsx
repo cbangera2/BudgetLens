@@ -463,10 +463,24 @@ export function GroupDetailPageContent({ groupId }: { groupId: string }) {
                       <tr key={member.id}>
                         <td className="p-2 text-xs whitespace-nowrap md:p-3">{member.date}</td>
                         <th scope="row" className="p-2 font-medium md:p-3">
-                          {member.description}
+                          <Link
+                            to="/transactions/$transactionId"
+                            params={{ transactionId: member.id }}
+                            className="underline-offset-4 hover:underline"
+                          >
+                            {member.description}
+                          </Link>
                         </th>
                         <td className="hidden p-3 sm:table-cell">
-                          {member.category ?? (
+                          {member.category ? (
+                            <Link
+                              to="/transactions"
+                              search={{ category: member.category }}
+                              className="text-primary underline-offset-4 hover:underline"
+                            >
+                              {member.category}
+                            </Link>
+                          ) : (
                             <span className="text-muted-foreground">Uncategorized</span>
                           )}
                         </td>
