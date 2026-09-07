@@ -94,12 +94,26 @@ describe("transaction view filters", () => {
     expect(roundTripped.categories).toEqual(["Dining, Out", "Groceries"])
   })
 
+  it("round-trips single excluded values with commas via singular params", () => {
+    const filters = {
+      ...defaultTransactionFilters,
+      excludedMerchants: ["Example Market, North"],
+      excludedCategories: ["Dining, Out"],
+      excludedAccounts: ["Everyday, Checking"],
+    }
+    const roundTripped = parseTransactionFilters(`?${serializeTransactionFilters(filters)}`)
+    expect(roundTripped.excludedMerchants).toEqual(["Example Market, North"])
+    expect(roundTripped.excludedCategories).toEqual(["Dining, Out"])
+    expect(roundTripped.excludedAccounts).toEqual(["Everyday, Checking"])
+  })
+
   it("keeps legacy comma-separated single params working", () => {
     expect(parseTransactionFilters("?merchants=a%2Cb").merchants).toEqual(["a", "b"])
     expect(parseTransactionFilters("?categories=Dining%2CGroceries").categories).toEqual([
       "Dining",
       "Groceries",
     ])
+    expect(parseTransactionFilters("?excludeCategory=A%2CB").excludedCategories).toEqual(["A", "B"])
   })
   it("filters by exact merchant alongside category and account", () => {
     expect(

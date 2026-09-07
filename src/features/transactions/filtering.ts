@@ -94,13 +94,35 @@ function appendListParam(params: URLSearchParams, name: string, values: readonly
   for (const value of values) params.append(name, value)
 }
 
+// `excludeCategory` stays accepted with its exact legacy comma-split behavior;
+// the newer `excludedCategory` singular holds one whole value.
+function parseCategoryExcludes(params: URLSearchParams): string[] {
+  if (params.has("excludedCategories")) return parseRepeatedOrLegacy(params, "excludedCategories")
+  const singular = params.get("excludedCategory")
+  if (singular !== null && singular.trim()) return [singular.trim().slice(0, 100)]
+  return parseList(params.get("excludeCategory") ?? "")
+}
+
+// Singular excluded params preserve commas in a single excluded value, mirroring
+// the include-side singular/plural duality.
+function parseExcludeList(
+  params: URLSearchParams,
+  singularName: string,
+  pluralName: string,
+  max = 100,
+): string[] {
+  if (params.has(pluralName)) return parseRepeatedOrLegacy(params, pluralName, max)
+  const singular = params.get(singularName)
+  if (singular !== null && singular.trim()) return [singular.trim().slice(0, max)]
+  return []
+}
+
 export function parseTransactionFilters(search: string): TransactionViewFilters {
   const params = new URLSearchParams(search)
   const sort = params.get("sort")
   const merchantSingular = params.get("merchant")
   const categorySingular = params.get("category")
   const accountSingular = params.get("account")
-  const rawExcluded = params.get("excludedCategories") ?? params.get("excludeCategory") ?? ""
   const rawProviders = params.get("providers") ?? params.get("provider") ?? ""
   const rawExcludedProviders = params.get("excludedProviders") ?? ""
   const rawTypes = params.get("transactionTypes") ?? params.get("type") ?? ""
@@ -109,15 +131,13 @@ export function parseTransactionFilters(search: string): TransactionViewFilters 
     search: params.get("q")?.slice(0, 200) ?? "",
     merchant: merchantSingular?.slice(0, 200) ?? "",
     merchants: parseFacetList(params, "merchant", "merchants", 200),
-    excludedMerchants: parseRepeatedOrLegacy(params, "excludedMerchants", 200),
+    excludedMerchants: parseExcludeList(params, "excludedMerchant", "excludedMerchants", 200),
     category: categorySingular?.slice(0, 100) ?? "",
     categories: parseFacetList(params, "category", "categories"),
-    excludedCategories: params.has("excludedCategories")
-      ? parseRepeatedOrLegacy(params, "excludedCategories")
-      : parseList(rawExcluded),
+    excludedCategories: parseCategoryExcludes(params),
     account: accountSingular?.slice(0, 100) ?? "",
     accounts: parseFacetList(params, "account", "accounts"),
-    excludedAccounts: parseRepeatedOrLegacy(params, "excludedAccounts"),
+    excludedAccounts: parseExcludeList(params, "excludedAccount", "excludedAccounts"),
     provider: params.get("provider")?.slice(0, 100) ?? "",
     providers: parseList(rawProviders),
     excludedProviders: parseList(rawExcludedProviders),
@@ -143,7 +163,7 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
     appendListParam(params, "excludedMerchants", filters.excludedMerchants)
   else if (filters.excludedMerchants.length === 1) {
     const [single] = filters.excludedMerchants
-    if (single) params.append("excludedMerchants", single)
+    if (single) params.set("excludedMerchant", single)
   }
   // Categories
   const [singleCategory] = filters.categories
@@ -154,7 +174,7 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
     appendListParam(params, "excludedCategories", filters.excludedCategories)
   else if (filters.excludedCategories.length === 1) {
     const [single] = filters.excludedCategories
-    if (single) params.append("excludedCategories", single)
+    if (single) params.set("excludedCategory", single)
   }
   // Accounts
   const [singleAccount] = filters.accounts
@@ -165,7 +185,7 @@ export function serializeTransactionFilters(filters: TransactionViewFilters): st
     appendListParam(params, "excludedAccounts", filters.excludedAccounts)
   else if (filters.excludedAccounts.length === 1) {
     const [single] = filters.excludedAccounts
-    if (single) params.append("excludedAccounts", single)
+    if (single) params.set("excludedAccount", single)
   }
   // Providers
   if (filters.providers.length) params.set("providers", filters.providers.join(","))
