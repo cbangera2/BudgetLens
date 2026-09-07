@@ -297,6 +297,10 @@ function LineChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
   const min = values.reduce((acc, value) => (value < acc ? value : acc), values[0] ?? 0)
   const max = values.reduce((acc, value) => (value > acc ? value : acc), values[0] ?? 0)
   const span = max - min
+  // Overflow-safe: extreme finite values (e.g. ±Number.MAX_VALUE) subtract to
+  // Infinity, which would poison every coordinate with NaN. Fall back to the
+  // flat middle line exactly like the all-equal case.
+  const safeSpan = Number.isFinite(span) && span !== 0 ? span : 0
   const plotWidth = width - padLeft - padRight
   const plotHeight = height - padTop - padBottom
   const points = spec.data.map((row, index) => {
@@ -305,9 +309,9 @@ function LineChartSvg({ spec }: { spec: BudgetLensChartSpec }) {
         ? padLeft + plotWidth / 2
         : padLeft + (index / (spec.data.length - 1)) * plotWidth
     const y =
-      span === 0
+      safeSpan === 0
         ? padTop + plotHeight / 2
-        : padTop + plotHeight - ((row.value - min) / span) * plotHeight
+        : padTop + plotHeight - ((row.value - min) / safeSpan) * plotHeight
     return { x, y, row }
   })
   const path = points

@@ -43,6 +43,24 @@ describe("assistant line chart", () => {
     expect(same.querySelectorAll("circle").length).toBe(2)
   })
 
+  it("falls back to a flat line for overflowing magnitudes without NaN", () => {
+    const { container } = render(
+      <ChartBlock
+        spec={{
+          type: "line",
+          title: "Extreme",
+          data: [
+            { label: "A", value: -Number.MAX_VALUE },
+            { label: "B", value: Number.MAX_VALUE },
+          ],
+        }}
+      />,
+    )
+    expect(container.querySelectorAll("circle").length).toBe(2)
+    const path = container.querySelector("path")
+    expect(path?.getAttribute("d")).not.toMatch(/NaN/)
+  })
+
   it("keeps bar and donut rendering behind the same figure", () => {
     render(<ChartBlock spec={{ type: "bar", title: "Bars", data: [{ label: "A", value: 1 }] }} />)
     expect(screen.getByRole("figure", { name: "Bars" })).toBeInTheDocument()
