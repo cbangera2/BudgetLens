@@ -110,14 +110,14 @@ jobs:
           WORK="$(mktemp -d)"
           trap 'rm -rf "$WORK"' EXIT
           # No checkout in this job: every gh call names the repo with -R.
-          # A just-created draft can take a while to become listable: poll for
-          # the ipa asset first (clear diagnostics), then download it.
-          for attempt in 1 2 3 4 5 6; do
+          # A just-created draft can take minutes to become listable (observed
+          # >60s API lag): poll up to 5 minutes, same budget as desktop.
+          for attempt in $(seq 1 30); do
             if gh release view "$TAG" -R "${{ github.repository }}" --json assets \
               --jq -e '.assets | map(select(.name | endswith(".ipa"))) | length > 0' > /dev/null 2>&1; then
               break
             fi
-            if [ "$attempt" = "6" ]; then
+            if [ "$attempt" = "30" ]; then
               echo "::error::no ipa asset visible on $TAG."
               exit 1
             fi
