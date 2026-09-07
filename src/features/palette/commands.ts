@@ -27,7 +27,6 @@ export interface PaletteCommand {
   id: string
   title: string
   keywords: string
-  category: "Navigate" | "Actions" | "Assistant"
   run: () => void
 }
 
@@ -38,13 +37,6 @@ export interface PaletteDependencies {
 function go(to: PaletteDestination): () => void {
   return () => {
     void router.navigate({ to })
-  }
-}
-
-function askAssistant(question: string): () => void {
-  return () => {
-    requestAssistantWithQuestion(question)
-    prefillAssistantComposerSoon(question)
   }
 }
 
@@ -60,77 +52,66 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
       id: "add-transaction",
       title: "Add transaction",
       keywords: "new create expense income",
-      category: "Actions",
       run: go("/transactions"),
     },
     {
       id: "go-transactions",
       title: "Go to Transactions",
       keywords: "expenses spending activity",
-      category: "Navigate",
       run: go("/transactions"),
     },
     {
       id: "go-budgets",
       title: "Go to Budgets",
-      keywords: "limits spending plan",
-      category: "Navigate",
+      keywords: "spending plan",
       run: go("/budgets"),
     },
     {
       id: "import-files",
       title: "Import files",
       keywords: "upload csv json bank",
-      category: "Actions",
       run: go("/imports"),
     },
     {
       id: "go-overview",
       title: "Go to Overview",
       keywords: "home dashboard",
-      category: "Navigate",
       run: go("/"),
     },
     {
       id: "go-review",
       title: "Go to Review",
-      keywords: "inbox approve pending",
-      category: "Navigate",
+      keywords: "inbox pending",
       run: go("/review"),
     },
     {
       id: "go-imports",
       title: "Go to Imports",
-      keywords: "upload csv json files",
-      category: "Navigate",
+      keywords: "csv json",
       run: go("/imports"),
     },
     {
       id: "go-net-worth",
       title: "Go to Net worth",
       keywords: "wealth assets investments",
-      category: "Navigate",
       run: go("/net-worth"),
     },
     {
       id: "go-groups",
       title: "Go to Groups",
       keywords: "shared split settle",
-      category: "Navigate",
       run: go("/groups"),
     },
     {
       id: "toggle-theme",
       title: "Toggle theme",
-      keywords: "dark light mode appearance",
-      category: "Actions",
+      keywords: "dark light",
       run: deps.toggleTheme,
     },
     {
       id: "go-settings",
       title: "Go to Settings",
-      keywords: "preferences backup keys",
-      category: "Navigate",
+      keywords: "backup keys",
       run: go("/settings"),
     },
     ...ASSISTANT_PRESET_QUESTIONS.map(
@@ -138,8 +119,10 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
         id: `ask-assistant-${index + 1}`,
         title: `Ask assistant: ${question}`,
         keywords: "ai help question chat",
-        category: "Assistant",
-        run: askAssistant(question),
+        run: () => {
+          requestAssistantWithQuestion(question)
+          prefillAssistantComposerSoon(question)
+        },
       }),
     ),
   ]

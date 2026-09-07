@@ -13,8 +13,9 @@ export function readUsage(storage: Pick<Storage, "getItem">): CommandUsage {
     const raw = storage.getItem(PALETTE_USAGE_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : []
   } catch {
     return []
   }

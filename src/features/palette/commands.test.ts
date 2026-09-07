@@ -60,7 +60,7 @@ describe("palette command registry", () => {
 
   it("includes one assistant command per preset question", () => {
     const commands = buildPaletteCommands(deps)
-    const assistant = commands.filter((command) => command.category === "Assistant")
+    const assistant = commands.filter((command) => command.id.startsWith("ask-assistant-"))
     expect(assistant).toHaveLength(ASSISTANT_PRESET_QUESTIONS.length)
     for (const question of ASSISTANT_PRESET_QUESTIONS) {
       expect(assistant.some((command) => command.title.includes(question))).toBe(true)

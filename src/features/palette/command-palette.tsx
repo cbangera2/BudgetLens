@@ -136,13 +136,7 @@ export function CommandPaletteHost() {
         : `${results.length} result${results.length === 1 ? "" : "s"}`
 
   return (
-    <div
-      role="presentation"
-      className="fixed inset-0 z-50 bg-foreground/35 p-4 backdrop-blur-[2px]"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
-    >
+    <div className="fixed inset-0 z-50 bg-foreground/35 p-4 backdrop-blur-[2px]">
       <div
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- Custom overlay positioning; the native dialog top layer would break this composition.
         role="dialog"
@@ -188,10 +182,9 @@ export function CommandPaletteHost() {
                   event.preventDefault()
                   run(command)
                 }}
-                className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${index === activeIndex ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm ${index === activeIndex ? "bg-accent text-foreground" : "text-muted-foreground"}`}
               >
                 <span className="truncate font-medium">{command.title}</span>
-                <span className="shrink-0 text-xs">{command.category}</span>
               </li>
             ))}
           </ul>
