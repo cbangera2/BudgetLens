@@ -5,12 +5,12 @@
 // 500 kB per-chunk hint, so a per-chunk cap would be red on arrival; a total
 // cap still catches the failure mode we care about: an accidentally huge new
 // dependency or a lost code-split boundary inflating what ships.
-// Cap: 1,660,000 bytes raw -- raised from 1,650,000 on the bill-calendar PR
-// after compositional growth tripped the wire: demo templates (#88, ~19.3 kB)
-// plus the lazy bill-calendar route chunk (~8.8 kB) together exceeded the old
-// cap while each fit its headroom alone. Still tight enough to bite on a real
-// regression. Raise it deliberately in a PR (re-measure, update BOTH numbers
-// below) when growth is intentional; never silence it by excluding files.
+// Cap: 1,670,000 bytes raw -- raised from 1,660,000 on the insights-digest
+// PR (#91) for the intentional dependency-free digest feature (~10.7 kB;
+// local re-measure 1,663,319 bytes). See the bill-calendar note above for the
+// prior compositional bump. Still tight enough to bite on a real regression.
+// Raise it deliberately in a PR (re-measure, update BOTH numbers below) when
+// growth is intentional; never silence it by excluding files.
 //
 // Usage: `pnpm build && node scripts/check-bundle-size.mjs`
 // Exit 0 when under budget, 1 when over (or when dist/ is missing).
@@ -21,7 +21,7 @@ import { join, resolve } from "node:path"
 const REPO_ROOT = resolve(import.meta.dirname, "..")
 const DIST_DIR = join(REPO_ROOT, "dist")
 const BASELINE_BYTES = 1_471_039 // measured via `pnpm build` on base 47af951
-const CAP_BYTES = 1_660_000 // BASELINE_BYTES + headroom; see note above
+const CAP_BYTES = 1_670_000 // raised deliberately; see note above
 
 function collectJsFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true })
