@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import {
 } from "@/features/imports/types"
 import { RulesSection } from "@/features/rules/rules-section"
 import { useTransactionRules } from "@/features/rules/store"
+import { transactionsByImportBatchPath } from "@/features/transactions/links"
 
 function kindLabel(kind: ImportBatch["kind"]): string {
   if (kind === "bundle") return "BudgetLens bundle"
@@ -28,6 +29,28 @@ function kindLabel(kind: ImportBatch["kind"]): string {
   if (kind === "wealthBreakdown") return "Net worth breakdown"
   if (kind === "wealthAccounts") return "Wealth accounts"
   return "Transactions"
+}
+
+function isTransactionCapableKind(kind: ImportBatch["kind"]): boolean {
+  return kind === "transactions" || kind === "bundle"
+}
+
+function useReturnFocusOnClose(open: boolean) {
+  const savedRef = useRef<HTMLElement | null>(null)
+  const wasOpenRef = useRef(false)
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      savedRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+    } else if (!open && wasOpenRef.current) {
+      const target = savedRef.current
+      savedRef.current = null
+      if (target && target.isConnected) {
+        requestAnimationFrame(() => target.focus())
+      }
+    }
+    wasOpenRef.current = open
+  }, [open])
 }
 
 function formatPreviewAmountMinor(amountMinor: number): string {
@@ -115,10 +138,14 @@ export function ImportPage() {
   const [busy, setBusy] = useState(false)
   const [rules, ruleActions] = useTransactionRules()
   const [categoryOverrides, setCategoryOverrides] = useState<Record<number, string>>({})
+  const [lastImportedBatches, setLastImportedBatches] = useState<
+    { id: string; sourceName: string; kind: ImportBatch["kind"] }[]
+  >([])
 
   useEffect(() => {
     void repositories.imports.list().then(setHistory)
   }, [])
+  useReturnFocusOnClose(deletingBatch !== null)
 
   function previewWithOverrides(source: ImportPreview): ImportPreview {
     const indices = Object.keys(categoryOverrides)
@@ -140,6 +167,7 @@ export function ImportPage() {
     setCategoryOverrides({})
     setResultFailures([])
     setStatus("")
+    setLastImportedBatches([])
     setImportError("")
     setSelectedFile(null)
     setSelectedFiles(files)
@@ -227,6 +255,13 @@ export function ImportPage() {
         (sum, receipt) => sum + receipt.batch.importedCount,
         0,
       )
+      setLastImportedBatches(
+        result.receipts.map((receipt) => ({
+          id: receipt.batch.id,
+          sourceName: receipt.batch.sourceName,
+          kind: receipt.batch.kind,
+        })),
+      )
       setStatus(
         failures.length > 0
           ? `Imported ${importedRows.toLocaleString()} rows from ${result.receipts.length.toLocaleString()} files. ${failures.length.toLocaleString()} selected file(s) were not imported.`
@@ -271,6 +306,13 @@ export function ImportPage() {
       setCategoryOverrides({})
       setHistory(await repositories.imports.list())
       setPreview(null)
+      setLastImportedBatches([
+        {
+          id: receipt.batch.id,
+          sourceName: receipt.batch.sourceName,
+          kind: receipt.batch.kind,
+        },
+      ])
       setStatus(
         `Imported ${receipt.batch.importedCount.toLocaleString()} ${kindLabel(receipt.batch.kind).toLocaleLowerCase()} row${receipt.batch.importedCount === 1 ? "" : "s"}.`,
       )
@@ -292,7 +334,9 @@ export function ImportPage() {
     try {
       const receipt = await importService.deleteBatch(deletingBatch.id)
       setHistory(await repositories.imports.list())
+      const removedId = deletingBatch.id
       setDeletingBatch(null)
+      setLastImportedBatches((current) => current.filter((entry) => entry.id !== removedId))
       const deletedCount =
         receipt.deletedTransactionCount +
         receipt.deletedWealthCount +
@@ -380,6 +424,17 @@ export function ImportPage() {
           <output aria-live="polite" className="block text-sm">
             {status || (busy ? "Reading and validating the file…" : "")}
           </output>
+          {lastImportedBatches.some((batch) => isTransactionCapableKind(batch.kind)) ? (
+            <div className="flex flex-wrap gap-2">
+              {lastImportedBatches
+                .filter((batch) => isTransactionCapableKind(batch.kind))
+                .map((batch) => (
+                  <Button key={batch.id} variant="outline" size="sm" asChild>
+                    <a href={transactionsByImportBatchPath(batch.id)}>View {batch.sourceName}</a>
+                  </Button>
+                ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -756,15 +811,26 @@ export function ImportPage() {
                       <td className="py-3 pr-4">{batch.importedCount.toLocaleString()}</td>
                       <td className="py-3 pr-4">{new Date(batch.importedAt).toLocaleString()}</td>
                       <td className="py-3 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => setDeletingBatch(batch)}
-                        >
-                          Remove
-                        </Button>
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {isTransactionCapableKind(batch.kind) ? (
+                            <a
+                              href={transactionsByImportBatchPath(batch.id)}
+                              aria-label={`View ${batch.sourceName} transactions`}
+                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-xs font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            >
+                              View
+                            </a>
+                          ) : null}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => setDeletingBatch(batch)}
+                          >
+                            Remove
+                          </Button>
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -772,7 +838,9 @@ export function ImportPage() {
               </table>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No completed imports yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No completed imports yet. Select CSV or JSON files above to preview your first import.
+            </p>
           )}
         </CardContent>
       </Card>

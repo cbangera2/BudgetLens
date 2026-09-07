@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { ArrowLeft, Pencil, Trash2, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,8 +24,39 @@ function unique(transactions: readonly Transaction[], field: keyof Transaction):
   ].toSorted()
 }
 
+function goBackPreservingFilters(event: React.MouseEvent) {
+  if (typeof window !== "undefined" && window.history.length > 1) {
+    event.preventDefault()
+    window.history.back()
+  }
+}
+
+function useReturnFocusOnClose(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+  wasOpenRef: React.RefObject<boolean>,
+) {
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      triggerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+    } else if (!open && wasOpenRef.current) {
+      const target = triggerRef.current
+      triggerRef.current = null
+      if (target && target.isConnected) {
+        requestAnimationFrame(() => target.focus())
+      }
+    }
+    wasOpenRef.current = open
+  }, [open, triggerRef, wasOpenRef])
+}
+
 export function TransactionDetailPageContent({ transactionId }: { transactionId: string }) {
   const navigate = useNavigate()
+  const editingTriggerRef = useRef<HTMLElement | null>(null)
+  const editingWasOpenRef = useRef(false)
+  const deletingWasOpenRef = useRef(false)
+  const deletingTriggerRef = useRef<HTMLElement | null>(null)
   const data = useLiveQuery(
     async () =>
       Promise.all([
@@ -37,6 +68,8 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
   )
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  useReturnFocusOnClose(editing, editingTriggerRef, editingWasOpenRef)
+  useReturnFocusOnClose(deleting, deletingTriggerRef, deletingWasOpenRef)
 
   const transaction = data?.[0] ?? null
   const allTransactions = useMemo(() => data?.[1] ?? [], [data])
@@ -52,7 +85,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
       <div className="grid gap-4">
         <div>
           <Button variant="ghost" className="mb-2 -ml-2" asChild>
-            <Link to="/transactions">
+            <Link to="/transactions" onClick={goBackPreservingFilters}>
               <ArrowLeft className="size-4" aria-hidden="true" /> Transactions
             </Link>
           </Button>
@@ -64,7 +97,9 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild>
-            <Link to="/transactions">Back to transactions</Link>
+            <Link to="/transactions" onClick={goBackPreservingFilters}>
+              Back to transactions
+            </Link>
           </Button>
           <Button variant="outline" asChild>
             <Link to="/imports">Open imports</Link>
@@ -89,7 +124,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Button variant="ghost" className="mb-2 -ml-2" asChild>
-            <Link to="/transactions">
+            <Link to="/transactions" onClick={goBackPreservingFilters}>
               <ArrowLeft className="size-4" aria-hidden="true" /> Transactions
             </Link>
           </Button>
@@ -251,6 +286,11 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
               </Link>
             </Button>
           ) : null}
+          <Button variant="outline" asChild>
+            <Link to="/transactions" search={{ importBatch: transaction.importBatchId }}>
+              View import batch
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 

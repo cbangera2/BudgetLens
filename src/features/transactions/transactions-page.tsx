@@ -31,6 +31,26 @@ import { TransactionForm } from "./transaction-form"
 
 const pageSize = 50
 
+function useReturnFocusOnClose(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+  wasOpenRef: React.RefObject<boolean>,
+) {
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      triggerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+    } else if (!open && wasOpenRef.current) {
+      const target = triggerRef.current
+      triggerRef.current = null
+      if (target && target.isConnected) {
+        requestAnimationFrame(() => target.focus())
+      }
+    }
+    wasOpenRef.current = open
+  }, [open, triggerRef, wasOpenRef])
+}
+
 function unique(transactions: readonly Transaction[], field: keyof Transaction): string[] {
   return [
     ...new Set(
@@ -59,6 +79,12 @@ export function TransactionsPageContent() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [lastSplit, setLastSplit] = useState(DEFAULT_SHARE_COUNT)
   const lastSelectedRef = useRef<string | null>(null)
+  const editingTriggerRef = useRef<HTMLElement | null>(null)
+  const editingWasOpenRef = useRef(false)
+  const deletingTriggerRef = useRef<HTMLElement | null>(null)
+  const deletingWasOpenRef = useRef(false)
+  useReturnFocusOnClose(editing !== null, editingTriggerRef, editingWasOpenRef)
+  useReturnFocusOnClose(deleting !== null, deletingTriggerRef, deletingWasOpenRef)
 
   useEffect(() => {
     const query = serializeTransactionFilters(filters)

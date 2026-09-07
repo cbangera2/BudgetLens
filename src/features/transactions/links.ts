@@ -16,3 +16,9 @@ export function transactionsFilteredPath(facet: TransactionFacet = {}): string {
   const query = params.toString()
   return query ? `/transactions?${query}` : "/transactions"
 }
+
+export function transactionsByImportBatchPath(importBatchId: string): string {
+  const params = new URLSearchParams()
+  params.set("importBatch", importBatchId)
+  return `/transactions?${params.toString()}`
+}
