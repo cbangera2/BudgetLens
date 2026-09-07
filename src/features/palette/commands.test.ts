@@ -4,7 +4,7 @@ import {
   ASSISTANT_PRESET_QUESTIONS,
   buildPaletteCommands,
   filterAndRankPalette,
-  PALETTE_ROUTE_TARGETS,
+  type PaletteDestination,
 } from "@/features/palette/commands"
 import { recordUsage } from "@/features/palette/recents"
 
@@ -23,8 +23,20 @@ function ids(query: string, usage = {}): string[] {
 
 describe("palette command registry", () => {
   it("covers every static route with a navigation command", () => {
+    // Mirrors the static routes in src/app/router.tsx; detail routes with ids
+    // cannot be palette targets.
+    const targets: readonly PaletteDestination[] = [
+      "/",
+      "/review",
+      "/net-worth",
+      "/transactions",
+      "/groups",
+      "/budgets",
+      "/imports",
+      "/settings",
+    ]
     const commands = buildPaletteCommands(deps)
-    for (const to of PALETTE_ROUTE_TARGETS) {
+    for (const to of targets) {
       const match = commands.find((command) => {
         command.run()
         const called = navigate.mock.calls.some((call) => call[0].to === to)

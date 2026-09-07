@@ -1,53 +1,23 @@
 // Bridge from the command palette to the assistant panel. The panel owns its
 // own state (untouched here); the shell opens it on this event and the
-// palette best-effort prefills the composer via its stable aria-label.
+// palette best-effort prefills the composer via its stable aria-label. The
+// preset question travels in the event detail — no storage involved.
 
 import { ASSISTANT_OPEN_KEY } from "@/features/assistant/provider"
 
 /** Window CustomEvent name carrying the preset question in `detail`. */
 export const ASSISTANT_OPEN_EVENT = "budgetlens:open-assistant"
 
-/** sessionStorage key for the pending preset question (per-tab, transient). */
-export const ASSISTANT_PENDING_QUESTION_KEY = "budgetlens.assistant.pending-question.v1"
-
 const COMPOSER_LABEL = "Ask the assistant"
-
-function safeSession(): Storage | null {
-  try {
-    return window.sessionStorage
-  } catch {
-    return null
-  }
-}
 
 /** Ask the shell to open the assistant with a preset question. */
 export function requestAssistantWithQuestion(question: string): void {
-  try {
-    safeSession()?.setItem(ASSISTANT_PENDING_QUESTION_KEY, question)
-  } catch {
-    // Pending-question handoff is best-effort; the open event below still fires.
-  }
   try {
     window.localStorage.setItem(ASSISTANT_OPEN_KEY, "open")
   } catch {
     // Open state falls back to the dispatched event below.
   }
   window.dispatchEvent(new CustomEvent<string>(ASSISTANT_OPEN_EVENT, { detail: question }))
-}
-
-/** Read and clear the pending preset question, if any. */
-export function takePendingAssistantQuestion(
-  session?: Pick<Storage, "getItem" | "removeItem">,
-): string | null {
-  const store = session ?? safeSession()
-  if (!store) return null
-  try {
-    const value = store.getItem(ASSISTANT_PENDING_QUESTION_KEY)
-    store.removeItem(ASSISTANT_PENDING_QUESTION_KEY)
-    return typeof value === "string" && value.length > 0 ? value : null
-  } catch {
-    return null
-  }
 }
 
 /**

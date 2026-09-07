@@ -10,40 +10,15 @@ import {
   filterAndRankPalette,
   type PaletteCommand,
 } from "@/features/palette/commands"
-import { readUsage, recordUsage, type CommandUsage } from "@/features/palette/recents"
-import { cn } from "@/lib/cn"
+import { readUsage, recordUsage } from "@/features/palette/recents"
 
 const LISTBOX_ID = "command-palette-listbox"
-const MAX_RESULTS = 9
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.tagName === "SELECT" ||
-      target.isContentEditable)
-  )
-}
-
-function safeReadUsage(): Record<string, CommandUsage> {
-  try {
-    return readUsage(window.localStorage)
-  } catch {
-    return {}
-  }
-}
-
-function optionId(command: PaletteCommand): string {
-  return `command-palette-option-${command.id}`
-}
 
 export function CommandPaletteHost() {
   const { theme, setTheme } = useTheme()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
-  const [usageTick, setUsageTick] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
 
@@ -54,13 +29,18 @@ export function CommandPaletteHost() {
       }),
     [theme, setTheme],
   )
-  const usage = useMemo(
-    () => (open ? safeReadUsage() : {}),
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- Re-read on open and after each run.
-    [open, usageTick],
-  )
+  // Re-read on open: running a command closes the palette, so the stored
+  // usage is always fresh the next time it opens.
+  const usage = useMemo(() => {
+    if (!open) return {}
+    try {
+      return readUsage(window.localStorage)
+    } catch {
+      return {}
+    }
+  }, [open])
   const results = useMemo(
-    () => filterAndRankPalette(query, commands, usage).slice(0, MAX_RESULTS),
+    () => filterAndRankPalette(query, commands, usage).slice(0, 9),
     [query, commands, usage],
   )
 
@@ -73,7 +53,14 @@ export function CommandPaletteHost() {
         !event.altKey
       if (!isPaletteShortcut) return
       // Never hijack keystrokes while the user is typing elsewhere.
-      if (isTypingTarget(event.target)) return
+      const target = event.target
+      const typing =
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      if (typing) return
       event.preventDefault()
       setOpen(true)
     }
@@ -110,7 +97,6 @@ export function CommandPaletteHost() {
     } catch {
       // Ranking persistence is best-effort; the action already ran.
     }
-    setUsageTick((tick) => tick + 1)
     close(false)
     command.run()
   }
@@ -146,10 +132,10 @@ export function CommandPaletteHost() {
   const active = results[activeIndex]
   const status =
     query.trim() === ""
-      ? `${results.length} commands. Recent and common actions first.`
+      ? `${results.length} commands`
       : results.length === 0
-        ? `No matching commands for ${query}.`
-        : `${results.length} result${results.length === 1 ? "" : "s"} for ${query}.`
+        ? "No matching commands"
+        : `${results.length} result${results.length === 1 ? "" : "s"}`
 
   return (
     <div
@@ -174,9 +160,9 @@ export function CommandPaletteHost() {
             role="combobox"
             aria-expanded="true"
             aria-controls={LISTBOX_ID}
-            aria-activedescendant={active ? optionId(active) : undefined}
+            aria-activedescendant={active ? `palette-option-${active.id}` : undefined}
             aria-label="Search commands"
-            placeholder="Type a command or search…"
+            placeholder="Type a command…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onInputKeyDown}
@@ -195,7 +181,7 @@ export function CommandPaletteHost() {
             {results.map((command, index) => (
               <li
                 key={command.id}
-                id={optionId(command)}
+                id={`palette-option-${command.id}`}
                 // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role, jsx-a11y/no-noninteractive-element-to-interactive-role -- Listbox options carry selection state; native option tags cannot render this layout.
                 role="option"
                 aria-selected={index === activeIndex}
@@ -204,13 +190,7 @@ export function CommandPaletteHost() {
                   event.preventDefault()
                   run(command)
                 }}
-                onMouseMove={() => {
-                  if (index !== activeIndex) setActiveIndex(index)
-                }}
-                className={cn(
-                  "flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm",
-                  index === activeIndex ? "bg-accent text-foreground" : "text-muted-foreground",
-                )}
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm ${index === activeIndex ? "bg-accent text-foreground" : "text-muted-foreground"}`}
               >
                 <span className="truncate font-medium">{command.title}</span>
                 <span className="shrink-0 text-xs">{command.category}</span>

@@ -2,10 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   ASSISTANT_OPEN_EVENT,
-  ASSISTANT_PENDING_QUESTION_KEY,
   prefillAssistantComposer,
   requestAssistantWithQuestion,
-  takePendingAssistantQuestion,
 } from "@/features/palette/assistant-bridge"
 import { PALETTE_USAGE_KEY, readUsage, recordUsage } from "@/features/palette/recents"
 
@@ -40,7 +38,7 @@ describe("palette usage tracking", () => {
 })
 
 describe("assistant bridge", () => {
-  it("dispatches the open event and stashes the preset question", () => {
+  it("dispatches the open event carrying the preset question", () => {
     const seen: string[] = []
     const handler = (event: Event) => {
       if (event instanceof CustomEvent && typeof event.detail === "string") {
@@ -51,24 +49,20 @@ describe("assistant bridge", () => {
     try {
       requestAssistantWithQuestion("Am I over budget anywhere?")
       expect(seen).toEqual(["Am I over budget anywhere?"])
-      expect(window.sessionStorage.getItem(ASSISTANT_PENDING_QUESTION_KEY)).toBe(
-        "Am I over budget anywhere?",
-      )
     } finally {
       window.removeEventListener(ASSISTANT_OPEN_EVENT, handler)
-      window.sessionStorage.clear()
       window.localStorage.clear()
     }
   })
 
-  it("still opens the assistant when session storage writes fail", () => {
+  it("still opens the assistant when the storage write fails", () => {
     const seen: string[] = []
     const handler = (event: Event) => {
       if (event instanceof CustomEvent && typeof event.detail === "string") {
         seen.push(event.detail)
       }
     }
-    const write = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+    const write = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
       throw new Error("storage denied")
     })
     window.addEventListener(ASSISTANT_OPEN_EVENT, handler)
@@ -78,17 +72,8 @@ describe("assistant bridge", () => {
     } finally {
       window.removeEventListener(ASSISTANT_OPEN_EVENT, handler)
       write.mockRestore()
-      window.sessionStorage.clear()
       window.localStorage.clear()
     }
-  })
-
-  it("takes the pending question exactly once", () => {
-    const store = memoryStore()
-    expect(takePendingAssistantQuestion(store)).toBeNull()
-    store.backing.set(ASSISTANT_PENDING_QUESTION_KEY, "Where did my money go last month?")
-    expect(takePendingAssistantQuestion(store)).toBe("Where did my money go last month?")
-    expect(takePendingAssistantQuestion(store)).toBeNull()
   })
 
   it("prefills the composer when mounted and reports when absent", () => {

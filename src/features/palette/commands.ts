@@ -40,26 +40,6 @@ function go(to: PaletteDestination): () => void {
   }
 }
 
-/** Best-effort: after landing on /transactions, focus its Add button. */
-function focusAddTransactionButton(): void {
-  let attempts = 0
-  const timer = window.setInterval(() => {
-    attempts += 1
-    try {
-      const buttons = document.querySelectorAll<HTMLButtonElement>("main button")
-      const add = [...buttons].find((button) => button.textContent?.trim() === "Add transaction")
-      if (add) {
-        add.focus()
-        window.clearInterval(timer)
-        return
-      }
-    } catch {
-      // DOM lookup is best-effort; navigation already succeeded.
-    }
-    if (attempts >= 15) window.clearInterval(timer)
-  }, 100)
-}
-
 function askAssistant(question: string): () => void {
   return () => {
     requestAssistantWithQuestion(question)
@@ -145,10 +125,7 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
       keywords: "new create expense income",
       category: "Actions",
       weight: 100,
-      run: () => {
-        void router.navigate({ to: "/transactions" })
-        focusAddTransactionButton()
-      },
+      run: go("/transactions"),
     },
     {
       id: "import-files",
@@ -179,18 +156,6 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
   ]
 }
 
-/** Every static route the palette must be able to navigate to. */
-export const PALETTE_ROUTE_TARGETS: readonly PaletteDestination[] = [
-  "/",
-  "/review",
-  "/net-worth",
-  "/transactions",
-  "/groups",
-  "/budgets",
-  "/imports",
-  "/settings",
-]
-
 const USAGE_BOOST = 25
 
 /**
@@ -205,17 +170,11 @@ export function filterAndRankPalette(
 ): PaletteCommand[] {
   const trimmed = query.trim()
   if (!trimmed) {
-    return [...commands].toSorted((a, b) => {
-      const ua = usage[a.id]
-      const ub = usage[b.id]
-      if (ua && ub) {
-        if (ub.lastUsed !== ua.lastUsed) return ub.lastUsed - ua.lastUsed
-        return b.weight - a.weight
-      }
-      if (ua) return -1
-      if (ub) return 1
-      return b.weight - a.weight
-    })
+    // Recents (by last use) first, then common actions in baseline order.
+    return [...commands].toSorted(
+      (a, b) =>
+        (usage[b.id]?.lastUsed ?? -1) - (usage[a.id]?.lastUsed ?? -1) || b.weight - a.weight,
+    )
   }
   const scored: Array<{ command: PaletteCommand; score: number }> = []
   for (const command of commands) {

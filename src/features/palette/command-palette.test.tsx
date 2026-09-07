@@ -91,7 +91,7 @@ describe("command palette", () => {
     const options = screen.getAllByRole("option")
     expect(options[0]).toHaveAttribute("aria-selected", "false")
     expect(options[1]).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("status")).toHaveTextContent(/commands\. Recent/)
+    expect(screen.getByRole("status")).toHaveTextContent("9 commands")
     await user.keyboard("{Enter}")
     expect(navigate).toHaveBeenCalledWith({ to: "/transactions" })
   })
