@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { Pencil, Plus, Trash2 } from "lucide-react"
 import { useState, type FormEvent } from "react"
@@ -18,6 +19,10 @@ const selectClass =
 function localToday(): string {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
+}
+
+export function budgetPeriodPrefix(period: BudgetGoal["period"], referenceDate: string): string {
+  return period === "monthly" ? referenceDate.slice(0, 7) : referenceDate.slice(0, 4)
 }
 
 export function budgetValues(
@@ -204,17 +209,23 @@ export function BudgetsPageContent() {
         ) : (
           progress.map((item) => {
             const capped = Math.min(item.progress * 100, 100)
+            const periodPrefix = budgetPeriodPrefix(item.goal.period, referenceDate)
             return (
               <Card key={item.goal.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <CardTitle>{item.goal.category}</CardTitle>
+                      <CardTitle>
+                        <Link
+                          to="/transactions"
+                          search={{ category: item.goal.category, q: periodPrefix }}
+                          className="underline-offset-4 hover:underline"
+                        >
+                          {item.goal.category}
+                        </Link>
+                      </CardTitle>
                       <CardDescription>
-                        {item.goal.period === "monthly"
-                          ? referenceDate.slice(0, 7)
-                          : referenceDate.slice(0, 4)}{" "}
-                        · {item.goal.period}
+                        {periodPrefix} · {item.goal.period}
                       </CardDescription>
                     </div>
                     <Badge variant={item.status === "on-track" ? "secondary" : "outline"}>
@@ -223,21 +234,28 @@ export function BudgetsPageContent() {
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-3">
-                  <div className="flex justify-between text-sm">
-                    <span>{formatMoney(item.spentMinor)} spent</span>
-                    <span>{formatMoney(item.goal.amountMinor)} goal</span>
-                  </div>
-                  <progress
-                    className={`h-3 w-full accent-primary ${item.status === "over-budget" ? "accent-destructive" : ""}`}
-                    aria-label={`${item.goal.category} budget used`}
-                    max={100}
-                    value={capped}
-                  />
-                  <p className="text-sm">
-                    {item.remainingMinor >= 0
-                      ? `${formatMoney(item.remainingMinor)} remaining`
-                      : `${formatMoney(Math.abs(item.remainingMinor))} over budget`}
-                  </p>
+                  <Link
+                    to="/transactions"
+                    search={{ category: item.goal.category, q: periodPrefix }}
+                    aria-label={`View ${item.goal.category} transactions for ${periodPrefix}`}
+                    className="grid gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <span className="flex justify-between text-sm">
+                      <span>{formatMoney(item.spentMinor)} spent</span>
+                      <span>{formatMoney(item.goal.amountMinor)} goal</span>
+                    </span>
+                    <progress
+                      className={`h-3 w-full accent-primary ${item.status === "over-budget" ? "accent-destructive" : ""}`}
+                      aria-label={`${item.goal.category} budget used`}
+                      max={100}
+                      value={capped}
+                    />
+                    <span className="text-sm">
+                      {item.remainingMinor >= 0
+                        ? `${formatMoney(item.remainingMinor)} remaining`
+                        : `${formatMoney(Math.abs(item.remainingMinor))} over budget`}
+                    </span>
+                  </Link>
                   <div className="flex justify-end">
                     <Button
                       size="icon"
