@@ -23,6 +23,7 @@ async function openTransactions(page: Page) {
 test("operator search narrows transaction rows", async ({ page }) => {
   await importSearchViews(page)
   await openTransactions(page)
+  await page.getByRole("button", { name: "More filters" }).click()
 
   await page.getByLabel("Search").fill("amount:>100")
   await expect(page).toHaveURL(/q=amount/)
@@ -61,6 +62,7 @@ test("date presets drive the from/to filters", async ({ page }) => {
 test("saved views persist across reloads until deleted", async ({ page }) => {
   await importSearchViews(page)
   await openTransactions(page)
+  await page.getByRole("button", { name: "More filters" }).click()
 
   await page.getByLabel("Search").fill("amount:>100")
   await page.getByLabel("Saved views").fill("Big spend")
@@ -82,6 +84,7 @@ test("saved views persist across reloads until deleted", async ({ page }) => {
 
   await page.reload()
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
+  await page.getByRole("button", { name: "More filters" }).click()
   await expect(page.getByRole("button", { name: "Apply Huge spend view" })).toBeVisible()
 
   await page.getByRole("button", { name: "Delete Huge spend view" }).click()
