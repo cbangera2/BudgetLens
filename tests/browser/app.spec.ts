@@ -1,10 +1,17 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 const fixture = (name: string) => path.resolve(directory, "../fixtures", name)
+
+// Keyboard activation instead of coordinate clicks for transactions-table
+// targets: on narrow viewports scrolled rows can sit underneath sticky
+// overlays and pointer hit-testing flakes (same pattern as receipts.spec.ts).
+async function activate(button: Locator) {
+  await button.press("Enter")
+}
 
 async function importCsv(page: Page, name: string, expectedRows: number) {
   await page.goto("/imports")
@@ -23,14 +30,14 @@ test("imports current transactions and supports URL-backed search", async ({ pag
   await expect(page.getByRole("rowheader", { name: "Example Market, North" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: 'Quoted "Merchant"' })).toBeVisible()
 
-  await page.getByRole("button", { name: "Edit Example Market, North" }).click()
+  await activate(page.getByRole("button", { name: "Edit Example Market, North" }))
   await expect(page.getByRole("dialog", { name: "Edit Example Market, North" })).toBeVisible()
-  await page.getByRole("button", { name: "Cancel" }).click()
+  await activate(page.getByRole("button", { name: "Cancel" }))
   await expect(page.getByRole("dialog", { name: "Edit Example Market, North" })).toHaveCount(0)
 
-  await page.getByRole("button", { name: 'Delete Quoted "Merchant"' }).click()
+  await activate(page.getByRole("button", { name: 'Delete Quoted "Merchant"' }))
   await expect(page.getByRole("alertdialog", { name: "Delete transaction?" })).toBeVisible()
-  await page.getByRole("button", { name: "Cancel" }).click()
+  await activate(page.getByRole("button", { name: "Cancel" }))
   await expect(page.getByRole("alertdialog", { name: "Delete transaction?" })).toHaveCount(0)
 
   await page.getByLabel("Search").fill("market")
