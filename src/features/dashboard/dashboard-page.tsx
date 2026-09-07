@@ -68,7 +68,7 @@ function BudgetsWidget({
           <p className="text-sm text-muted-foreground">
             Create a budget goal to track category spending.{" "}
             <Link to="/budgets" className="text-primary underline underline-offset-4">
-              Open budgets
+              Create your first goal
             </Link>
           </p>
         ) : (
@@ -108,9 +108,9 @@ function RecentWidget({ transactions }: { transactions: readonly Transaction[] }
       <CardContent>
         {recent.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No transactions imported yet.{" "}
+            No activity yet.{" "}
             <Link to="/imports" className="text-primary underline underline-offset-4">
-              Open imports
+              Upload a CSV file to get started
             </Link>
           </p>
         ) : (

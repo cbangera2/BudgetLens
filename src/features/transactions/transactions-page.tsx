@@ -483,18 +483,10 @@ export function TransactionsPageContent() {
               <p className="mt-1 text-sm text-muted-foreground">
                 Adjust the filters, add a transaction, or{" "}
                 <Link to="/imports" className="text-primary underline underline-offset-4">
-                  import a CSV file
+                  upload a CSV file
                 </Link>
                 .
               </p>
-              <div className="mt-4 flex justify-center gap-2">
-                <Button variant="outline" onClick={() => setFilters(defaultTransactionFilters)}>
-                  Clear filters
-                </Button>
-                <Button variant="outline" onClick={() => setEditing("new")}>
-                  Add transaction
-                </Button>
-              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
