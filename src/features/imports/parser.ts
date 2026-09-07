@@ -12,6 +12,7 @@ import type {
   WealthSnapshotDraft,
 } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import type { CsvColumnMapping } from "@/features/imports/csv-mapping"
 import {
   DEFAULT_IMPORT_LIMITS,
   type ImportIssue,
@@ -131,6 +132,40 @@ function canonicalHeader(header: string): string {
 function nullable(value: string | undefined): string | null {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+export function isUnsupportedHeadersError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("Unsupported headers")
+}
+
+export function readCsvHeaders(content: string): string[] {
+  if (content.includes("\0")) throw new Error("Binary files are not supported.")
+  const parsed = Papa.parse<string[]>(content, {
+    header: false,
+    skipEmptyLines: "greedy",
+    preview: 1,
+  })
+  if (parsed.errors.length) {
+    const first = parsed.errors[0]!
+    throw new Error(
+      `CSV parsing failed${first.row === undefined ? "" : ` near row ${first.row + 1}`}: ${first.message}`,
+    )
+  }
+  const firstRow = parsed.data[0]
+  if (!firstRow || firstRow.length === 0) {
+    throw new Error("The CSV file does not contain a header row.")
+  }
+  const headers = firstRow.map((header) =>
+    typeof header === "string" ? header.replace(/^\uFEFF/, "").trim() : "",
+  )
+  if (headers.every((header) => header === "")) {
+    throw new Error("The CSV file does not contain a header row.")
+  }
+  const canonical = headers.filter((header) => header !== "").map(canonicalHeader)
+  if (new Set(canonical).size !== canonical.length) {
+    throw new Error("CSV contains duplicate headers.")
+  }
+  return headers.filter((header) => header !== "")
 }
 
 export function sanitizeImportSourceName(name: string): string {
@@ -683,6 +718,115 @@ export async function parseImportText(
     wealth,
     wealthBreakdown,
     wealthAccounts,
+    issues,
+  }
+}
+
+const MAPPED_FIELD_TARGETS: Record<string, TransactionField> = {
+  date: "date",
+  amount: "amount",
+  description: "description",
+  category: "category",
+  account: "accountName",
+  type: "transactionType",
+}
+
+export async function parseImportTextWithMapping(
+  content: string,
+  sourceName: string,
+  columnMapping: CsvColumnMapping,
+  limits: ImportLimits = DEFAULT_IMPORT_LIMITS,
+): Promise<ParsedImport> {
+  const required: readonly (keyof CsvColumnMapping)[] = ["date", "amount", "description"]
+  const missing = required.filter((field) => !columnMapping[field]?.trim())
+  if (missing.length > 0) {
+    throw new Error(`Select a column for each required field: ${missing.join(", ")}.`)
+  }
+
+  const selectedCanonical = new Map<string, keyof CsvColumnMapping>()
+  const mappingFields: (keyof CsvColumnMapping)[] = [
+    "date",
+    "amount",
+    "description",
+    "category",
+    "account",
+    "type",
+  ]
+  for (const field of mappingFields) {
+    const selected = columnMapping[field]
+    if (!selected?.trim()) continue
+    const canonical = canonicalHeader(selected)
+    const previous = selectedCanonical.get(canonical)
+    if (previous) {
+      throw new Error(
+        `Select different columns for ${previous} and ${field}. Each field needs its own column.`,
+      )
+    }
+    selectedCanonical.set(canonical, field)
+  }
+
+  if (new TextEncoder().encode(content).byteLength > limits.maxFileBytes) {
+    throw new Error(`File exceeds the ${limits.maxFileBytes.toLocaleString()} byte limit.`)
+  }
+  if (content.includes("\0")) throw new Error("Binary files are not supported.")
+
+  const parsed = Papa.parse<Record<string, string>>(content, {
+    header: true,
+    skipEmptyLines: "greedy",
+    transformHeader: canonicalHeader,
+  })
+  if (parsed.errors.length) {
+    const first = parsed.errors[0]!
+    throw new Error(
+      `CSV parsing failed${first.row === undefined ? "" : ` near row ${first.row + 1}`}: ${first.message}`,
+    )
+  }
+  if (!parsed.meta.fields?.length) throw new Error("The CSV file does not contain a header row.")
+  if (parsed.meta.renamedHeaders && Object.keys(parsed.meta.renamedHeaders).length > 0) {
+    throw new Error("CSV contains duplicate headers.")
+  }
+  if (parsed.data.length > limits.maxRows) {
+    throw new Error(`File exceeds the ${limits.maxRows.toLocaleString()} row limit.`)
+  }
+
+  const fields = parsed.meta.fields.map(canonicalHeader)
+  if (new Set(fields).size !== fields.length) throw new Error("CSV contains duplicate headers.")
+  const fieldSet = new Set(fields)
+
+  const mapping = new Map<string, TransactionField>()
+  for (const [canonical, field] of selectedCanonical) {
+    if (!fieldSet.has(canonical)) {
+      throw new Error(`Selected column for ${field} is not in this file.`)
+    }
+    mapping.set(canonical, MAPPED_FIELD_TARGETS[field]!)
+  }
+
+  const transactions: TransactionDraft[] = []
+  const issues: ImportIssue[] = []
+
+  parsed.data.forEach((candidate, index) => {
+    const row = index + 2
+    const rawResult = textRowSchema.safeParse(candidate)
+    if (!rawResult.success) {
+      issues.push({ row, message: "Row contains an unsupported value." })
+      return
+    }
+    try {
+      transactions.push(parseTransaction(rawResult.data, mapping))
+    } catch (error) {
+      issues.push({ row, message: error instanceof Error ? error.message : "Invalid row." })
+    }
+  })
+
+  return {
+    kind: "transactions",
+    sourceName: sanitizeImportSourceName(sourceName),
+    sourceHash: await sha256(content),
+    rowCount: parsed.data.length,
+    transactions,
+    wealth: [],
+    wealthBreakdown: [],
+    wealthAccounts: [],
     issues,
   }
 }
