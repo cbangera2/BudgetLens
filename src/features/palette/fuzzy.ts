@@ -9,7 +9,7 @@ export function fuzzyScore(query: string, target: string): number | null {
   const q = query.toLowerCase().trim()
   if (!q) return 0
   const t = target.toLowerCase()
-  const allowance = q.length < 4 ? 0 : Math.max(1, Math.floor(q.length / 4))
+  const allowance = q.length < 4 ? 0 : 1
   let score = 0
   let pos = 0
   let run = 0

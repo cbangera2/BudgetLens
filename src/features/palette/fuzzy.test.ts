@@ -25,6 +25,10 @@ describe("fuzzyScore", () => {
     expect(fuzzyScore("transactoin", "Transactions")).not.toBeNull()
   })
 
+  it("rejects queries with more than one typo", () => {
+    expect(fuzzyScore("sxxettings", "Settings")).toBeNull()
+  })
+
   it("ranks exact matches above typo matches", () => {
     const exact = fuzzyScore("settings", "Settings")
     const typo = fuzzyScore("setxings", "Settings")

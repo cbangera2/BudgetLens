@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   ASSISTANT_OPEN_EVENT,
@@ -56,6 +56,28 @@ describe("assistant bridge", () => {
       )
     } finally {
       window.removeEventListener(ASSISTANT_OPEN_EVENT, handler)
+      window.sessionStorage.clear()
+      window.localStorage.clear()
+    }
+  })
+
+  it("still opens the assistant when session storage writes fail", () => {
+    const seen: string[] = []
+    const handler = (event: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail === "string") {
+        seen.push(event.detail)
+      }
+    }
+    const write = vi.spyOn(window.sessionStorage, "setItem").mockImplementation(() => {
+      throw new Error("storage denied")
+    })
+    window.addEventListener(ASSISTANT_OPEN_EVENT, handler)
+    try {
+      requestAssistantWithQuestion("Am I over budget anywhere?")
+      expect(seen).toEqual(["Am I over budget anywhere?"])
+    } finally {
+      window.removeEventListener(ASSISTANT_OPEN_EVENT, handler)
+      write.mockRestore()
       window.sessionStorage.clear()
       window.localStorage.clear()
     }

@@ -22,7 +22,11 @@ function safeSession(): Storage | null {
 
 /** Ask the shell to open the assistant with a preset question. */
 export function requestAssistantWithQuestion(question: string): void {
-  safeSession()?.setItem(ASSISTANT_PENDING_QUESTION_KEY, question)
+  try {
+    safeSession()?.setItem(ASSISTANT_PENDING_QUESTION_KEY, question)
+  } catch {
+    // Pending-question handoff is best-effort; the open event below still fires.
+  }
   try {
     window.localStorage.setItem(ASSISTANT_OPEN_KEY, "open")
   } catch {
