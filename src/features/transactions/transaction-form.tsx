@@ -9,6 +9,12 @@ import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/m
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { ReceiptSection } from "@/features/receipts/receipt-section"
 
+import {
+  loadTransactionFormDefaults,
+  saveTransactionFormDefaults,
+  type TransactionFormDefaults,
+} from "./transaction-form-defaults"
+
 const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -30,7 +36,10 @@ export interface TransactionFormValues {
   shareCount: number
 }
 
-function initialValues(transaction?: Transaction): TransactionFormValues {
+function initialValues(
+  transaction?: Transaction,
+  defaults?: TransactionFormDefaults | null,
+): TransactionFormValues {
   return {
     date: transaction?.date ?? "",
     description: transaction?.description ?? "",
@@ -40,10 +49,13 @@ function initialValues(transaction?: Transaction): TransactionFormValues {
             100,
         )
       : "",
-    category: transaction?.category ?? "",
-    transactionType: transaction?.transactionType ?? "",
-    accountName: transaction?.accountName ?? "",
-    accountType: transaction?.accountType ?? "",
+    // Create-only smart defaults: pre-fill account + category (+ type) from the
+    // most recently created transaction. Edit mode always uses the transaction
+    // itself. Clearing site data wipes the stored defaults (blank fallback).
+    category: transaction?.category ?? defaults?.category ?? "",
+    transactionType: transaction?.transactionType ?? defaults?.transactionType ?? "",
+    accountName: transaction?.accountName ?? defaults?.accountName ?? "",
+    accountType: transaction?.accountType ?? defaults?.accountType ?? "",
     provider: transaction?.provider ?? "",
     notes: transaction?.notes ?? "",
     groupId: transaction?.groupId ?? "",
@@ -102,7 +114,12 @@ export function TransactionForm({
   onCancel: () => void
 }) {
   const id = useId()
-  const [values, setValues] = useState(() => initialValues(transaction))
+  // Read once on mount: explicit user edits afterwards always win and are never
+  // overwritten by the store. Edit mode passes the transaction, so defaults are
+  // skipped entirely.
+  const [values, setValues] = useState(() =>
+    initialValues(transaction, transaction ? null : loadTransactionFormDefaults()),
+  )
   const [customActive, setCustomActive] = useState<Record<string, boolean>>({})
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
@@ -142,6 +159,16 @@ export function TransactionForm({
     setError("")
     try {
       await onSubmit(draft)
+      // Remember the last-created transaction's account + category (+ type) for
+      // the next create form. Create-only: edits never touch the defaults.
+      if (!transaction) {
+        saveTransactionFormDefaults({
+          accountName: draft.accountName ?? "",
+          accountType: draft.accountType ?? "",
+          category: draft.category ?? "",
+          transactionType: draft.transactionType ?? "",
+        })
+      }
     } catch {
       setError("The transaction could not be saved.")
     } finally {

@@ -13,6 +13,8 @@ import type { BudgetGoal } from "@/domain/models"
 import { calculateBudgetProgress } from "@/features/dashboard/calculations"
 import { formatMoney } from "@/features/dashboard/format"
 
+import { loadBudgetFormDefaults, saveBudgetFormDefaults } from "./budget-form-defaults"
+
 const selectClass =
   "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
@@ -57,7 +59,10 @@ export function BudgetsPageContent() {
     setEditing(goal)
     setCategory(goal === "new" ? "" : goal.category)
     setAmount(goal === "new" ? "" : String(goal.amountMinor / 100))
-    setPeriod(goal === "new" ? "monthly" : goal.period)
+    // Create form remembers the last-used period; editing an existing goal
+    // always shows that goal's own period. Clearing site data wipes the stored
+    // period (falls back to "monthly").
+    setPeriod(goal === "new" ? (loadBudgetFormDefaults() ?? "monthly") : goal.period)
     setError("")
   }
 
@@ -72,6 +77,7 @@ export function BudgetsPageContent() {
       updatedAt: now,
       ...values,
     })
+    saveBudgetFormDefaults(period)
     setEditing(null)
   }
 
