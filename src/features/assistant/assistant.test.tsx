@@ -11,9 +11,11 @@ import type {
   WealthBreakdownRepository,
   WealthRepository,
 } from "@/domain/repositories"
+import { parseBudgetLensChartSpec } from "@/features/assistant/chart-block"
 import {
   buildFinanceSnapshot,
   executeAssistantTool,
+  ASSISTANT_SYSTEM_PROMPT,
   MAX_TOOL_ROWS,
   parseBudgetProposal,
   parseCreateTransactionProposal,
@@ -673,5 +675,31 @@ describe("assistant write tools", () => {
     expect(snapshot.recentTransactions).toHaveLength(2)
     expect(snapshot.recentTransactions[0]?.date).toBe("2026-08-03")
     expect(typeof snapshot.recentTransactions[0]?.id).toBe("string")
+  })
+})
+
+describe("assistant chart instruction", () => {
+  it("teaches the budgetlens-chart fence with a parseable example shape", () => {
+    expect(ASSISTANT_SYSTEM_PROMPT).toContain("```budgetlens-chart")
+    // The documented contract, verbatim in structure: bar/donut, titled,
+    // 1..12 labeled slices with finite values from tool results.
+    expect(
+      parseBudgetLensChartSpec({
+        type: "bar",
+        title: "Spending by category",
+        unit: "$",
+        data: [
+          { label: "Groceries", value: 1141 },
+          { label: "Dining Out", value: 540 },
+        ],
+      }),
+    ).toMatchObject({ type: "bar", title: "Spending by category" })
+    expect(
+      parseBudgetLensChartSpec({
+        type: "pie",
+        title: "Nope",
+        data: [{ label: "Example", value: 1 }],
+      }),
+    ).toBeNull()
   })
 })

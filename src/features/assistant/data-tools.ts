@@ -477,6 +477,7 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   "- Amounts are in minor units in tool I/O; show formatted currency to the user.",
   "- propose_budget_change, propose_recategorize, create_transaction, delete_transaction only draft; the UI applies them after explicit approval.",
   "- Use show_transactions_view to display matching rows in the app after row answers.",
+  '- When the user asks for a graph, chart, or visual breakdown, render one with a fenced block: ```budgetlens-chart on its own line, then JSON {"type":"bar"|"donut","title":string,"unit"?:string,"data":[{"label":string,"value":number}]}, then a closing ``` fence. Rules: 1..12 slices, finite values only, labels and numbers strictly from tool results above (never invent them), never nest it inside another code block.',
   "- Keep answers short and point at what the user can verify in the app.",
 ].join("\n")
 

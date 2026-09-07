@@ -22,6 +22,7 @@ export const DASHBOARD_MODULE_IDS = [
   "budgetGoals",
   "imports",
   "netWorth",
+  "yearReview",
 ] as const
 
 export type DashboardModuleId = (typeof DASHBOARD_MODULE_IDS)[number]
@@ -128,6 +129,15 @@ export const DASHBOARD_MODULE_CATALOG: readonly DashboardModuleDefinition[] = [
     defaultSpan: "half",
     icon: PiggyBank,
     searchTerms: ["wealth", "investments", "assets"],
+  },
+  {
+    id: "yearReview",
+    title: "Year in review",
+    description: "A shareable snapshot of the year: income, spending, top categories.",
+    category: "Review",
+    defaultSpan: "full",
+    icon: ChartNoAxesCombined,
+    searchTerms: ["annual", "yearly", "share", "summary"],
   },
 ] as const
 

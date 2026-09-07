@@ -559,6 +559,7 @@ export function DashboardPage() {
     budgetGoals: <BudgetsWidget goals={goals} transactions={visibleTransactions} />,
     imports: <ImportWidget />,
     netWorth: <NetWorthWidget wealth={wealth} />,
+    yearReview: <YearReviewSection transactions={visibleTransactions} wealth={wealth} />,
   }
 
   return (
@@ -569,7 +570,6 @@ export function DashboardPage() {
           Your financial picture, without sending financial data to a server.
         </p>
       </div>
-      <YearReviewSection transactions={transactions} wealth={wealth} />
       <DashboardCustomizer renderModule={({ id }) => modules[id]} />
     </div>
   )
