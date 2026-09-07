@@ -385,11 +385,11 @@ function ImportWidget() {
         <CardDescription>Add transactions, net worth, or investment history.</CardDescription>
       </CardHeader>
       <CardContent>
-          <Button asChild>
-            <Link to="/imports">
-              <Upload className="size-4" /> Open imports
-            </Link>
-          </Button>
+        <Button asChild>
+          <Link to="/imports">
+            <Upload className="size-4" /> Open imports
+          </Link>
+        </Button>
       </CardContent>
     </Card>
   )
