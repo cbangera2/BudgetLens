@@ -15,16 +15,18 @@ test("opens with the shortcut and navigates with type, arrows, enter", async ({ 
 
   await openPalette(page)
   await page.keyboard.type("go to")
-  const budgets = page.getByRole("option", { name: /Go to Budgets/ })
-  await expect(budgets).toBeVisible()
-  // Rank order for "go to" leads with Transactions; one arrow step down lands
-  // on Budgets (second), Enter navigates there.
+  const review = page.getByRole("option", { name: /Go to Review/ })
+  const groups = page.getByRole("option", { name: /Go to Groups/ })
+  await expect(review).toBeVisible()
+  await expect(review).toHaveAttribute("aria-selected", "true")
+  // Rank order for "go to" leads with Review; one arrow step down lands
+  // on Groups (second), Enter navigates there.
   await page.keyboard.press("ArrowDown")
-  await expect(budgets).toHaveAttribute("aria-selected", "true")
+  await expect(groups).toHaveAttribute("aria-selected", "true")
   await page.keyboard.press("Enter")
 
-  await expect(page).toHaveURL(/\/budgets/)
-  await expect(page.getByRole("heading", { name: "Budgets" })).toBeVisible()
+  await expect(page).toHaveURL(/\/groups/)
+  await expect(page.getByRole("heading", { name: "Groups" })).toBeVisible()
   await expect(page.getByRole("dialog", { name: "Command palette" })).toHaveCount(0)
 })
 

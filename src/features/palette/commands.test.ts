@@ -105,6 +105,12 @@ describe("palette ranking", () => {
     expect(ids("setings")[0]).toBe("go-settings")
   })
 
+  it("orders equal fuzzy scores by title length, then registry order", () => {
+    // "go to" matches every Navigate title with the same base score; the
+    // 12-letter titles (Review, Groups) tie and fall back to registry order.
+    expect(ids("go to").slice(0, 2)).toEqual(["go-review", "go-groups"])
+  })
+
   it("matches case-insensitively and filters non-matches out", () => {
     const ranked = ids("BUDGETS")
     expect(ranked[0]).toBe("go-budgets")
