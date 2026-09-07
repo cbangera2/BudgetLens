@@ -30,16 +30,21 @@ import { Composer } from "@/features/assistant/composer"
 import {
   ASSISTANT_SYSTEM_PROMPT,
   ASSISTANT_TOOL_SCHEMAS,
+  buildDashboardChartInputFromSaveChart,
   buildFinanceSnapshot,
   executeAssistantTool,
+  intersectChartCategories,
   parseBudgetProposal,
   parseCreateTransactionProposal,
   parseDeleteTransactionProposal,
+  parseProposeTransaction,
   parseRecategorizeProposal,
+  parseSaveChartProposal,
   type BudgetProposal,
   type CreateTransactionProposal,
   type DeleteTransactionProposal,
   type RecategorizeProposal,
+  type SaveChartProposal,
 } from "@/features/assistant/data-tools"
 import {
   DEMO_PROVIDER_ID,
@@ -90,6 +95,11 @@ import {
   setThreadPin,
   type ThreadRecord,
 } from "@/features/assistant/thread-store"
+import {
+  createChart,
+  DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY,
+  deserializeDashboardConfiguration,
+} from "@/features/charts"
 import { isTransactionSort } from "@/features/transactions/filtering"
 import { clearAssistantKey, loadAssistantKey, saveAssistantKey } from "@/lib/apiKeyStore"
 import { isNativeCapacitorSync } from "@/lib/isNative"
@@ -341,6 +351,14 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     (DeleteTransactionProposal & { id: string }) | null
   >(null)
   const [deleteState, setDeleteState] = useState<"idle" | "applied" | "applying">("idle")
+  const [nlProposal, setNlProposal] = useState<(CreateTransactionProposal & { id: string }) | null>(
+    null,
+  )
+  const [nlState, setNlState] = useState<"idle" | "applied" | "applying">("idle")
+  const [chartProposal, setChartProposal] = useState<(SaveChartProposal & { id: string }) | null>(
+    null,
+  )
+  const [chartState, setChartState] = useState<"idle" | "applied" | "applying">("idle")
   const [threads, setThreads] = useState<ThreadRecord[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
@@ -583,6 +601,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setRecatProposal(null)
     setCreateProposal(null)
     setDeleteProposal(null)
+    setNlProposal(null)
+    setChartProposal(null)
     setHarnessSessionId(undefined)
     setContextSummary(null)
     setError(null)
@@ -610,6 +630,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setRecatProposal(null)
     setCreateProposal(null)
     setDeleteProposal(null)
+    setNlProposal(null)
+    setChartProposal(null)
     setHarnessSessionId(undefined)
     setContextSummary(null)
     setError(null)
@@ -627,6 +649,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       setRecatProposal(null)
       setCreateProposal(null)
       setDeleteProposal(null)
+      setNlProposal(null)
+      setChartProposal(null)
       setHarnessSessionId(undefined)
       setContextSummary(null)
     }
@@ -922,6 +946,20 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           setDeleteState("idle")
         }
       }
+      if (call.name === "propose_transaction") {
+        const draft = parseProposeTransaction(output)
+        if (draft) {
+          setNlProposal({ ...draft, id: messageId() })
+          setNlState("idle")
+        }
+      }
+      if (call.name === "save_chart") {
+        const draft = parseSaveChartProposal(output)
+        if (draft) {
+          setChartProposal({ ...draft, id: messageId() })
+          setChartState("idle")
+        }
+      }
     }
 
     const finalAnswer = await sendToolResults({
@@ -1062,6 +1100,65 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not delete transaction.")
       setDeleteState("idle")
+    }
+  }
+
+  async function applyNlTransaction() {
+    if (!nlProposal || nlState !== "idle") return
+    setNlState("applying")
+    try {
+      await repositories.transactions.add({
+        date: nlProposal.date,
+        description: nlProposal.description,
+        amountMinor: nlProposal.amountMinor,
+        category: nlProposal.category,
+        transactionType: null,
+        accountName: nlProposal.accountName,
+        accountType: null,
+        provider: null,
+        labels: [],
+        notes: nlProposal.notes,
+      })
+      setNlState("applied")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add transaction.")
+      setNlState("idle")
+    }
+  }
+
+  async function applySaveChart() {
+    if (!chartProposal || chartState !== "idle") return
+    setChartState("applying")
+    try {
+      const raw = window.localStorage.getItem(DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY)
+      const configuration = deserializeDashboardConfiguration(raw)
+      const chartInput = buildDashboardChartInputFromSaveChart(
+        chartProposal.spec,
+        globalThis.crypto.randomUUID(),
+      )
+      // Dashboard category filters match exactly: drop labels that match no
+      // known category so the saved chart never renders empty. No overlap
+      // keeps the filter empty (all categories).
+      const transactions = await repositories.transactions.list()
+      const knownCategories = [
+        ...new Set(
+          transactions
+            .map((transaction) => transaction.category)
+            .filter(
+              (category): category is string => typeof category === "string" && category.length > 0,
+            ),
+        ),
+      ]
+      chartInput.filters.categories = intersectChartCategories(
+        chartInput.filters.categories,
+        knownCategories,
+      )
+      const next = createChart(configuration, chartInput)
+      window.localStorage.setItem(DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY, JSON.stringify(next))
+      setChartState("applied")
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save chart.")
+      setChartState("idle")
     }
   }
 
@@ -1793,6 +1890,41 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               void applyDeleteTransaction()
             }}
             onDismiss={() => setDeleteProposal(null)}
+          />
+        </div>
+      )}
+
+      {nlProposal && (
+        <div className="border-t px-4 py-3">
+          <ProposalCard
+            title="Proposed transaction from text"
+            lines={[
+              `${nlProposal.date} · ${nlProposal.description}`,
+              `${formatMinor(nlProposal.amountMinor)} · ${nlProposal.category ?? "Uncategorized"}`,
+              ...(nlProposal.accountName ? [`Account: ${nlProposal.accountName}`] : []),
+            ]}
+            status={nlState}
+            onApprove={() => {
+              void applyNlTransaction()
+            }}
+            onDismiss={() => setNlProposal(null)}
+          />
+        </div>
+      )}
+
+      {chartProposal && (
+        <div className="border-t px-4 py-3">
+          <ProposalCard
+            title="Proposed chart save"
+            lines={[
+              `${chartProposal.spec.title} · ${chartProposal.spec.type} · ${chartProposal.spec.data.length} points`,
+              "Saves to dashboard custom charts in this browser.",
+            ]}
+            status={chartState}
+            onApprove={() => {
+              void applySaveChart()
+            }}
+            onDismiss={() => setChartProposal(null)}
           />
         </div>
       )}

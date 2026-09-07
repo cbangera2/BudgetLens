@@ -1,7 +1,10 @@
 import type { BudgetLensRepositories } from "@/domain/repositories"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import type { BudgetLensChartSpec } from "@/features/assistant/chart-block"
+import { parseBudgetLensChartSpec } from "@/features/assistant/chart-block"
 import type { ChatFunctionTool } from "@/features/assistant/provider"
 import { formatMinor } from "@/features/assistant/provider"
+import type { ChartConfigurationInput, ChartFilters } from "@/features/charts/model"
 
 export const MAX_TOOL_ROWS = 50
 const MAX_DESCRIPTION_LENGTH = 60
@@ -182,6 +185,97 @@ export const ASSISTANT_TOOL_SCHEMAS: ChatFunctionTool[] = [
             description: "date-desc, date-asc, amount-desc, amount-asc, or description",
           },
         },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_transaction",
+      description:
+        "Parse natural-language adds like 'spent $12 on coffee yesterday' into a draft transaction with amount, merchant, date, and category guess. Never applies it; the UI asks first.",
+      parameters: {
+        type: "object",
+        properties: {
+          text: {
+            type: "string",
+            description: "Natural language, e.g. 'spent $12 on coffee yesterday'",
+          },
+          today: {
+            type: "string",
+            description: "ISO date YYYY-MM-DD reference for relative dates",
+          },
+        },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_chart",
+      description:
+        "Draft persisting the current answer's chart spec into dashboard saved charts. Never applies it; the UI asks first. Spec matches the budgetlens-chart fence shape.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          type: { type: "string", description: "bar, donut, or line" },
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                label: { type: "string" },
+                value: { type: "number" },
+              },
+            },
+          },
+          unit: { type: "string" },
+          spec: {
+            type: "object",
+            description: "Alternative wrapper holding title/type/data/unit together",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "detect_spending_anomalies",
+      description:
+        "Flag categories whose current-month spend deviates from the trailing average by a threshold. Read-only; answer in text with amounts from the result.",
+      parameters: {
+        type: "object",
+        properties: {
+          thresholdPct: {
+            type: "number",
+            description: "Minimum absolute percent change to flag, e.g. 50 for 50%",
+          },
+          trailingMonths: { type: "number", description: "Trailing months for the average, 1-12" },
+          minSpendMinor: {
+            type: "number",
+            description: "Ignore categories where current and average are both below this (cents)",
+          },
+          referenceDate: { type: "string", description: "ISO date YYYY-MM-DD, defaults to today" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "compare_periods",
+      description:
+        "Compare this-month vs last-month spend for one category. Composes existing aggregates; no storage. Read-only; answer in text.",
+      parameters: {
+        type: "object",
+        properties: {
+          category: { type: "string" },
+          referenceDate: { type: "string", description: "ISO date YYYY-MM-DD, defaults to today" },
+        },
+        required: ["category"],
       },
     },
   },
@@ -464,6 +558,42 @@ export async function executeAssistantTool(
       return { draft: true, kind: "delete_transaction", id: parsed.id, preview }
     }
 
+    case "propose_transaction": {
+      const draft = parseProposeTransaction(record)
+      if (!draft)
+        throw new Error(
+          "propose_transaction needs text with an amount, e.g. 'spent $12 on coffee yesterday'.",
+        )
+      return {
+        draft: true,
+        kind: "propose_transaction",
+        ...draft,
+        display: `${draft.date} · ${draft.description} · ${formatMinor(draft.amountMinor)}`,
+        note: "Awaiting user approval in the panel. Not applied.",
+      }
+    }
+
+    case "save_chart": {
+      const proposal = parseSaveChartProposal(record)
+      if (!proposal)
+        throw new Error("save_chart needs a valid chart spec (title, type bar|donut|line, data).")
+      return {
+        draft: true,
+        kind: "save_chart",
+        spec: proposal.spec,
+        display: `${proposal.spec.title} · ${proposal.spec.type} · ${proposal.spec.data.length} points`,
+        note: "Awaiting user approval in the panel. Not applied.",
+      }
+    }
+
+    case "detect_spending_anomalies": {
+      return await detectSpendingAnomalies(repositories, record)
+    }
+
+    case "compare_periods": {
+      return await comparePeriodSpend(repositories, record)
+    }
+
     default:
       throw new Error(`Unknown tool: ${name}`)
   }
@@ -475,7 +605,9 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   "- Prefer spending_by_category / budget_status aggregates over raw rows.",
   "- Never invent transactions, balances, or budget numbers; call a tool first.",
   "- Amounts are in minor units in tool I/O; show formatted currency to the user.",
-  "- propose_budget_change, propose_recategorize, create_transaction, delete_transaction only draft; the UI applies them after explicit approval.",
+  "- propose_budget_change, propose_recategorize, create_transaction, delete_transaction, propose_transaction, save_chart only draft; the UI applies them after explicit approval.",
+  "- propose_transaction parses natural-language adds (e.g. 'spent $12 on coffee yesterday'); save_chart persists the current answer's chart spec to the dashboard.",
+  "- detect_spending_anomalies flags current-month categories deviating from the trailing average; compare_periods compares this-month vs last-month for one category; both are read-only aggregates for answer text.",
   "- Use show_transactions_view to display matching rows in the app after row answers.",
   '- When the user asks for a graph, chart, or visual breakdown, render one with a fenced block: ```budgetlens-chart on its own line, then JSON {"type":"bar"|"donut"|"line","title":string,"unit"?:string,"data":[{"label":string,"value":number}]}, then a closing ``` fence. Rules: 1..12 slices, finite values only, labels and numbers strictly from tool results above (never invent them), never nest it inside another code block. Use "line" for trends over time (points render left-to-right in the order given, so list them oldest-to-newest, up to 12 representative points); "bar" or "donut" for breakdowns and comparisons.',
   "- Keep answers short and point at what the user can verify in the app.",
@@ -779,4 +911,596 @@ export function summarizeVariance(snapshot: FinanceSnapshot): string {
         `- ${entry.category}: ${formatMinor(entry.previous)} → ${formatMinor(entry.current)} (${formatMinor(entry.delta)})`,
     )
     .join("\n")
+}
+
+// --- Assistant capabilities batch: NL add, save chart, anomaly, compare (append-only) ---
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+
+function toISODateUTC(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function parseReferenceDate(value: unknown): string {
+  if (typeof value === "string" && ISO_DATE_PATTERN.test(value)) {
+    const parsed = new Date(`${value}T00:00:00.000Z`)
+    if (!Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value) {
+      return value
+    }
+  }
+  return new Date().toISOString().slice(0, 10)
+}
+
+function shiftISODate(iso: string, days: number): string {
+  const base = new Date(`${iso}T00:00:00.000Z`)
+  base.setUTCDate(base.getUTCDate() + days)
+  return toISODateUTC(base)
+}
+
+function shiftISOMonth(iso: string, months: number): string {
+  const base = new Date(`${iso}T00:00:00.000Z`)
+  const day = base.getUTCDate()
+  base.setUTCDate(1)
+  base.setUTCMonth(base.getUTCMonth() + months)
+  const daysInMonth = new Date(
+    Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0),
+  ).getUTCDate()
+  base.setUTCDate(Math.min(day, daysInMonth))
+  return toISODateUTC(base)
+}
+
+function isIncomeCue(text: string): boolean {
+  return /\b(received|earned|got paid|paycheck|income|refund|reimbursed|reimbursement|deposit|paid me)\b/i.test(
+    text,
+  )
+}
+
+export interface ProposeTransactionAmount {
+  amountMinor: number
+  matched: string
+}
+
+export function parseProposeTransactionAmount(text: string): ProposeTransactionAmount | null {
+  const dollar = text.match(/([+-]?)\s*\$\s*(\d[\d,]*(?:\.\d{1,2})?)/)
+  if (dollar) {
+    const raw = (dollar[2] ?? "").replaceAll(",", "")
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) return null
+    let minor = Math.round(value * 100)
+    const sign = dollar[1] ?? ""
+    if (sign === "-") minor = -Math.abs(minor)
+    else if (sign === "+") minor = Math.abs(minor)
+    else minor = isIncomeCue(text) ? Math.abs(minor) : -Math.abs(minor)
+    return { amountMinor: minor, matched: dollar[0] }
+  }
+  const words = text.match(/([+-]?)\s*(\d[\d,]*(?:\.\d{1,2})?)\s*(dollars?|bucks?|usd)\b/i)
+  if (words) {
+    const raw = (words[2] ?? "").replaceAll(",", "")
+    const value = Number.parseFloat(raw)
+    if (!Number.isFinite(value)) return null
+    let minor = Math.round(value * 100)
+    const sign = words[1] ?? ""
+    if (sign === "-") minor = -Math.abs(minor)
+    else if (sign === "+") minor = Math.abs(minor)
+    else minor = isIncomeCue(text) ? Math.abs(minor) : -Math.abs(minor)
+    return { amountMinor: minor, matched: words[0] }
+  }
+  return null
+}
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 0,
+  january: 0,
+  feb: 1,
+  february: 1,
+  mar: 2,
+  march: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  jun: 5,
+  june: 5,
+  jul: 6,
+  july: 6,
+  aug: 7,
+  august: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11,
+}
+
+const WEEKDAYS: Record<string, number> = {
+  sunday: 0,
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+}
+
+export function resolveProposeTransactionDate(text: string, referenceDate: string): string {
+  const reference = parseReferenceDate(referenceDate)
+  const isoInText = text.match(/\b(\d{4}-\d{2}-\d{2})\b/)
+  if (isoInText) {
+    const candidate = isoInText[1] ?? ""
+    if (ISO_DATE_PATTERN.test(candidate)) {
+      const parsed = new Date(`${candidate}T00:00:00.000Z`)
+      if (!Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === candidate) {
+        return candidate
+      }
+    }
+  }
+  const lower = text.toLowerCase()
+  if (lower.includes("day before yesterday")) return shiftISODate(reference, -2)
+  if (lower.includes("yesterday")) return shiftISODate(reference, -1)
+  if (lower.includes("tomorrow")) return shiftISODate(reference, 1)
+  if (lower.includes("today")) return reference
+  const daysAgo = lower.match(/(\d+)\s+days?\s+ago/)
+  if (daysAgo) {
+    const count = Number.parseInt(daysAgo[1] ?? "0", 10)
+    if (Number.isFinite(count)) return shiftISODate(reference, -Math.min(count, 3650))
+  }
+  const weeksAgo = lower.match(/(\d+)\s+weeks?\s+ago/)
+  if (weeksAgo) {
+    const count = Number.parseInt(weeksAgo[1] ?? "0", 10)
+    if (Number.isFinite(count)) return shiftISODate(reference, -Math.min(count, 520) * 7)
+  }
+  if (lower.includes("last month")) return shiftISOMonth(reference, -1)
+  if (lower.includes("last week")) return shiftISODate(reference, -7)
+  for (const [name, target] of Object.entries(WEEKDAYS)) {
+    if (lower.includes(`last ${name}`)) {
+      const ref = new Date(`${reference}T00:00:00.000Z`)
+      const diff = (ref.getUTCDay() - target + 7) % 7
+      return shiftISODate(reference, -(diff === 0 ? 7 : diff))
+    }
+  }
+  for (const [name, target] of Object.entries(WEEKDAYS)) {
+    const pattern = new RegExp(`\\b${name}\\b`)
+    if (pattern.test(lower)) {
+      const ref = new Date(`${reference}T00:00:00.000Z`)
+      const diff = (ref.getUTCDay() - target + 7) % 7
+      return shiftISODate(reference, -diff)
+    }
+  }
+  const monthDay = lower.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/,
+  )
+  if (monthDay) {
+    const month = MONTH_NAMES[monthDay[1] ?? ""]
+    const day = Number.parseInt(monthDay[2] ?? "0", 10)
+    if (month !== undefined && Number.isFinite(day) && day >= 1 && day <= 31) {
+      const year = Number.parseInt(reference.slice(0, 4), 10)
+      const candidate = new Date(Date.UTC(year, month, day))
+      if (candidate.getUTCMonth() === month) {
+        const iso = toISODateUTC(candidate)
+        return iso > reference ? shiftISOMonth(iso, -12) : iso
+      }
+    }
+  }
+  const numericDay = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/)
+  if (numericDay) {
+    const first = Number.parseInt(numericDay[1] ?? "0", 10)
+    const second = Number.parseInt(numericDay[2] ?? "0", 10)
+    const yearPart = numericDay[3]
+    if (Number.isFinite(first) && Number.isFinite(second)) {
+      const year =
+        yearPart !== undefined
+          ? yearPart.length === 2
+            ? 2000 + Number.parseInt(yearPart, 10)
+            : Number.parseInt(yearPart, 10)
+          : Number.parseInt(reference.slice(0, 4), 10)
+      if (Number.isFinite(year) && first >= 1 && first <= 12 && second >= 1 && second <= 31) {
+        const candidate = new Date(Date.UTC(year, first - 1, second))
+        if (candidate.getUTCMonth() === first - 1) {
+          const iso = toISODateUTC(candidate)
+          if (yearPart === undefined && iso > reference) return shiftISOMonth(iso, -12)
+          return iso
+        }
+      }
+    }
+  }
+  return reference
+}
+
+const LEADING_FILLER = /^\s*(i|we|just|please|hey|hi)\b\s*/i
+const LEADING_VERBS =
+  /^\s*(spent|paid|bought|purchased|added|add|log|logged|received|earned|got|send|sent|record|created?|made|charged?)\b\s*/i
+const LEADING_PREPOSITION = /^\s*(on|for|at|from|to|of|in|yesterday|today|tomorrow)\b\s*/i
+
+export function extractProposeTransactionDescription(
+  text: string,
+  amountMatched: string | null,
+): string {
+  let working = ` ${text} `
+  if (amountMatched) working = working.replace(amountMatched, " ")
+  working = working
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
+    .replace(/\bday before yesterday\b/gi, " ")
+    .replace(/\byesterday\b/gi, " ")
+    .replace(/\btoday\b/gi, " ")
+    .replace(/\btomorrow\b/gi, " ")
+    .replace(/\b\d+\s+days?\s+ago\b/gi, " ")
+    .replace(/\b\d+\s+weeks?\s+ago\b/gi, " ")
+    .replace(/\blast\s+(week|month)\b/gi, " ")
+    .replace(/\blast\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, " ")
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, " ")
+    .replace(
+      /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?\b/gi,
+      " ",
+    )
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ")
+    .replace(/\$\s*/g, " ")
+    .replace(/\b(dollars?|bucks?|usd)\b/gi, " ")
+  for (let step = 0; step < 6; step += 1) {
+    const before = working
+    working = working
+      .replace(LEADING_FILLER, " ")
+      .replace(LEADING_VERBS, " ")
+      .replace(LEADING_PREPOSITION, " ")
+      .replace(/^\s*[,.;:!?-]+\s*/, " ")
+    if (working === before) break
+  }
+  const cleaned = working
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s*[,.;:!?-]+\s*$/, "")
+    .trim()
+  if (!cleaned) return "Manual entry"
+  return cleaned.slice(0, 200)
+}
+
+const CATEGORY_KEYWORDS: Array<{ category: string; patterns: RegExp }> = [
+  {
+    category: "Dining Out",
+    patterns:
+      /\b(coffee|latte|espresso|cappuccino|starbucks|cafe|restaurant|lunch|dinner|breakfast|brunch|pizza|burger|sushi|taco|dining|takeout|doordash|uber\s*eats|bar|pub|bakery|deli)\b/i,
+  },
+  {
+    category: "Groceries",
+    patterns:
+      /\b(grocer(y|ies)|supermarket|whole\s*foods|trader\s*joe|safeway|kroger|aldi|costco|market\s*run|produce)\b/i,
+  },
+  {
+    category: "Transport",
+    patterns:
+      /\b(gas|fuel|uber|lyft|taxi|bus|subway|metro|train|parking|toll|shell|chevron|transit|fare)\b/i,
+  },
+  {
+    category: "Travel",
+    patterns: /\b(flight|airline|hotel|airbnb|travel|vacation|trip|boarding)\b/i,
+  },
+  { category: "Housing", patterns: /\b(rent|mortgage|landlord|housing)\b/i },
+  {
+    category: "Utilities",
+    patterns: /\b(electric|water|internet|phone|utility|utilities|comcast|power\s*bill)\b/i,
+  },
+  {
+    category: "Entertainment",
+    patterns:
+      /\b(movie|cinema|netflix|spotify|hulu|disney|game|concert|entertainment|theater|theatre)\b/i,
+  },
+  {
+    category: "Health",
+    patterns: /\b(doctor|dentist|pharmacy|cvs|walgreens|health|gym|prescription|clinic)\b/i,
+  },
+  { category: "Income", patterns: /\b(paycheck|salary|income|refund|reimbursement|deposit)\b/i },
+]
+
+export function guessProposeTransactionCategory(description: string): string | null {
+  for (const entry of CATEGORY_KEYWORDS) {
+    if (entry.patterns.test(description)) return entry.category
+  }
+  return null
+}
+
+export interface ProposeTransactionProposal {
+  date: string
+  description: string
+  amountMinor: number
+  category: string | null
+  accountName: string | null
+  notes: string | null
+}
+
+export function parseProposeTransaction(args: unknown): ProposeTransactionProposal | null {
+  const record = asRecord(args)
+  const draftDate = typeof record.date === "string" ? record.date : undefined
+  const draftDescription =
+    typeof record.description === "string" ? record.description.trim() : undefined
+  const draftAmount = record.amountMinor
+  if (draftDate && draftDescription && typeof draftAmount === "number") {
+    if (!ISO_DATE_PATTERN.test(draftDate)) return null
+    if (!Number.isFinite(draftAmount)) return null
+    return {
+      date: draftDate,
+      description: draftDescription.slice(0, 200),
+      amountMinor: Math.round(draftAmount),
+      category: asOptionalText(record.category, 120),
+      accountName: asOptionalText(record.accountName, 120),
+      notes: asOptionalText(record.notes, 500),
+    }
+  }
+  const rawText = typeof record.text === "string" ? record.text.trim() : ""
+  if (!rawText) return null
+  const reference = parseReferenceDate(record.today ?? record.referenceDate)
+  const amount = parseProposeTransactionAmount(rawText)
+  if (!amount) return null
+  const date = resolveProposeTransactionDate(rawText, reference)
+  const description = extractProposeTransactionDescription(rawText, amount.matched)
+  if (!description) return null
+  const overrideCategory =
+    typeof record.category === "string" && record.category.trim()
+      ? record.category.trim().slice(0, 120)
+      : null
+  return {
+    date,
+    description,
+    amountMinor: amount.amountMinor,
+    category: overrideCategory ?? guessProposeTransactionCategory(description),
+    accountName: asOptionalText(record.accountName, 120),
+    notes: asOptionalText(record.notes, 500),
+  }
+}
+
+export interface SaveChartProposal {
+  spec: BudgetLensChartSpec
+}
+
+export function parseSaveChartProposal(args: unknown): SaveChartProposal | null {
+  const record = asRecord(args)
+  const candidate: unknown = isRecord(record.spec) ? record.spec : record
+  const parsed = parseBudgetLensChartSpec(candidate)
+  if (!parsed) return null
+  return { spec: { ...parsed, data: [...parsed.data] } }
+}
+
+export function buildDashboardChartInputFromSaveChart(
+  spec: BudgetLensChartSpec,
+  id: string,
+): ChartConfigurationInput & { filters: ChartFilters } {
+  const type = spec.type === "donut" ? "pie" : spec.type === "line" ? "line" : "bar-vertical"
+  if (spec.type === "line") {
+    const isoLabels = spec.data
+      .map((point) => point.label)
+      .filter((label) => /^\d{4}-\d{2}-\d{2}$/.test(label))
+      .toSorted()
+    if (isoLabels.length >= 2) {
+      const start = isoLabels[0] ?? ""
+      const end = isoLabels[isoLabels.length - 1] ?? ""
+      return {
+        id,
+        title: spec.title,
+        type,
+        metrics: ["expenses"],
+        valueDisplay: "value",
+        filters: { categories: [], descriptions: [], transactionTypes: [], date: { start, end } },
+      }
+    }
+    return {
+      id,
+      title: spec.title,
+      type,
+      metrics: ["expenses"],
+      valueDisplay: "value",
+      filters: { categories: [], descriptions: [], transactionTypes: [], date: {} },
+    }
+  }
+  const categories = [
+    ...new Set(spec.data.map((point) => point.label.trim()).filter(Boolean)),
+  ].slice(0, 100)
+  return {
+    id,
+    title: spec.title,
+    type,
+    metrics: ["expenses"],
+    valueDisplay: "value",
+    filters: { categories, descriptions: [], transactionTypes: [], date: {} },
+  }
+}
+
+/**
+ * Narrow chart label candidates to categories that actually exist in the
+ * user's transactions (dashboard filters match categories exactly, so unknown
+ * labels would filter out every transaction and render an empty chart).
+ * Returns an empty list when nothing matches; callers leave the dashboard
+ * filter empty (all categories) in that case.
+ */
+export function intersectChartCategories(labels: string[], knownCategories: string[]): string[] {
+  const known = new Set(knownCategories)
+  const seen = new Set<string>()
+  const kept: string[] = []
+  for (const label of labels) {
+    const trimmed = label.trim()
+    if (!trimmed || seen.has(trimmed) || !known.has(trimmed)) continue
+    seen.add(trimmed)
+    kept.push(trimmed)
+    if (kept.length >= 100) break
+  }
+  return kept
+}
+
+export interface SpendingAnomaly {
+  category: string
+  currentMinor: number
+  averageMinor: number
+  changePct: number | null
+  current: string
+  average: string
+  direction: "spike" | "drop" | "new"
+}
+export interface AnomalyOptions {
+  thresholdPct: number
+  trailingMonths: number
+  minSpendMinor: number
+  referenceDate: string
+}
+
+export function parseAnomalyOptions(args: unknown): AnomalyOptions {
+  const record = asRecord(args)
+  const rawThreshold = record.thresholdPct
+  const thresholdPct =
+    typeof rawThreshold === "number" && Number.isFinite(rawThreshold) && rawThreshold > 0
+      ? Math.min(rawThreshold, 10000)
+      : 50
+  const rawTrailing = record.trailingMonths
+  const trailingMonths =
+    typeof rawTrailing === "number" &&
+    Number.isFinite(rawTrailing) &&
+    Math.floor(rawTrailing) >= 1 &&
+    Math.floor(rawTrailing) <= 12
+      ? Math.floor(rawTrailing)
+      : 3
+  const rawMin = record.minSpendMinor
+  const minSpendMinor =
+    typeof rawMin === "number" && Number.isFinite(rawMin) && rawMin >= 0 ? Math.round(rawMin) : 0
+  return {
+    thresholdPct,
+    trailingMonths,
+    minSpendMinor,
+    referenceDate: parseReferenceDate(record.referenceDate),
+  }
+}
+
+export async function detectSpendingAnomalies(
+  repositories: BudgetLensRepositories,
+  args: unknown,
+): Promise<unknown> {
+  const options = parseAnomalyOptions(args)
+  const currentMonth = options.referenceDate.slice(0, 7)
+  const trailingMonths: string[] = []
+  for (let offset = 1; offset <= options.trailingMonths; offset += 1) {
+    trailingMonths.push(shiftISOMonth(options.referenceDate, -offset).slice(0, 7))
+  }
+  const transactions = await repositories.transactions.list()
+  const byCategory = new Map<string, Map<string, number>>()
+  for (const transaction of transactions) {
+    const normalized = normalizeTransactionAmountMinor(
+      transaction.amountMinor,
+      transaction.transactionType,
+    )
+    if (normalized >= 0) continue
+    const month = transaction.date.slice(0, 7)
+    if (month !== currentMonth && !trailingMonths.includes(month)) continue
+    const category = transaction.category ?? "Uncategorized"
+    const months = byCategory.get(category) ?? new Map<string, number>()
+    months.set(month, (months.get(month) ?? 0) + Math.abs(normalized))
+    byCategory.set(category, months)
+  }
+  const anomalies: SpendingAnomaly[] = []
+  for (const [category, months] of byCategory) {
+    const currentMinor = months.get(currentMonth) ?? 0
+    const trailingTotal = trailingMonths.reduce((sum, month) => sum + (months.get(month) ?? 0), 0)
+    const averageMinor = Math.round(trailingTotal / trailingMonths.length)
+    if (averageMinor === 0) {
+      if (currentMinor === 0 || currentMinor < options.minSpendMinor) continue
+      anomalies.push({
+        category,
+        currentMinor,
+        averageMinor,
+        changePct: null,
+        current: formatMinor(currentMinor),
+        average: formatMinor(0),
+        direction: "new",
+      })
+      continue
+    }
+    if (Math.max(currentMinor, averageMinor) < options.minSpendMinor) continue
+    const changePct = ((currentMinor - averageMinor) / averageMinor) * 100
+    if (Math.abs(changePct) < options.thresholdPct) continue
+    anomalies.push({
+      category,
+      currentMinor,
+      averageMinor,
+      changePct: Math.round(changePct * 10) / 10,
+      current: formatMinor(currentMinor),
+      average: formatMinor(averageMinor),
+      direction: changePct > 0 ? "spike" : "drop",
+    })
+  }
+  anomalies.sort((left, right) => {
+    if (left.changePct === null && right.changePct === null)
+      return right.currentMinor - left.currentMinor
+    if (left.changePct === null) return -1
+    if (right.changePct === null) return 1
+    return Math.abs(right.changePct) - Math.abs(left.changePct)
+  })
+  return {
+    currentMonth,
+    trailingMonths,
+    thresholdPct: options.thresholdPct,
+    checkedCategories: byCategory.size,
+    anomalies: anomalies.slice(0, 10),
+  }
+}
+
+export interface ComparePeriodsResult {
+  category: string
+  currentMonth: string
+  previousMonth: string
+  currentMinor: number
+  previousMinor: number
+  deltaMinor: number
+  changePct: number | null
+  current: string
+  previous: string
+  delta: string
+  matchedTransactions: number
+}
+
+export async function comparePeriodSpend(
+  repositories: BudgetLensRepositories,
+  args: unknown,
+): Promise<ComparePeriodsResult> {
+  const record = asRecord(args)
+  const rawCategory = typeof record.category === "string" ? record.category.trim() : ""
+  if (!rawCategory) throw new Error("compare_periods needs category.")
+  const referenceDate = parseReferenceDate(record.referenceDate)
+  const currentMonth = referenceDate.slice(0, 7)
+  const previousMonth = shiftISOMonth(referenceDate, -1).slice(0, 7)
+  const wanted = rawCategory.toLowerCase()
+  const transactions = await repositories.transactions.list()
+  let currentMinor = 0
+  let previousMinor = 0
+  let matchedTransactions = 0
+  for (const transaction of transactions) {
+    const category = transaction.category ?? "Uncategorized"
+    if (category.toLowerCase() !== wanted) continue
+    matchedTransactions += 1
+    const normalized = normalizeTransactionAmountMinor(
+      transaction.amountMinor,
+      transaction.transactionType,
+    )
+    if (normalized >= 0) continue
+    const magnitude = Math.abs(normalized)
+    const month = transaction.date.slice(0, 7)
+    if (month === currentMonth) currentMinor += magnitude
+    else if (month === previousMonth) previousMinor += magnitude
+  }
+  const deltaMinor = currentMinor - previousMinor
+  const changePct =
+    previousMinor === 0
+      ? currentMinor === 0
+        ? 0
+        : null
+      : Math.round((deltaMinor / previousMinor) * 100 * 10) / 10
+  return {
+    category: rawCategory,
+    currentMonth,
+    previousMonth,
+    currentMinor,
+    previousMinor,
+    deltaMinor,
+    changePct,
+    current: formatMinor(currentMinor),
+    previous: formatMinor(previousMinor),
+    delta: formatMinor(deltaMinor),
+    matchedTransactions,
+  }
 }

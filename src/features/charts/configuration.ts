@@ -21,6 +21,8 @@ import {
 
 export const DEFAULT_PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c"]
 
+export const DASHBOARD_CUSTOM_CHARTS_STORAGE_KEY = "budgetlens.custom-charts.v1"
+
 export const DEFAULT_CHART_FILTERS: ChartFilters = {
   categories: [],
   descriptions: [],
