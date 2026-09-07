@@ -123,10 +123,15 @@ test("bill calendar lays recurring charges on the month grid", async ({ page }) 
   await expect(dialog).toBeVisible()
   await dialog.getByLabel(/Not a bill/).check()
   await dialog.getByRole("button", { name: "Save bill" }).click()
-  await expect(calendar.getByText("Harbor News")).toHaveCount(0)
   await expect(may10.locator("li")).toHaveCount(0)
   await expect(calendar.getByText("Month total $407.48 across 8 bills")).toBeVisible()
   await expect(calendar.getByText(/1 dismissed/)).toBeVisible()
+
+  // Dismissed merchants restore from the hidden bills list.
+  await expect(calendar.getByRole("heading", { name: "Hidden bills" })).toBeVisible()
+  await calendar.getByRole("button", { name: "Restore Harbor News bill" }).click()
+  await expect(may10.getByText("Harbor News")).toBeVisible()
+  await expect(calendar.getByText("Month total $414.98 across 9 bills")).toBeVisible()
 
   // Forward navigation keeps projecting the cadence, and Today returns.
   await page.getByRole("button", { name: "Next month" }).click()

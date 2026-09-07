@@ -346,7 +346,7 @@ describe("bill overrides", () => {
     await user.click(screen.getByLabelText(/Not a bill/))
     await user.click(screen.getByRole("button", { name: "Save bill" }))
 
-    expect(screen.queryByText("Beacon Streaming")).not.toBeInTheDocument()
+    expect(document.querySelector('[data-date="2026-05-15"] li')).toBeNull()
     expect(screen.getByText(/No bills expected between/)).toBeInTheDocument()
     expect(screen.getByText(/1 dismissed/)).toBeInTheDocument()
   })
@@ -366,5 +366,67 @@ describe("transfer exclusion", () => {
     expect(day).toHaveTextContent("Beacon Streaming")
     expect(screen.getByText(/1 hidden as transfer/)).toBeInTheDocument()
     expect(screen.getByText(/Month total \$12\.99 across 1 bill/)).toBeInTheDocument()
+  })
+})
+
+describe("dismissed bill restoration", () => {
+  it("restores a dismissed merchant from the hidden bills list", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    await user.click(screen.getByLabelText(/Not a bill/))
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+    expect(document.querySelector('[data-date="2026-05-15"] li')).toBeNull()
+
+    expect(screen.getByRole("heading", { name: "Hidden bills" })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Restore Beacon Streaming bill" }))
+
+    expect(document.querySelector('[data-date="2026-05-15"]')).toHaveTextContent("Beacon Streaming")
+    expect(screen.getByText(/Month total \$12\.99/)).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Hidden bills" })).not.toBeInTheDocument()
+  })
+})
+
+describe("bill edit dialog keyboard behavior", () => {
+  it("closes on Escape and returns focus to the invoking edit button", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    const edit = screen.getByRole("button", { name: "Edit Beacon Streaming bill" })
+    await user.click(edit)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(edit).toHaveFocus()
+  })
+
+  it("traps Tab inside the dialog", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    // Reverse-tab from the first field wraps to the last control.
+    expect(screen.getByLabelText("Expected amount (USD)")).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(screen.getByRole("button", { name: "Save bill" })).toHaveFocus()
   })
 })

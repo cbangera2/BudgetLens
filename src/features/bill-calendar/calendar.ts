@@ -31,12 +31,6 @@ export interface BillOccurrence {
   date: IsoDate
   amountMinor: number
   status: BillStatus
-  /**
-   * Zero-based order among same-merchant occurrences on the same date.
-   * Day-of-month pinning can collapse two cadence steps onto one day; the
-   * sequence keeps chip keys unique without render-time indexes.
-   */
-  sequence: number
 }
 
 export interface MonthBounds {
@@ -204,7 +198,9 @@ export function snapDayOfMonth(date: IsoDate, dayOfMonth: number): IsoDate {
  * without touching detection: dismissed merchants and transfer-excluded keys
  * never project, amount overrides replace the detected median, and
  * day-of-month overrides re-anchor monthly occurrences (status and totals use
- * the corrected dates and amounts).
+ * the corrected dates and amounts). A pinned monthly bill occurs once per
+ * month: when two cadence steps collapse onto the same pinned day, only the
+ * first is kept so totals and overdue counts are not double-counted.
  */
 export function projectMonthBills(
   subscriptions: readonly SubscriptionSummary[],
@@ -217,7 +213,7 @@ export function projectMonthBills(
   const overrides = options.overrides ?? {}
   const excludedKeys = options.excludedKeys
   const occurrences: BillOccurrence[] = []
-  const sequenceByKeyAndDate = new Map<string, number>()
+  const pinnedDates = new Set<string>()
 
   for (const subscription of subscriptions) {
     if (excludedKeys?.has(subscription.key)) continue
@@ -242,16 +238,20 @@ export function projectMonthBills(
       if (gridDate > end) break
       if (gridDate >= start) {
         const date = pinDay === null ? gridDate : snapDayOfMonth(gridDate, pinDay)
-        const sequenceKey = `${subscription.key}|${date}`
-        const sequence = sequenceByKeyAndDate.get(sequenceKey) ?? 0
-        sequenceByKeyAndDate.set(sequenceKey, sequence + 1)
+        const pinnedKey = `${subscription.key}|${date}`
+        // A pinned monthly bill fires once per month: collapse duplicate steps
+        // instead of counting the amount twice.
+        if (pinDay !== null && pinnedDates.has(pinnedKey)) {
+          step += 1
+          continue
+        }
+        if (pinDay !== null) pinnedDates.add(pinnedKey)
         occurrences.push({
           subscriptionKey: subscription.key,
           displayName: subscription.displayName,
           date,
           amountMinor,
           status: statusFor(date, today),
-          sequence,
         })
       }
       step += 1

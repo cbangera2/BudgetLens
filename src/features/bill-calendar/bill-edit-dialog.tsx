@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,6 +48,41 @@ export function BillEditDialog({
   const [dismissed, setDismissed] = useState(override?.dismissed === true)
   const [error, setError] = useState("")
   const daySupported = subscription.cadence === DAY_OVERRIDE_CADENCE
+  const panelRef = useRef<HTMLDialogElement>(null)
+
+  // The dialog renders inline (not top-layer), so Escape and Tab containment
+  // are handled explicitly, mirroring the mobile More-sheet pattern: Escape
+  // closes, Tab cycles within the panel while it is open.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (event.key !== "Tab") return
+      const panel = panelRef.current
+      if (!panel) return
+      const focusables = [
+        ...panel.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+        ),
+      ]
+      const first = focusables.at(0)
+      const last = focusables.at(-1)
+      if (!first || !last) return
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [onClose])
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -83,6 +118,7 @@ export function BillEditDialog({
     <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4">
       <dialog
         open
+        ref={panelRef}
         aria-modal="true"
         aria-labelledby="bill-edit-title"
         className="w-full max-w-sm rounded-2xl border bg-card p-6 text-card-foreground shadow-2xl"

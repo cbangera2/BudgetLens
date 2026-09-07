@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 import { Pencil } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { repositories } from "@/db/repositories"
 import type { IsoDate, Transaction } from "@/domain/models"
@@ -35,6 +36,7 @@ import {
   type MonthKey,
 } from "./calendar"
 import { countDismissed, loadBillOverrides, saveBillOverrides } from "./overrides"
+import type { BillOverride } from "./overrides"
 import { transferExcludedMerchantKeys } from "./transfer-exclusion"
 
 const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
@@ -80,7 +82,7 @@ function DayCell({
           >
             {bills.map((occurrence) => (
               <BillChip
-                key={`${occurrence.subscriptionKey}-${occurrence.date}-${occurrence.sequence}`}
+                key={`${occurrence.subscriptionKey}-${occurrence.date}`}
                 occurrence={occurrence}
                 onEdit={onEdit}
               />
@@ -198,6 +200,7 @@ export function BillCalendarPageContent({
   )
   const [overrides, setOverrides] = useState(loadBillOverrides)
   const [editingKey, setEditingKey] = useState<string | null>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
   const clampedMonth = clampMonthKey(isMonthKey(viewedMonth) ? viewedMonth : currentMonth, bounds)
 
   // Transfer exclusion reuses detection output read-only: transaction ids that
@@ -246,6 +249,22 @@ export function BillCalendarPageContent({
     editingKey === null
       ? undefined
       : subscriptions.subscriptions.find((subscription) => subscription.key === editingKey)
+  const dismissedSubs = subscriptions.subscriptions.filter(
+    (subscription) => overrides[subscription.key]?.dismissed === true,
+  )
+
+  function openEdit(key: string) {
+    openerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setEditingKey(key)
+  }
+
+  function closeEdit() {
+    setEditingKey(null)
+    // Return focus to the invoking Edit button (the dialog traps Tab and
+    // closes on Escape, so keyboard users never lose their place).
+    openerRef.current?.focus()
+  }
 
   function saveEdit(key: string, result: BillEditResult) {
     setOverrides((previous) => {
@@ -255,7 +274,22 @@ export function BillCalendarPageContent({
       saveBillOverrides(next)
       return next
     })
-    setEditingKey(null)
+    closeEdit()
+  }
+
+  function restoreDismissed(key: string) {
+    setOverrides((previous) => {
+      const record = previous[key]
+      if (!record) return previous
+      const rest: BillOverride = {}
+      if (record.amountMinor !== undefined) rest.amountMinor = record.amountMinor
+      if (record.dayOfMonth !== undefined) rest.dayOfMonth = record.dayOfMonth
+      const next = { ...previous }
+      if (Object.keys(rest).length === 0) delete next[key]
+      else next[key] = rest
+      saveBillOverrides(next)
+      return next
+    })
   }
 
   return (
@@ -364,7 +398,7 @@ export function BillCalendarPageContent({
                               date={cell.date}
                               bills={byDate.get(cell.date) ?? []}
                               isToday={cell.date === today}
-                              onEdit={setEditingKey}
+                              onEdit={openEdit}
                             />
                           ),
                         )}
@@ -374,6 +408,33 @@ export function BillCalendarPageContent({
                 </table>
               </div>
             )}
+            {dismissedSubs.length > 0 ? (
+              <div className="mt-4 rounded-lg border p-3">
+                <h3 className="text-sm font-medium">Hidden bills</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Dismissed merchants stay out of the calendar until restored.
+                </p>
+                <ul className="mt-2 grid gap-1">
+                  {dismissedSubs.map((subscription) => (
+                    <li
+                      key={subscription.key}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
+                      <span className="min-w-0 flex-1 truncate">{subscription.displayName}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Restore ${subscription.displayName} bill`}
+                        onClick={() => restoreDismissed(subscription.key)}
+                      >
+                        Restore
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <p className="mt-4 text-xs text-muted-foreground">
               Projected from {subscriptions.subscriptions.length} detected recurring merchant
               {subscriptions.subscriptions.length === 1 ? "" : "s"} for{" "}
@@ -392,7 +453,7 @@ export function BillCalendarPageContent({
           subscription={editingSubscription}
           override={overrides[editingSubscription.key]}
           onSave={(result) => saveEdit(editingSubscription.key, result)}
-          onClose={() => setEditingKey(null)}
+          onClose={closeEdit}
         />
       ) : null}
     </div>

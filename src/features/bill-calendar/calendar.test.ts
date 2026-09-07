@@ -307,16 +307,17 @@ describe("bill overrides in projection", () => {
 })
 
 describe("pinned-day collisions", () => {
-  it("sequences same-day occurrences from collapsed cadence steps", () => {
-    // 30-day steps from Apr 1 land May 1 and May 31; both pin to May 15.
+  it("projects a pinned monthly bill once per month without double-counting", () => {
+    // 30-day steps from Apr 1 land May 1 and May 31; both pin to May 15 but
+    // only the first is kept, so the amount counts once.
     const occurrences = projectMonthBills(
       [subscription({ lastDate: "2026-04-01", medianIntervalDays: 30 })],
       "2026-05",
       "2026-05-01",
-      { overrides: { "beacon streaming": { dayOfMonth: 15 } } },
+      { overrides: { "beacon streaming": { dayOfMonth: 15, amountMinor: 2000 } } },
     )
 
-    expect(occurrences.map((occurrence) => occurrence.date)).toEqual(["2026-05-15", "2026-05-15"])
-    expect(occurrences.map((occurrence) => occurrence.sequence)).toEqual([0, 1])
+    expect(occurrences.map((occurrence) => occurrence.date)).toEqual(["2026-05-15"])
+    expect(monthTotalMinor(occurrences)).toBe(2000)
   })
 })
