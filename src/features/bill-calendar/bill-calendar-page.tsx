@@ -1,12 +1,16 @@
 import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
+import { Pencil } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { repositories } from "@/db/repositories"
 import type { IsoDate, Transaction } from "@/domain/models"
 import { detectSubscriptions } from "@/features/subscriptions/detect"
+import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
+import { confirmedTransferIds, readTransferFlags } from "@/features/transfers/store"
 
+import { BillEditDialog, type BillEditResult } from "./bill-edit-dialog"
 import {
   addMonthsToKey,
   canNavigateNext,
@@ -30,6 +34,8 @@ import {
   type BillOccurrence,
   type MonthKey,
 } from "./calendar"
+import { countDismissed, loadBillOverrides, saveBillOverrides } from "./overrides"
+import { transferExcludedMerchantKeys } from "./transfer-exclusion"
 
 const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
@@ -46,15 +52,17 @@ function DayCell({
   date,
   bills,
   isToday,
+  onEdit,
 }: {
   date: IsoDate
   bills: readonly BillOccurrence[]
   isToday: boolean
+  onEdit: (subscriptionKey: string) => void
 }) {
   return (
     <td data-date={date} data-today={isToday ? "true" : undefined} className="p-0.5 align-top">
       <div
-        className={`min-h-16 rounded-lg border p-1 sm:min-h-20 ${
+        className={`min-w-0 overflow-hidden rounded-lg border p-1 sm:min-h-20 ${
           isToday ? "border-primary ring-1 ring-primary" : "border-border"
         }`}
       >
@@ -68,12 +76,13 @@ function DayCell({
         {bills.length > 0 ? (
           <ul
             aria-label={`${date}, ${bills.length} bill${bills.length === 1 ? "" : "s"}`}
-            className="mt-1 grid gap-1"
+            className="mt-1 grid min-w-0 gap-1"
           >
             {bills.map((occurrence) => (
               <BillChip
-                key={`${occurrence.subscriptionKey}-${occurrence.date}`}
+                key={`${occurrence.subscriptionKey}-${occurrence.date}-${occurrence.sequence}`}
                 occurrence={occurrence}
+                onEdit={onEdit}
               />
             ))}
           </ul>
@@ -118,7 +127,13 @@ function monthWeeks(month: MonthKey): MonthWeek[] {
   return weeks
 }
 
-function BillChip({ occurrence }: { occurrence: BillOccurrence }) {
+function BillChip({
+  occurrence,
+  onEdit,
+}: {
+  occurrence: BillOccurrence
+  onEdit: (subscriptionKey: string) => void
+}) {
   const overdue = occurrence.status === "overdue"
   return (
     <li
@@ -128,14 +143,24 @@ function BillChip({ occurrence }: { occurrence: BillOccurrence }) {
           ? `${occurrence.displayName} ${formatBillMoney(occurrence.amountMinor)} overdue, expected ${occurrence.date}`
           : `${occurrence.displayName} ${formatBillMoney(occurrence.amountMinor)} on ${occurrence.date}`
       }
-      className={`rounded-md border px-1.5 py-1 text-xs leading-tight ${
+      className={`min-w-0 overflow-hidden rounded-md border px-1.5 py-1 text-xs leading-tight ${
         overdue
           ? "border-destructive/60 bg-destructive/10 text-destructive"
           : "border-border bg-muted/60 text-foreground"
       }`}
     >
-      <span className="block truncate font-medium">{occurrence.displayName}</span>
-      <span className="flex items-center justify-between gap-1 tabular-nums">
+      <span className="flex items-center gap-1">
+        <span className="block min-w-0 flex-1 truncate font-medium">{occurrence.displayName}</span>
+        <button
+          type="button"
+          aria-label={`Edit ${occurrence.displayName} bill`}
+          onClick={() => onEdit(occurrence.subscriptionKey)}
+          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Pencil className="size-3" aria-hidden="true" />
+        </button>
+      </span>
+      <span className="mt-0.5 flex flex-wrap items-center justify-between gap-x-1 tabular-nums">
         <span>{formatBillMoney(occurrence.amountMinor)}</span>
         {overdue ? <span className="font-semibold tracking-wide uppercase">Overdue</span> : null}
       </span>
@@ -171,11 +196,28 @@ export function BillCalendarPageContent({
       bounds,
     ),
   )
+  const [overrides, setOverrides] = useState(loadBillOverrides)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
   const clampedMonth = clampMonthKey(isMonthKey(viewedMonth) ? viewedMonth : currentMonth, bounds)
 
+  // Transfer exclusion reuses detection output read-only: transaction ids that
+  // take part in a detected transfer pair, plus ids the user already confirmed
+  // as transfers. A merchant is hidden only when every supporting expense row
+  // is flagged (see transfer-exclusion.ts).
+  const excludedKeys = useMemo(() => {
+    if (!transactions) return new Set<string>()
+    const pairIds = transferPairIds(detectTransferPairs(transactions))
+    const confirmedIds = confirmedTransferIds(readTransferFlags())
+    return transferExcludedMerchantKeys(transactions, new Set([...pairIds, ...confirmedIds]))
+  }, [transactions])
+
   const occurrences = useMemo(
-    () => projectMonthBills(subscriptions.subscriptions, clampedMonth, today),
-    [subscriptions, clampedMonth, today],
+    () =>
+      projectMonthBills(subscriptions.subscriptions, clampedMonth, today, {
+        overrides,
+        excludedKeys,
+      }),
+    [subscriptions, clampedMonth, today, overrides, excludedKeys],
   )
   const byDate = useMemo(() => {
     const grouped = new Map<IsoDate, BillOccurrence[]>()
@@ -190,12 +232,31 @@ export function BillCalendarPageContent({
 
   const totalMinor = monthTotalMinor(occurrences)
   const overdueCount = countOverdue(occurrences)
+  const dismissedCount = countDismissed(overrides)
+  const transferHiddenCount = subscriptions.subscriptions.filter((subscription) =>
+    excludedKeys.has(subscription.key),
+  ).length
   const prevMonth = addMonthsToKey(clampedMonth, -1)
   const nextMonth = addMonthsToKey(clampedMonth, 1)
   const prevEnabled = canNavigatePrev(clampedMonth, bounds)
   const nextEnabled = canNavigateNext(clampedMonth, bounds)
   const start = monthStartIso(clampedMonth)
   const end = monthEndIso(clampedMonth)
+  const editingSubscription =
+    editingKey === null
+      ? undefined
+      : subscriptions.subscriptions.find((subscription) => subscription.key === editingKey)
+
+  function saveEdit(key: string, result: BillEditResult) {
+    setOverrides((previous) => {
+      const next = { ...previous }
+      if (result.override === null) delete next[key]
+      else next[key] = result.override
+      saveBillOverrides(next)
+      return next
+    })
+    setEditingKey(null)
+  }
 
   return (
     <div className="grid gap-6">
@@ -275,50 +336,65 @@ export function BillCalendarPageContent({
                 No bills expected between {start} and {end}.
               </p>
             ) : (
-              <table className="w-full table-fixed border-collapse">
-                <caption className="sr-only">Bills for {monthLabel(clampedMonth)}</caption>
-                <thead>
-                  <tr>
-                    {WEEKDAY_HEADERS.map((day) => (
-                      <th
-                        key={day}
-                        scope="col"
-                        className="px-1 py-1 text-center text-xs font-medium text-muted-foreground"
-                      >
-                        {day}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {weeks.map((week) => (
-                    <tr key={week.key}>
-                      {week.cells.map((cell) =>
-                        cell.date === null ? (
-                          <td key={cell.id} aria-hidden="true" />
-                        ) : (
-                          <DayCell
-                            key={cell.id}
-                            date={cell.date}
-                            bills={byDate.get(cell.date) ?? []}
-                            isToday={cell.date === today}
-                          />
-                        ),
-                      )}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[42rem] table-fixed border-collapse">
+                  <caption className="sr-only">Bills for {monthLabel(clampedMonth)}</caption>
+                  <thead>
+                    <tr>
+                      {WEEKDAY_HEADERS.map((day) => (
+                        <th
+                          key={day}
+                          scope="col"
+                          className="px-1 py-1 text-center text-xs font-medium text-muted-foreground"
+                        >
+                          {day}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {weeks.map((week) => (
+                      <tr key={week.key}>
+                        {week.cells.map((cell) =>
+                          cell.date === null ? (
+                            <td key={cell.id} aria-hidden="true" />
+                          ) : (
+                            <DayCell
+                              key={cell.id}
+                              date={cell.date}
+                              bills={byDate.get(cell.date) ?? []}
+                              isToday={cell.date === today}
+                              onEdit={setEditingKey}
+                            />
+                          ),
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <p className="mt-4 text-xs text-muted-foreground">
               Projected from {subscriptions.subscriptions.length} detected recurring merchant
               {subscriptions.subscriptions.length === 1 ? "" : "s"} for{" "}
               {toMonthKey(today) === clampedMonth ? "the current month" : monthLabel(clampedMonth)};
-              months run {bounds.min} to {bounds.max}.
+              months run {bounds.min} to {bounds.max}
+              {transferHiddenCount > 0
+                ? ` · ${transferHiddenCount} hidden as transfer${transferHiddenCount === 1 ? "" : "s"}`
+                : ""}
+              {dismissedCount > 0 ? ` · ${dismissedCount} dismissed` : ""}.
             </p>
           </CardContent>
         </Card>
       </section>
+      {editingSubscription ? (
+        <BillEditDialog
+          subscription={editingSubscription}
+          override={overrides[editingSubscription.key]}
+          onSave={(result) => saveEdit(editingSubscription.key, result)}
+          onClose={() => setEditingKey(null)}
+        />
+      ) : null}
     </div>
   )
 }

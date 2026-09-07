@@ -176,3 +176,192 @@ describe("BillCalendarPageContent", () => {
     expect(screen.getByText("No recurring bills detected yet")).toBeInTheDocument()
   })
 })
+
+const crowdedDates = ["2026-01-12", "2026-02-11", "2026-03-13", "2026-04-12"]
+const crowdedMerchants: [string, number][] = [
+  ["Civic Power", -4500],
+  ["Harbor Internet", -8999],
+  ["Beacon Mobile", -3250],
+  ["Cedar Gym", -2500],
+  ["Elm Storage", -6000],
+  ["Maple Insurance", -12000],
+  ["Birch Market", -999],
+]
+const crowdedTransactions = crowdedMerchants.flatMap(([name, amount], merchantIndex) =>
+  crowdedDates.map((date, dateIndex) =>
+    buildTransaction({
+      id: `crowded-${merchantIndex}-${dateIndex}`,
+      date,
+      description: name,
+      amountMinor: amount,
+      transactionType: "Debit",
+    }),
+  ),
+)
+
+function transferPair(month: string, day: string, index: number) {
+  const out = buildTransaction({
+    id: `sweep-out-${index}`,
+    date: `2026-${month}-${day}`,
+    description: "Transfer to High-Yield Savings",
+    amountMinor: -50_000,
+    transactionType: "Debit",
+    accountName: "Everyday Checking",
+  })
+  const outDay = Number(day)
+  const inDate =
+    outDay < 28 ? `2026-${month}-${String(outDay + 1).padStart(2, "0")}` : `2026-${month}-${day}`
+  const incoming = buildTransaction({
+    id: `sweep-in-${index}`,
+    date: inDate,
+    description: "Transfer from Everyday Checking",
+    amountMinor: 50_000,
+    transactionType: "Credit",
+    accountName: "High-Yield Savings",
+  })
+  return [out, incoming]
+}
+
+const sweepTransactions = [
+  ...transferPair("01", "15", 1),
+  ...transferPair("02", "15", 2),
+  ...transferPair("03", "15", 3),
+  ...transferPair("04", "15", 4),
+  ...streamingTransactions,
+]
+
+describe("bill chip containment", () => {
+  it("constrains a crowded overdue day inside its cell", async () => {
+    const { container } = renderPage({
+      transactions: crowdedTransactions,
+      today: "2026-09-07",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    // Layout contract: fixed columns so cells cannot grow, grid items that
+    // can shrink, clipped cell content, ellipsized names.
+    expect(container.querySelector("table")?.className).toContain("table-fixed")
+    const cell = container.querySelector('[data-date="2026-05-12"]')
+    expect(cell).not.toBeNull()
+    const chips = cell?.querySelectorAll("li") ?? []
+    expect(chips).toHaveLength(7)
+    for (const chip of chips) {
+      expect(chip.className).toContain("min-w-0")
+      expect(chip.querySelector("span.truncate")).not.toBeNull()
+    }
+    expect(cell?.querySelector(":scope > div")?.className).toContain("overflow-hidden")
+  })
+})
+
+describe("bill overrides", () => {
+  it("edits a bill amount and updates the month total", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    const amount = screen.getByLabelText("Expected amount (USD)")
+    await user.clear(amount)
+    await user.type(amount, "20")
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+
+    expect(screen.getByText(/Month total \$20\.00 across 1 bill/)).toBeInTheDocument()
+    const day = document.querySelector('[data-date="2026-05-15"]')
+    expect(day).toHaveTextContent("$20.00")
+  })
+
+  it("persists overrides across remounts and resets to detected", async () => {
+    const user = userEvent.setup()
+    const first = renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    const amount = screen.getByLabelText("Expected amount (USD)")
+    await user.clear(amount)
+    await user.type(amount, "20")
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+    expect(screen.getByText(/Month total \$20\.00/)).toBeInTheDocument()
+    first.unmount()
+
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+    expect(screen.getByText(/Month total \$20\.00/)).toBeInTheDocument()
+
+    // Clearing both fields and saving removes the stored override.
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    await user.clear(screen.getByLabelText("Expected amount (USD)"))
+    await user.clear(screen.getByLabelText("Expected day of month"))
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+    expect(screen.getByText(/Month total \$12\.99/)).toBeInTheDocument()
+  })
+
+  it("rejects invalid override input without saving", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    const amount = screen.getByLabelText("Expected amount (USD)")
+    await user.clear(amount)
+    // Number inputs accept zero keystrokes; the dialog must reject it.
+    await user.type(amount, "0")
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/greater than \$0/)
+    // Dialog stays open and the projection is untouched.
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText(/Month total \$12\.99/)).toBeInTheDocument()
+  })
+
+  it("dismisses a merchant everywhere", async () => {
+    const user = userEvent.setup()
+    renderPage({
+      transactions: streamingTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    await user.click(screen.getByRole("button", { name: "Edit Beacon Streaming bill" }))
+    await user.click(screen.getByLabelText(/Not a bill/))
+    await user.click(screen.getByRole("button", { name: "Save bill" }))
+
+    expect(screen.queryByText("Beacon Streaming")).not.toBeInTheDocument()
+    expect(screen.getByText(/No bills expected between/)).toBeInTheDocument()
+    expect(screen.getByText(/1 dismissed/)).toBeInTheDocument()
+  })
+})
+
+describe("transfer exclusion", () => {
+  it("hides fully-paired savings sweeps but keeps genuine bills", async () => {
+    renderPage({
+      transactions: sweepTransactions,
+      today: "2026-05-01",
+      initialMonthKey: "2026-05",
+    })
+    await screen.findByRole("heading", { name: "Bills" })
+
+    expect(screen.queryByText("Transfer to High-Yield Savings")).not.toBeInTheDocument()
+    const day = document.querySelector('[data-date="2026-05-15"]')
+    expect(day).toHaveTextContent("Beacon Streaming")
+    expect(screen.getByText(/1 hidden as transfer/)).toBeInTheDocument()
+    expect(screen.getByText(/Month total \$12\.99 across 1 bill/)).toBeInTheDocument()
+  })
+})

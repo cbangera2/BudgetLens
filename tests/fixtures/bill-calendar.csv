@@ -11,3 +11,39 @@ Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Prov
 2026-01-07,Bluebird Cafe,-22.00,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic irregular spend
 2026-03-20,Bluebird Cafe,-19.50,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic irregular spend
 2026-02-01,Greenfield Books,-50.00,Shopping,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic one-time spend
+2026-01-15,Transfer to High-Yield Savings,-500.00,Transfer,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly sweep
+2026-01-16,Transfer from Everyday Checking,500.00,Transfer,Credit,High-Yield Savings,Savings,Sample Credit Union,synthetic,Synthetic monthly sweep leg
+2026-02-15,Transfer to High-Yield Savings,-500.00,Transfer,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly sweep
+2026-02-16,Transfer from Everyday Checking,500.00,Transfer,Credit,High-Yield Savings,Savings,Sample Credit Union,synthetic,Synthetic monthly sweep leg
+2026-03-15,Transfer to High-Yield Savings,-500.00,Transfer,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly sweep
+2026-03-16,Transfer from Everyday Checking,500.00,Transfer,Credit,High-Yield Savings,Savings,Sample Credit Union,synthetic,Synthetic monthly sweep leg
+2026-04-15,Transfer to High-Yield Savings,-500.00,Transfer,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly sweep
+2026-04-16,Transfer from Everyday Checking,500.00,Transfer,Credit,High-Yield Savings,Savings,Sample Credit Union,synthetic,Synthetic monthly sweep leg
+2026-01-12,Civic Power,-45.00,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Civic Power,-45.00,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Civic Power,-45.00,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Civic Power,-45.00,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Harbor Internet,-89.99,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Harbor Internet,-89.99,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Harbor Internet,-89.99,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Harbor Internet,-89.99,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Beacon Mobile,-32.50,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Beacon Mobile,-32.50,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Beacon Mobile,-32.50,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Beacon Mobile,-32.50,Utilities,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Cedar Gym,-25.00,Health,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Cedar Gym,-25.00,Health,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Cedar Gym,-25.00,Health,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Cedar Gym,-25.00,Health,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Elm Storage,-60.00,Storage,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Elm Storage,-60.00,Storage,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Elm Storage,-60.00,Storage,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Elm Storage,-60.00,Storage,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Maple Insurance,-120.00,Insurance,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Maple Insurance,-120.00,Insurance,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Maple Insurance,-120.00,Insurance,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Maple Insurance,-120.00,Insurance,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-01-12,Birch Market,-9.99,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-02-11,Birch Market,-9.99,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-03-13,Birch Market,-9.99,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
+2026-04-12,Birch Market,-9.99,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,synthetic,Synthetic monthly charge
