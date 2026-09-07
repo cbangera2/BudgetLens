@@ -110,7 +110,17 @@ jobs:
           WORK="$(mktemp -d)"
           trap 'rm -rf "$WORK"' EXIT
           # No checkout in this job: every gh call names the repo with -R.
-          gh release download "$TAG" -R "${{ github.repository }}" --pattern "*.ipa" --clobber --dir "$WORK"
+          # A just-created draft can take seconds to become listable: retry.
+          for attempt in 1 2 3 4 5 6; do
+            if gh release download "$TAG" -R "${{ github.repository }}" --pattern "*.ipa" --clobber --dir "$WORK" 2>/dev/null; then
+              break
+            fi
+            if [ "$attempt" = "6" ]; then
+              echo "::error::could not download ipa for $TAG."
+              exit 1
+            fi
+            sleep 10
+          done
           IPA="$(ls "$WORK"/*.ipa | head -1)"
           python3 - "$IPA" << 'EOF'
           import plistlib
