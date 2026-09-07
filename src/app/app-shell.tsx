@@ -102,7 +102,7 @@ export function AppShell() {
     <AppLockGate>
       <div className="flex min-h-svh flex-col bg-background text-foreground">
         <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:max-w-[88rem]">
             <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
               <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground">
                 B
@@ -138,8 +138,8 @@ export function AppShell() {
         </header>
         <DemoBanner />
         <div
-          className={`mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 pt-6 pb-28 transition-[grid-template-columns] sm:px-6 lg:py-6 ${
-            sidebarCollapsed ? "lg:grid-cols-[3.5rem_1fr]" : "lg:grid-cols-[13rem_1fr]"
+          className={`mx-auto grid w-full max-w-7xl flex-1 gap-8 px-4 pt-6 pb-28 transition-[grid-template-columns] sm:px-6 lg:max-w-[88rem] lg:gap-6 lg:py-6 ${
+            sidebarCollapsed ? "lg:grid-cols-[3rem_1fr]" : "lg:grid-cols-[11rem_1fr]"
           }`}
         >
           {/*
@@ -172,7 +172,7 @@ export function AppShell() {
                   )}
                 </Button>
               </div>
-              <ul className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col">
+              <ul className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col lg:gap-0.5">
                 {navigation.map(({ to, label, icon: Icon }) => (
                   <li key={to}>
                     <Link
@@ -180,7 +180,7 @@ export function AppShell() {
                       activeOptions={{ exact: to === "/" }}
                       aria-label={sidebarCollapsed ? label : undefined}
                       title={sidebarCollapsed ? label : undefined}
-                      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&.active]:bg-accent [&.active]:text-foreground ${
+                      className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&.active]:bg-accent [&.active]:text-foreground ${
                         sidebarCollapsed ? "lg:justify-center" : ""
                       }`}
                     >
