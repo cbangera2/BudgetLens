@@ -65,6 +65,22 @@ test("cidbg merchant link geometry", async ({ page }) => {
     }
     return {
       scrollY: window.scrollY,
+      table: (() => {
+        const table = document.querySelector("table")
+        const rect = table?.getBoundingClientRect()
+        return rect
+          ? { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width) }
+          : null
+      })(),
+      rows: Array.from(document.querySelectorAll("tbody tr")).map((row) => {
+        const rect = row.getBoundingClientRect()
+        const header = row.querySelector("th[scope='row'] a")?.textContent?.slice(0, 24)
+        return {
+          header: header ?? "?",
+          y: Math.round(rect.y),
+          h: Math.round(rect.height),
+        }
+      }),
       link: linkRect
         ? { x: Math.round(linkRect.x), y: Math.round(linkRect.y), w: Math.round(linkRect.width) }
         : null,
