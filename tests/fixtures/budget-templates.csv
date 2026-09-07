@@ -1,0 +1,8 @@
+Date,Description,Amount,Category,Transaction Type,Account Name,Account Type,Provider,Labels,Notes
+2026-07-10,Template Paycheck Jul,3000.00,Income,Credit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template income
+2026-08-10,Template Paycheck Aug,3000.00,Income,Credit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template income
+2026-09-10,Template Paycheck Sep,3000.00,Income,Credit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template income
+2026-09-05,Template Groceries Sep,-120.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template spend
+2026-08-06,Template Groceries Aug,-100.00,Groceries,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template spend
+2026-09-08,Template Dining Sep,-80.00,Dining,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template spend
+2026-09-12,Template Cash Spend,-40.00,,Debit,Everyday Checking,Checking,Sample Credit Union,,Synthetic template spend
