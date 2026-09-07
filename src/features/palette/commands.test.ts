@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   ASSISTANT_PRESET_QUESTIONS,
@@ -6,7 +6,7 @@ import {
   filterAndRankPalette,
   type PaletteDestination,
 } from "@/features/palette/commands"
-import { recordUsage } from "@/features/palette/recents"
+import { recordUsage, type CommandUsage } from "@/features/palette/recents"
 
 vi.mock("@/app/router", () => ({
   router: { navigate: vi.fn<(options: { to: string }) => Promise<void>>(async () => undefined) },
@@ -17,7 +17,11 @@ import { router } from "@/app/router"
 const navigate = vi.mocked(router.navigate)
 const deps = { toggleTheme: vi.fn<() => void>() }
 
-function ids(query: string, usage = {}): string[] {
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
+function ids(query: string, usage: CommandUsage = []): string[] {
   return filterAndRankPalette(query, buildPaletteCommands(deps), usage).map((command) => command.id)
 }
 
@@ -89,8 +93,8 @@ describe("palette ranking", () => {
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, value: string) => void storage.set(key, value),
     }
-    recordUsage(store, "go-settings", 100)
-    const usage = recordUsage(store, "toggle-theme", 200)
+    recordUsage(store, "go-settings")
+    const usage = recordUsage(store, "toggle-theme")
     const ranked = ids("", usage)
     expect(ranked[0]).toBe("toggle-theme")
     expect(ranked[1]).toBe("go-settings")

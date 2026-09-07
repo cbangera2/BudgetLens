@@ -3,8 +3,6 @@
 // palette best-effort prefills the composer via its stable aria-label. The
 // preset question travels in the event detail — no storage involved.
 
-import { ASSISTANT_OPEN_KEY } from "@/features/assistant/provider"
-
 /** Window CustomEvent name carrying the preset question in `detail`. */
 export const ASSISTANT_OPEN_EVENT = "budgetlens:open-assistant"
 
@@ -12,11 +10,6 @@ const COMPOSER_LABEL = "Ask the assistant"
 
 /** Ask the shell to open the assistant with a preset question. */
 export function requestAssistantWithQuestion(question: string): void {
-  try {
-    window.localStorage.setItem(ASSISTANT_OPEN_KEY, "open")
-  } catch {
-    // Open state falls back to the dispatched event below.
-  }
   window.dispatchEvent(new CustomEvent<string>(ASSISTANT_OPEN_EVENT, { detail: question }))
 }
 

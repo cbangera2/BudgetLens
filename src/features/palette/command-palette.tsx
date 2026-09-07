@@ -32,11 +32,11 @@ export function CommandPaletteHost() {
   // Re-read on open: running a command closes the palette, so the stored
   // usage is always fresh the next time it opens.
   const usage = useMemo(() => {
-    if (!open) return {}
+    if (!open) return []
     try {
       return readUsage(window.localStorage)
     } catch {
-      return {}
+      return []
     }
   }, [open])
   const results = useMemo(
@@ -82,13 +82,13 @@ export function CommandPaletteHost() {
     setActiveIndex(0)
   }, [query])
 
-  function close(returnFocus = true): void {
+  function close(): void {
     setOpen(false)
-    if (returnFocus) {
-      const target = returnFocusRef.current
-      returnFocusRef.current = null
-      if (target && target.isConnected) requestAnimationFrame(() => target.focus())
-    }
+    // Return focus only when the opener is still mounted; navigation targets
+    // unmount it, and toggle-style actions keep the context.
+    const target = returnFocusRef.current
+    returnFocusRef.current = null
+    if (target && target.isConnected) requestAnimationFrame(() => target.focus())
   }
 
   function run(command: PaletteCommand): void {
@@ -97,19 +97,19 @@ export function CommandPaletteHost() {
     } catch {
       // Ranking persistence is best-effort; the action already ran.
     }
-    close(false)
+    close()
     command.run()
   }
 
   function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
+    // Modulo by zero yields NaN on an empty list; results[NaN] is undefined,
+    // so Enter stays a no-op and the query reset below restores index 0.
     if (event.key === "ArrowDown") {
       event.preventDefault()
-      setActiveIndex((index) => (results.length === 0 ? 0 : (index + 1) % results.length))
+      setActiveIndex((index) => (index + 1) % results.length)
     } else if (event.key === "ArrowUp") {
       event.preventDefault()
-      setActiveIndex((index) =>
-        results.length === 0 ? 0 : (index - 1 + results.length) % results.length,
-      )
+      setActiveIndex((index) => (index - 1 + results.length) % results.length)
     } else if (event.key === "Enter") {
       event.preventDefault()
       const command = results[activeIndex]
@@ -121,9 +121,7 @@ export function CommandPaletteHost() {
       // Focus trap: options use aria-activedescendant, so keep focus cycling here.
       event.preventDefault()
       const direction = event.shiftKey ? -1 : 1
-      setActiveIndex((index) =>
-        results.length === 0 ? 0 : (index + direction + results.length) % results.length,
-      )
+      setActiveIndex((index) => (index + direction + results.length) % results.length)
     }
   }
 

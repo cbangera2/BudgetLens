@@ -1,6 +1,9 @@
 // Command registry for the palette: every static route, core actions, and
 // assistant presets. Runs through the app router singleton (route paths
 // only); no route, form, or panel modules are modified.
+//
+// Array order is the common-actions order: stable sorting keeps it for score
+// ties and for the empty query after recents.
 
 import { router } from "@/app/router"
 import {
@@ -25,8 +28,6 @@ export interface PaletteCommand {
   title: string
   keywords: string
   category: "Navigate" | "Actions" | "Assistant"
-  /** Baseline popularity so common actions rank sensibly with no history. */
-  weight: number
   run: () => void
 }
 
@@ -56,11 +57,38 @@ export const ASSISTANT_PRESET_QUESTIONS = [
 export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[] {
   return [
     {
+      id: "add-transaction",
+      title: "Add transaction",
+      keywords: "new create expense income",
+      category: "Actions",
+      run: go("/transactions"),
+    },
+    {
+      id: "go-transactions",
+      title: "Go to Transactions",
+      keywords: "expenses spending activity",
+      category: "Navigate",
+      run: go("/transactions"),
+    },
+    {
+      id: "go-budgets",
+      title: "Go to Budgets",
+      keywords: "limits spending plan",
+      category: "Navigate",
+      run: go("/budgets"),
+    },
+    {
+      id: "import-files",
+      title: "Import files",
+      keywords: "upload csv json bank",
+      category: "Actions",
+      run: go("/imports"),
+    },
+    {
       id: "go-overview",
       title: "Go to Overview",
       keywords: "home dashboard",
       category: "Navigate",
-      weight: 60,
       run: go("/"),
     },
     {
@@ -68,80 +96,42 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
       title: "Go to Review",
       keywords: "inbox approve pending",
       category: "Navigate",
-      weight: 55,
       run: go("/review"),
-    },
-    {
-      id: "go-transactions",
-      title: "Go to Transactions",
-      keywords: "expenses spending activity",
-      category: "Navigate",
-      weight: 90,
-      run: go("/transactions"),
-    },
-    {
-      id: "go-groups",
-      title: "Go to Groups",
-      keywords: "shared split settle",
-      category: "Navigate",
-      weight: 40,
-      run: go("/groups"),
-    },
-    {
-      id: "go-budgets",
-      title: "Go to Budgets",
-      keywords: "limits spending plan",
-      category: "Navigate",
-      weight: 70,
-      run: go("/budgets"),
-    },
-    {
-      id: "go-net-worth",
-      title: "Go to Net worth",
-      keywords: "wealth assets investments",
-      category: "Navigate",
-      weight: 45,
-      run: go("/net-worth"),
     },
     {
       id: "go-imports",
       title: "Go to Imports",
       keywords: "upload csv json files",
       category: "Navigate",
-      weight: 50,
       run: go("/imports"),
     },
     {
-      id: "go-settings",
-      title: "Go to Settings",
-      keywords: "preferences backup keys",
+      id: "go-net-worth",
+      title: "Go to Net worth",
+      keywords: "wealth assets investments",
       category: "Navigate",
-      weight: 30,
-      run: go("/settings"),
+      run: go("/net-worth"),
     },
     {
-      id: "add-transaction",
-      title: "Add transaction",
-      keywords: "new create expense income",
-      category: "Actions",
-      weight: 100,
-      run: go("/transactions"),
-    },
-    {
-      id: "import-files",
-      title: "Import files",
-      keywords: "upload csv json bank",
-      category: "Actions",
-      weight: 65,
-      run: go("/imports"),
+      id: "go-groups",
+      title: "Go to Groups",
+      keywords: "shared split settle",
+      category: "Navigate",
+      run: go("/groups"),
     },
     {
       id: "toggle-theme",
       title: "Toggle theme",
       keywords: "dark light mode appearance",
       category: "Actions",
-      weight: 35,
       run: deps.toggleTheme,
+    },
+    {
+      id: "go-settings",
+      title: "Go to Settings",
+      keywords: "preferences backup keys",
+      category: "Navigate",
+      run: go("/settings"),
     },
     ...ASSISTANT_PRESET_QUESTIONS.map(
       (question, index): PaletteCommand => ({
@@ -149,7 +139,6 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
         title: `Ask assistant: ${question}`,
         keywords: "ai help question chat",
         category: "Assistant",
-        weight: 20 - index,
         run: askAssistant(question),
       }),
     ),
@@ -159,39 +148,30 @@ export function buildPaletteCommands(deps: PaletteDependencies): PaletteCommand[
 const USAGE_BOOST = 25
 
 /**
- * Filter by fuzzy match, then rank: fuzzy score first, recorded usage and
- * baseline popularity break ties. Empty query shows recents first, then the
- * common actions in baseline order.
+ * Filter by fuzzy match, then rank: fuzzy score first, used commands gain a
+ * repeat boost. Empty query shows recents first, then the registry order
+ * above. Sorts are stable, so ties keep registry order.
  */
 export function filterAndRankPalette(
   query: string,
   commands: readonly PaletteCommand[],
-  usage: Record<string, CommandUsage>,
+  usage: CommandUsage,
 ): PaletteCommand[] {
   const trimmed = query.trim()
   if (!trimmed) {
-    // Recents (by last use) first, then common actions in baseline order.
+    const rank = new Map(usage.map((id, index) => [id, index] as const))
     return [...commands].toSorted(
-      (a, b) =>
-        (usage[b.id]?.lastUsed ?? -1) - (usage[a.id]?.lastUsed ?? -1) || b.weight - a.weight,
+      (a, b) => (rank.get(a.id) ?? usage.length) - (rank.get(b.id) ?? usage.length),
     )
   }
   const scored: Array<{ command: PaletteCommand; score: number }> = []
   for (const command of commands) {
-    const titleScore = fuzzyScore(trimmed, command.title)
-    const keywordScore = fuzzyScore(trimmed, command.keywords)
     const best = Math.max(
-      titleScore ?? Number.NEGATIVE_INFINITY,
-      keywordScore ?? Number.NEGATIVE_INFINITY,
+      fuzzyScore(trimmed, command.title) ?? -Infinity,
+      fuzzyScore(trimmed, command.keywords) ?? -Infinity,
     )
-    if (best === Number.NEGATIVE_INFINITY) continue
-    const used = usage[command.id]
-    scored.push({
-      command,
-      score: best + command.weight * 0.05 + (used ? USAGE_BOOST + Math.min(used.count, 10) : 0),
-    })
+    if (!Number.isFinite(best)) continue
+    scored.push({ command, score: best + (usage.includes(command.id) ? USAGE_BOOST : 0) })
   }
-  return scored
-    .toSorted((a, b) => b.score - a.score || b.command.weight - a.command.weight)
-    .map((entry) => entry.command)
+  return scored.toSorted((a, b) => b.score - a.score).map((entry) => entry.command)
 }
