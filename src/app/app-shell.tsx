@@ -26,6 +26,7 @@ import { AssistantFab, AssistantPanel } from "@/features/assistant/assistant-pan
 import { ASSISTANT_OPEN_KEY } from "@/features/assistant/provider"
 import { DemoBanner } from "@/features/demo/demo-banner"
 import { ensureDemoData } from "@/features/demo/demo-seed"
+import { ASSISTANT_OPEN_EVENT } from "@/features/palette/assistant-bridge"
 import { AppLockGate } from "@/features/security/app-lock-gate"
 
 const navigation = [
@@ -96,6 +97,14 @@ export function AppShell() {
 
   useEffect(() => {
     void ensureDemoData()
+  }, [])
+
+  // Command palette bridge: open the assistant (optionally with a preset
+  // question the palette prefills itself). Panel internals are untouched.
+  useEffect(() => {
+    const handler = () => setAssistantOpen(true)
+    window.addEventListener(ASSISTANT_OPEN_EVENT, handler)
+    return () => window.removeEventListener(ASSISTANT_OPEN_EVENT, handler)
   }, [])
 
   const sidebarToggleLabel = sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
