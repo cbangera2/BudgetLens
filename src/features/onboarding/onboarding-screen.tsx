@@ -1,13 +1,21 @@
 import { Database, FolderInput, Sparkles } from "lucide-react"
+import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DEFAULT_DEMO_TEMPLATE_ID,
+  DEMO_TEMPLATES,
+  type DemoTemplateId,
+} from "@/features/demo/demo-templates"
 import type { OnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
 interface OnboardingScreenProps {
   onSelect: (choice: OnboardingChoice) => void
   pendingChoice?: OnboardingChoice | null
   demoError?: boolean
+  selectedDemoTemplate?: DemoTemplateId
+  onSelectDemoTemplate?: (templateId: DemoTemplateId) => void
 }
 
 const options: {
@@ -41,8 +49,13 @@ export function OnboardingScreen({
   onSelect,
   pendingChoice = null,
   demoError = false,
+  selectedDemoTemplate,
+  onSelectDemoTemplate,
 }: OnboardingScreenProps) {
   const busy = pendingChoice !== null
+  const [internalTemplate, setInternalTemplate] = useState<DemoTemplateId>(DEFAULT_DEMO_TEMPLATE_ID)
+  const activeTemplate = selectedDemoTemplate ?? internalTemplate
+  const handleTemplateSelect = onSelectDemoTemplate ?? setInternalTemplate
 
   return (
     <main
@@ -71,6 +84,36 @@ export function OnboardingScreen({
               </div>
             </CardHeader>
             <CardContent>
+              {choice === "demo" ? (
+                <fieldset className="mb-4 grid gap-2" disabled={busy} aria-label="Sample dataset">
+                  <legend className="mb-1 text-sm font-medium">Choose a sample story</legend>
+                  {DEMO_TEMPLATES.map((template) => {
+                    const inputId = `demo-template-${template.id}`
+                    return (
+                      <div
+                        key={template.id}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-left has-checked:border-primary has-checked:bg-accent"
+                      >
+                        <input
+                          id={inputId}
+                          type="radio"
+                          name="demo-template"
+                          value={template.id}
+                          checked={activeTemplate === template.id}
+                          onChange={() => handleTemplateSelect(template.id)}
+                          data-testid={inputId}
+                          className="mt-1"
+                        />
+                        <label htmlFor={inputId} className="cursor-pointer">
+                          {template.name}
+                          {template.id === DEFAULT_DEMO_TEMPLATE_ID ? " (default)" : null} —{" "}
+                          {template.tagline}
+                        </label>
+                      </div>
+                    )
+                  })}
+                </fieldset>
+              ) : null}
               <Button
                 className="w-full"
                 variant={choice === "demo" ? "default" : "outline"}

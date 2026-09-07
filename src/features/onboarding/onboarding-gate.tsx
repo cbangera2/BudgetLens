@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react"
 
 import { router } from "@/app/router"
 import { seedDemoDataIfEmpty } from "@/features/demo/demo-seed"
+import {
+  readDemoTemplateChoice,
+  recordDemoTemplateChoice,
+  type DemoTemplateId,
+} from "@/features/demo/demo-templates"
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen"
 import {
   readOnboardingChoice,
@@ -16,6 +21,9 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   )
   const [pendingChoice, setPendingChoice] = useState<OnboardingChoice | null>(null)
   const [demoError, setDemoError] = useState(false)
+  const [demoTemplate, setDemoTemplate] = useState<DemoTemplateId>(() =>
+    readDemoTemplateChoice(safeOnboardingStorage()),
+  )
   const importRedirectArmed = useRef(false)
 
   // The router only mounts with the shell after onboarding completes, so the
@@ -29,17 +37,23 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
 
   if (completedChoice !== null) return <>{children}</>
 
+  const handleTemplateSelect = (templateId: DemoTemplateId) => {
+    setDemoTemplate(templateId)
+    recordDemoTemplateChoice(safeOnboardingStorage(), templateId)
+  }
+
   const handleSelect = (next: OnboardingChoice) => {
     if (pendingChoice !== null) return
     if (next === "demo") {
       setPendingChoice("demo")
       setDemoError(false)
       recordOnboardingChoice(safeOnboardingStorage(), "demo")
+      recordDemoTemplateChoice(safeOnboardingStorage(), demoTemplate)
       // Seed directly (not via the cached ensureDemoData) so every attempt is
       // fresh and a failed attempt keeps onboarding visible with a retry. A
       // false no-op (sample already present) still proceeds; only a throw is a
       // seed failure.
-      void seedDemoDataIfEmpty()
+      void seedDemoDataIfEmpty(undefined, demoTemplate)
         .then(() => {
           setPendingChoice(null)
           setCompletedChoice("demo")
@@ -56,6 +70,12 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <OnboardingScreen onSelect={handleSelect} pendingChoice={pendingChoice} demoError={demoError} />
+    <OnboardingScreen
+      onSelect={handleSelect}
+      pendingChoice={pendingChoice}
+      demoError={demoError}
+      selectedDemoTemplate={demoTemplate}
+      onSelectDemoTemplate={handleTemplateSelect}
+    />
   )
 }
