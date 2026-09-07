@@ -109,7 +109,8 @@ jobs:
           set -euo pipefail
           WORK="$(mktemp -d)"
           trap 'rm -rf "$WORK"' EXIT
-          gh release download "$TAG" --pattern "*.ipa" --clobber --dir "$WORK"
+          # No checkout in this job: every gh call names the repo with -R.
+          gh release download "$TAG" -R "${{ github.repository }}" --pattern "*.ipa" --clobber --dir "$WORK"
           IPA="$(ls "$WORK"/*.ipa | head -1)"
           python3 - "$IPA" << 'EOF'
           import plistlib
