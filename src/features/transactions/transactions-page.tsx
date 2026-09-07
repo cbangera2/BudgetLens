@@ -29,6 +29,7 @@ import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
+import { ActiveFilterChips } from "./active-filter-chips"
 import {
   defaultTransactionFilters,
   filterAndSortTransactions,
@@ -424,6 +425,13 @@ export function TransactionsPageContent() {
           </dialog>
         </div>
       )}
+
+      <ActiveFilterChips
+        filters={filters}
+        groups={groups}
+        onRemove={patchFilter}
+        onClear={() => setFilters(defaultTransactionFilters)}
+      />
 
       <Card>
         <CardHeader>
