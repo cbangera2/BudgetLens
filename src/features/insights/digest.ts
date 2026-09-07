@@ -87,6 +87,16 @@ function monthOf(date: string): string | null {
   return month
 }
 
+/** Calendar month immediately before `month` (YYYY-MM), across year boundaries. */
+export function previousCalendarMonth(month: string): string {
+  const year = Number(month.slice(0, 4))
+  const monthNumber = Number(month.slice(5, 7))
+  const date = new Date(Date.UTC(year, monthNumber - 2, 1))
+  const previousYear = date.getUTCFullYear()
+  const previousMonth = String(date.getUTCMonth() + 1).padStart(2, "0")
+  return `${previousYear}-${previousMonth}`
+}
+
 export function monthRange(month: string): { from: string; to: string } {
   const year = Number(month.slice(0, 4))
   const monthNumber = Number(month.slice(5, 7))
@@ -319,34 +329,39 @@ function buildDeadSubscriptions(
 
   // Fallback: merchants charged in the previous month with nothing in the
   // current month. Every figure stays cited from the two monthly aggregates.
+  // Candidates are sorted and capped before the per-merchant history scan so
+  // the scan runs at most INSIGHTS_MAX_DEAD_SUBSCRIPTIONS times.
   const previous = merchantAggregates(
     transactions,
     (transaction) => monthOf(transaction.date) === previousMonth,
   )
-  return [...previous.values()]
+  const candidates = [...previous.values()]
     .filter((entry) => !currentKeys.has(entry.key))
-    .map((entry) => {
-      const last = lastExpenseByMerchant(transactions, entry.key)
-      return {
-        key: entry.key,
-        displayName: displayByKey.get(entry.key) ?? entry.displayName,
-        lastDate: last?.date ?? `${previousMonth}-01`,
-        lastAmountMinor: last?.amountMinor ?? entry.totalMinor,
-      }
-    })
     .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
     .slice(0, INSIGHTS_MAX_DEAD_SUBSCRIPTIONS)
+  return candidates.map((entry) => {
+    const last = lastExpenseByMerchant(transactions, entry.key)
+    return {
+      key: entry.key,
+      displayName: displayByKey.get(entry.key) ?? entry.displayName,
+      lastDate: last?.date ?? `${previousMonth}-01`,
+      lastAmountMinor: last?.amountMinor ?? entry.totalMinor,
+    }
+  })
 }
 
 export function buildInsightsDigest(transactions: readonly Transaction[]): InsightsDigest {
   const months = distinctMonths(transactions)
   const currentMonth = months.at(-1) ?? null
-  const previousMonth = months.at(-2) ?? null
-  const hasEnoughHistory = currentMonth !== null && previousMonth !== null
+  // Compare against the immediately preceding calendar month so a gap month
+  // compares against an empty month instead of silently skipping to older
+  // data. Thin history still requires at least two months of transactions.
+  const previousMonth = currentMonth ? previousCalendarMonth(currentMonth) : null
+  const hasEnoughHistory = currentMonth !== null && months.length >= 2
   if (!hasEnoughHistory || !currentMonth || !previousMonth) {
     return {
       currentMonth,
-      previousMonth,
+      previousMonth: null,
       currentFrom: null,
       currentTo: null,
       previousFrom: null,

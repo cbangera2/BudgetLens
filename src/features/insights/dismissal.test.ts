@@ -79,6 +79,37 @@ describe("insights dismissal persistence", () => {
     expect(isCardDismissed(state, "2026-08>2026-09")).toBe(false)
   })
 
+  it("chains sequential actions on in-memory state when persistence throws", () => {
+    const store = new Map<string, string>()
+    const throwing: Pick<
+      Storage,
+      "getItem" | "setItem" | "removeItem" | "clear" | "key" | "length"
+    > = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: () => {
+        throw new Error("storage denied")
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => store.clear(),
+      key: (index: number) => [...store.keys()][index] ?? null,
+      get length() {
+        return store.size
+      },
+    }
+    // Mirror the section's functional updates: each action builds on the
+    // latest in-memory state instead of rereading storage.
+    let state = readInsightsDismissals(throwing)
+    state = dismissInsight(throwing, "2026-08>2026-09|mover-up|groceries", state)
+    state = dismissInsight(throwing, "2026-08>2026-09|new-merchant|juniper", state)
+    expect(isInsightDismissed(state, "2026-08>2026-09|mover-up|groceries")).toBe(true)
+    expect(isInsightDismissed(state, "2026-08>2026-09|new-merchant|juniper")).toBe(true)
+    state = restoreInsight(throwing, "2026-08>2026-09|mover-up|groceries", state)
+    expect(isInsightDismissed(state, "2026-08>2026-09|mover-up|groceries")).toBe(false)
+    expect(isInsightDismissed(state, "2026-08>2026-09|new-merchant|juniper")).toBe(true)
+  })
+
   it("ignores corrupt or unversioned payloads and clears on demand", () => {
     const storage = memoryStorage()
     storage.setItem(INSIGHTS_DISMISSAL_STORAGE_KEY, "not-json")

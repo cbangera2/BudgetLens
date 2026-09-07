@@ -60,6 +60,10 @@ function persist(storage: DismissalStorage, state: InsightsDismissalState): void
   }
 }
 
+function cloneState(state: InsightsDismissalState): InsightsDismissalState {
+  return { insights: new Set(state.insights), cards: new Set(state.cards) }
+}
+
 export function isInsightDismissed(state: InsightsDismissalState, id: string): boolean {
   return state.insights.has(id)
 }
@@ -68,8 +72,12 @@ export function isCardDismissed(state: InsightsDismissalState, digestKey: string
   return state.cards.has(digestKey)
 }
 
-export function dismissInsight(storage: DismissalStorage, id: string): InsightsDismissalState {
-  const state = readInsightsDismissals(storage)
+export function dismissInsight(
+  storage: DismissalStorage,
+  id: string,
+  base?: InsightsDismissalState,
+): InsightsDismissalState {
+  const state = base ? cloneState(base) : readInsightsDismissals(storage)
   state.insights.add(id)
   persist(storage, state)
   return state
@@ -78,15 +86,20 @@ export function dismissInsight(storage: DismissalStorage, id: string): InsightsD
 export function dismissInsightsCard(
   storage: DismissalStorage,
   digestKey: string,
+  base?: InsightsDismissalState,
 ): InsightsDismissalState {
-  const state = readInsightsDismissals(storage)
+  const state = base ? cloneState(base) : readInsightsDismissals(storage)
   state.cards.add(digestKey)
   persist(storage, state)
   return state
 }
 
-export function restoreInsight(storage: DismissalStorage, id: string): InsightsDismissalState {
-  const state = readInsightsDismissals(storage)
+export function restoreInsight(
+  storage: DismissalStorage,
+  id: string,
+  base?: InsightsDismissalState,
+): InsightsDismissalState {
+  const state = base ? cloneState(base) : readInsightsDismissals(storage)
   state.insights.delete(id)
   persist(storage, state)
   return state
@@ -95,8 +108,9 @@ export function restoreInsight(storage: DismissalStorage, id: string): InsightsD
 export function restoreInsightsCard(
   storage: DismissalStorage,
   digestKey: string,
+  base?: InsightsDismissalState,
 ): InsightsDismissalState {
-  const state = readInsightsDismissals(storage)
+  const state = base ? cloneState(base) : readInsightsDismissals(storage)
   state.cards.delete(digestKey)
   persist(storage, state)
   return state
@@ -105,8 +119,9 @@ export function restoreInsightsCard(
 export function restoreDigestInsights(
   storage: DismissalStorage,
   digestKey: string,
+  base?: InsightsDismissalState,
 ): InsightsDismissalState {
-  const state = readInsightsDismissals(storage)
+  const state = base ? cloneState(base) : readInsightsDismissals(storage)
   for (const id of state.insights) {
     if (id.startsWith(`${digestKey}|`)) state.insights.delete(id)
   }

@@ -1,6 +1,6 @@
 import { buildTransaction } from "@/test/factories"
 
-import { buildInsightsDigest } from "./digest"
+import { buildInsightsDigest, previousCalendarMonth } from "./digest"
 
 function expense(
   id: string,
@@ -131,6 +131,39 @@ describe("insights digest", () => {
     expect(single.hasEnoughHistory).toBe(false)
     expect(single.monthCount).toBe(1)
     expect(single.insights).toEqual([])
+  })
+
+  it("compares against the preceding calendar month when a month is missing", () => {
+    const digest = buildInsightsDigest([
+      expense("aug-groceries", "2026-08-05", "Neighborhood Market", -10_000, "Groceries"),
+      expense("oct-groceries", "2026-10-05", "Neighborhood Market", -16_000, "Groceries"),
+    ])
+
+    expect(digest.hasEnoughHistory).toBe(true)
+    expect(digest.currentMonth).toBe("2026-10")
+    expect(digest.previousMonth).toBe("2026-09")
+    expect(digest.digestKey).toBe("2026-09>2026-10")
+    expect(digest.moversUp).toEqual([
+      {
+        category: "Groceries",
+        currentMinor: 16_000,
+        previousMinor: 0,
+        deltaMinor: 16_000,
+        percent: null,
+        direction: "up",
+      },
+    ])
+  })
+
+  it("derives the previous month across year boundaries", () => {
+    expect(previousCalendarMonth("2027-01")).toBe("2026-12")
+    expect(previousCalendarMonth("2026-03")).toBe("2026-02")
+    const digest = buildInsightsDigest([
+      expense("dec-groceries", "2026-12-05", "Neighborhood Market", -10_000, "Groceries"),
+      expense("jan-groceries", "2027-01-05", "Neighborhood Market", -12_000, "Groceries"),
+    ])
+    expect(digest.previousMonth).toBe("2026-12")
+    expect(digest.digestKey).toBe("2026-12>2027-01")
   })
 
   it("links every insight to a backing filtered view", () => {

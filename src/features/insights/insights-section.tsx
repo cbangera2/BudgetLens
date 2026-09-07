@@ -135,7 +135,9 @@ export function InsightsSection({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setDismissed(restoreInsightsCard(storage, digestKey))}
+              onClick={() =>
+                setDismissed((current) => restoreInsightsCard(storage, digestKey, current))
+              }
             >
               Show insights again
             </Button>
@@ -165,7 +167,9 @@ export function InsightsSection({
               variant="ghost"
               size="sm"
               aria-label="Dismiss insights card"
-              onClick={() => setDismissed(dismissInsightsCard(storage, digestKey))}
+              onClick={() =>
+                setDismissed((current) => dismissInsightsCard(storage, digestKey, current))
+              }
             >
               Dismiss
             </Button>
@@ -185,7 +189,9 @@ export function InsightsSection({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setDismissed(restoreDigestInsights(storage, digestKey))}
+                    onClick={() =>
+                      setDismissed((current) => restoreDigestInsights(storage, digestKey, current))
+                    }
                   >
                     Restore dismissed insights
                   </Button>
@@ -234,7 +240,9 @@ export function InsightsSection({
                       variant="ghost"
                       size="sm"
                       aria-label={`Dismiss insight: ${insight.title}`}
-                      onClick={() => setDismissed(dismissInsight(storage, insight.id))}
+                      onClick={() =>
+                        setDismissed((current) => dismissInsight(storage, insight.id, current))
+                      }
                     >
                       Dismiss
                     </Button>
@@ -247,7 +255,9 @@ export function InsightsSection({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setDismissed(restoreDigestInsights(storage, digestKey))}
+                    onClick={() =>
+                      setDismissed((current) => restoreDigestInsights(storage, digestKey, current))
+                    }
                   >
                     Restore {dismissedCount} dismissed
                   </Button>
