@@ -4,6 +4,7 @@ import { Toaster } from "sonner"
 import { router } from "@/app/router"
 import { ThemeProvider } from "@/app/theme-provider"
 import { OnboardingGate } from "@/features/onboarding/onboarding-gate"
+import { CommandPaletteHost } from "@/features/palette/command-palette"
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
       <OnboardingGate>
         <RouterProvider router={router} />
       </OnboardingGate>
+      <CommandPaletteHost />
       <Toaster richColors position="bottom-right" />
     </ThemeProvider>
   )
