@@ -71,7 +71,13 @@ test("assistant NL add drafts a transaction and applies on approval", async ({ p
   await card.getByRole("button", { name: /approve \+ apply/i }).click()
   await expect(card.getByText(/applied/)).toBeVisible()
 
-  await page.getByRole("link", { name: "Transactions", exact: true }).click()
+  // The floating panel overlays bottom navigation on narrow viewports, so
+  // close it and navigate directly instead of clicking through it.
+  await page
+    .getByRole("region", { name: "BudgetLens assistant" })
+    .getByRole("button", { name: "Close assistant" })
+    .click()
+  await page.goto("/transactions")
   await expect(page.getByRole("heading", { name: "Transactions" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "coffee" })).toBeVisible()
 })
