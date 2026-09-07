@@ -58,8 +58,10 @@ function facetChips(
   const chips = effective.map((value) => ({
     key: `${pluralKey}:${value}`,
     label: `${label}: ${value}`,
+    // Always blank the legacy singular: plural wins in filtering, so a
+    // differing singular would spring to life once the plural is removed.
     clear: {
-      [singleKey]: single === value ? "" : filters[singleKey],
+      [singleKey]: "",
       [pluralKey]: plural.filter((item) => item !== value),
     },
   }))

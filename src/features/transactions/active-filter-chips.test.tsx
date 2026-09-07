@@ -55,6 +55,15 @@ describe("activeFilters", () => {
     expect(chips.map((chip) => chip.label)).toEqual(["Category: Dining"])
     expect(chips[0]?.clear).toEqual({ categories: [], category: "" })
   })
+
+  it("blanking the plural never reactivates a differing singular", () => {
+    const chips = activeFilters(
+      { ...defaultTransactionFilters, category: "Gas", categories: ["Dining"] },
+      [],
+    )
+    expect(chips.map((chip) => chip.label)).toEqual(["Category: Dining"])
+    expect(chips[0]?.clear).toEqual({ categories: [], category: "" })
+  })
 })
 
 describe("ActiveFilterChips", () => {

@@ -25,20 +25,20 @@ test("operator search narrows transaction rows", async ({ page }) => {
   await openTransactions(page)
   await page.getByRole("button", { name: "More filters" }).click()
 
-  await page.getByLabel("Search").fill("amount:>100")
+  await page.getByRole("searchbox", { name: "Search" }).fill("amount:>100")
   await expect(page).toHaveURL(/q=amount/)
   await expect(page.getByText("Amount > 100")).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Big Box Mart" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Payroll ACME" })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Corner Deli", exact: true })).toBeHidden()
 
-  await page.getByLabel("Search").fill("merchant:Corner")
+  await page.getByRole("searchbox", { name: "Search" }).fill("merchant:Corner")
   await expect(page.getByRole("rowheader", { name: "Corner Deli", exact: true })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Old Corner Deli", exact: true })).toBeVisible()
   await expect(page.getByRole("rowheader", { name: "Big Box Mart" })).toBeHidden()
 
   // Unknown operators fall back to plain text: an empty state, never an error.
-  await page.getByLabel("Search").fill("frobnicate:xyz")
+  await page.getByRole("searchbox", { name: "Search" }).fill("frobnicate:xyz")
   await expect(page.getByText("No matching transactions")).toBeVisible()
 })
 
@@ -64,17 +64,17 @@ test("saved views persist across reloads until deleted", async ({ page }) => {
   await openTransactions(page)
   await page.getByRole("button", { name: "More filters" }).click()
 
-  await page.getByLabel("Search").fill("amount:>100")
+  await page.getByRole("searchbox", { name: "Search" }).fill("amount:>100")
   await page.getByLabel("Saved views").fill("Big spend")
   await page.getByRole("button", { name: "Save view" }).click()
   await expect(page.getByRole("button", { name: "Apply Big spend view" })).toBeVisible()
 
   await page.getByRole("button", { name: "Clear filters" }).click()
-  await expect(page.getByLabel("Search")).toHaveValue("")
+  await expect(page.getByRole("searchbox", { name: "Search" })).toHaveValue("")
   await expect(page.getByRole("rowheader", { name: "Corner Deli", exact: true })).toBeVisible()
 
   await page.getByRole("button", { name: "Apply Big spend view" }).click()
-  await expect(page.getByLabel("Search")).toHaveValue("amount:>100")
+  await expect(page.getByRole("searchbox", { name: "Search" })).toHaveValue("amount:>100")
   await expect(page.getByRole("rowheader", { name: "Corner Deli", exact: true })).toBeHidden()
 
   await page.getByRole("button", { name: "Rename Big spend view" }).click()
