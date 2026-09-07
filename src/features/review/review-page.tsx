@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { repositories } from "@/db/repositories"
 import { useTransactionRules } from "@/features/rules/store"
 import { SubscriptionsSection } from "@/features/subscriptions/subscriptions-section"
+import { TransfersSection } from "@/features/transfers/transfers-section"
 import { useTransferFlags } from "@/features/transfers/store"
 
 import { isReviewQueueEmpty, summarizeReviewQueues, type ReviewQueueCounts } from "./summary"
@@ -79,7 +80,7 @@ export function ReviewQueueCards({ counts }: { counts: ReviewQueueCounts }) {
           testId="review-count-transfers"
         >
           <Button asChild variant="outline" size="sm">
-            <Link to="/transactions">Open transfers queue</Link>
+            <a href="#review-transfers">Open transfers queue</a>
           </Button>
         </QueueCard>
         <QueueCard
@@ -143,6 +144,9 @@ export function ReviewPageContent() {
         <p className="mt-1 text-muted-foreground">Things the app found for you to approve.</p>
       </div>
       <ReviewQueueCards counts={counts} />
+      <div id="review-transfers" className="scroll-mt-24">
+        <TransfersSection transactions={transactions} flagActions={transferFlags} />
+      </div>
       <div id="review-subscriptions" className="scroll-mt-24">
         <SubscriptionsSection />
       </div>

@@ -26,7 +26,7 @@ import { deleteTransactionReceipts } from "@/features/receipts/receipts"
 import { readReceiptSidecar } from "@/features/receipts/sidecar"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
-import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
+import { TransferBadge } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import {
@@ -551,8 +551,6 @@ export function TransactionsPageContent() {
           </CardContent>
         </Card>
       )}
-
-      <TransfersSection transactions={transactions} flagActions={transferFlags} />
 
       <Card>
         <CardHeader>

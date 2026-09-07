@@ -366,12 +366,12 @@ function NetWorthWidget({ wealth }: { wealth: readonly WealthSnapshot[] }) {
           </p>
           {investments && <p className="text-xs text-muted-foreground">{investments.date}</p>}
         </div>
-        <a
+        <Link
           className="text-sm font-medium text-primary underline underline-offset-4"
-          href="/net-worth"
+          to="/net-worth"
         >
           Open wealth dashboard
-        </a>
+        </Link>
       </CardContent>
     </Card>
   )
@@ -386,9 +386,9 @@ function ImportWidget() {
       </CardHeader>
       <CardContent>
         <Button asChild>
-          <a href="/imports">
+          <Link to="/imports">
             <Upload className="size-4" /> Open imports
-          </a>
+          </Link>
         </Button>
       </CardContent>
     </Card>
