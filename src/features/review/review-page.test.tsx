@@ -56,7 +56,7 @@ describe("ReviewQueueCards", () => {
 
     expect(screen.getByRole("link", { name: "Open transfers queue" })).toHaveAttribute(
       "href",
-      "/transactions",
+      "#review-transfers",
     )
     expect(screen.getByRole("link", { name: "View subscriptions" })).toHaveAttribute(
       "href",

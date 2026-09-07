@@ -106,7 +106,6 @@ export function YearReviewCard({ stats }: { stats: YearReviewStats }) {
             ? "Net worth: no movement tracked"
             : `Net worth ${formatSignedCardMoney(stats.netWorthDeltaMinor)} this year`}
         </p>
-        <p className="text-xs text-white/55">BudgetLens · your data stays on your device</p>
       </div>
     </div>
   )

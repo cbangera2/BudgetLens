@@ -29,7 +29,7 @@ test("review hub aggregates detection queues and links into each manager", async
   await expect(subscriptions.getByText("Synthetic Review Stream")).toBeVisible()
 
   await page.getByRole("link", { name: "Open transfers queue" }).click()
-  await expect(page).toHaveURL(/\/transactions/)
+  await expect(page).toHaveURL(/\/review#review-transfers/)
   await expect(
     page
       .getByRole("region", { name: "Transfers" })

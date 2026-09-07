@@ -26,9 +26,10 @@ import { deleteTransactionReceipts } from "@/features/receipts/receipts"
 import { readReceiptSidecar } from "@/features/receipts/sidecar"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
-import { TransferBadge, TransfersSection } from "@/features/transfers/transfers-section"
+import { TransferBadge } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
+import { ActiveFilterChips } from "./active-filter-chips"
 import {
   defaultTransactionFilters,
   filterAndSortTransactions,
@@ -425,6 +426,13 @@ export function TransactionsPageContent() {
         </div>
       )}
 
+      <ActiveFilterChips
+        filters={filters}
+        groups={groups}
+        onRemove={patchFilter}
+        onClear={() => setFilters(defaultTransactionFilters)}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
@@ -551,8 +559,6 @@ export function TransactionsPageContent() {
           </CardContent>
         </Card>
       )}
-
-      <TransfersSection transactions={transactions} flagActions={transferFlags} />
 
       <Card>
         <CardHeader>
