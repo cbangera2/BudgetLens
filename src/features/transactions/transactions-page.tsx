@@ -46,6 +46,7 @@ import { SearchHintChips } from "./search-hint-chips"
 import { TransactionForm } from "./transaction-form"
 import {
   areReceiptCountsEqual,
+  clampPage,
   computeRunningBalances,
   formatRelativeDate,
   nextColumnSort,
@@ -172,6 +173,12 @@ export function TransactionsPageContent() {
   const categoryOptions = useMemo(() => unique(transactions ?? [], "category"), [transactions])
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize))
   const pageRows = ordered.slice((page - 1) * pageSize, page * pageSize)
+
+  useEffect(() => {
+    // A bulk delete can empty the final page while page still points past
+    // it; without clamping the table goes blank with no pager to recover.
+    setPage((current) => clampPage(current, pages))
+  }, [pages])
   const patchFilter = (patch: Partial<TransactionViewFilters>) =>
     setFilters((current) => ({ ...current, ...patch }))
 

@@ -3,6 +3,7 @@ import { buildTransaction } from "@/test/factories"
 import {
   applyRangeToSelection,
   areReceiptCountsEqual,
+  clampPage,
   compareTransactionsByColumn,
   computeRunningBalances,
   formatRelativeDate,
@@ -223,6 +224,16 @@ describe("transaction receipt counts", () => {
     ).toBe(false)
     expect(areReceiptCountsEqual(new Map([["a", 1]]), new Map([["a", 2]]))).toBe(false)
     expect(areReceiptCountsEqual(new Map([["a", 1]]), new Map([["b", 1]]))).toBe(false)
+  })
+})
+
+describe("transaction pagination", () => {
+  it("clamps the current page into the shrunken result set", () => {
+    expect(clampPage(2, 1)).toBe(1)
+    expect(clampPage(1, 1)).toBe(1)
+    expect(clampPage(3, 5)).toBe(3)
+    expect(clampPage(0, 4)).toBe(1)
+    expect(clampPage(-2, 4)).toBe(1)
   })
 })
 

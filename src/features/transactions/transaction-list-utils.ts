@@ -197,6 +197,14 @@ export function areReceiptCountsEqual(
   return true
 }
 
+/**
+ * Keep the current page inside the valid range after the result set shrinks
+ * (for example a bulk delete emptying the final page). Always at least 1.
+ */
+export function clampPage(page: number, pageCount: number): number {
+  return Math.min(Math.max(1, page), Math.max(1, pageCount))
+}
+
 /** Inclusive id range between two anchors in display order (either direction). */
 export function orderedRangeIds(
   orderedIds: readonly string[],
