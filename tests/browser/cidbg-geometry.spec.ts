@@ -51,6 +51,36 @@ test("cidbg merchant link geometry", async ({ page }) => {
     }
   })
   console.log(`CIDBG-METRICS: ${JSON.stringify(metrics)}`)
+  await detailLink.scrollIntoViewIfNeeded()
+  const scrolled = await page.evaluate(() => {
+    const link = document.querySelector("tbody tr th[scope='row'] a")
+    const sortButton = document.querySelector("thead button[aria-label='Sort by merchant']")
+    const linkRect = link?.getBoundingClientRect()
+    const buttonRect = (sortButton as HTMLElement | null)?.getBoundingClientRect()
+    const at = (x: number, y: number) => {
+      const element = document.elementFromPoint(x, y)
+      if (!element) return "none"
+      const labelled = element.getAttribute("aria-label") ?? element.textContent?.slice(0, 40)
+      return `${element.tagName}[${labelled}]`
+    }
+    return {
+      scrollY: window.scrollY,
+      link: linkRect
+        ? { x: Math.round(linkRect.x), y: Math.round(linkRect.y), w: Math.round(linkRect.width) }
+        : null,
+      sortButton: buttonRect
+        ? {
+            x: Math.round(buttonRect.x),
+            y: Math.round(buttonRect.y),
+            w: Math.round(buttonRect.width),
+          }
+        : null,
+      hitAtLinkCenter: linkRect
+        ? at(linkRect.x + linkRect.width / 2, linkRect.y + linkRect.height / 2)
+        : "none",
+    }
+  })
+  console.log(`CIDBG-SCROLLED: ${JSON.stringify(scrolled)}`)
   await detailLink.click({ timeout: 10_000 })
   await expect(page).toHaveURL(/\/transactions\/.+/)
 })
