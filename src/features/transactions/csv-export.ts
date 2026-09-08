@@ -47,6 +47,9 @@ function cell(value: string | null | undefined): string {
 
 /** Serialize already-filtered/sorted rows; empty input yields a header-only CSV. */
 export function serializeTransactionsToCsv(rows: readonly ExportableTransaction[]): string {
+  // Text cells stay verbatim on purpose: this CSV is an interchange format for
+  // the BudgetLens importer, and any spreadsheet-formula prefixing here would
+  // corrupt the re-import round-trip (amounts also legitimately lead with "-").
   const data = rows.map((row) => [
     row.date,
     row.description,
@@ -89,9 +92,24 @@ function pushSingleOrCount(
   else pushToken(tokens, singular)
 }
 
+function pushExcludeTokens(tokens: string[], values: readonly string[], dimension: string): void {
+  if (values.length === 1 && values[0]) {
+    const slug = sanitizeExportFilenameSegment(values[0])
+    if (slug) tokens.push(`not-${slug}`)
+  } else if (values.length > 1) {
+    tokens.push(`not-${values.length}-${dimension}`)
+  }
+}
+
+function pushIdToken(tokens: string[], prefix: string, raw: string): void {
+  const slug = sanitizeExportFilenameSegment(raw)
+  if (slug) tokens.push(`${prefix}-${slug}`)
+}
+
 /**
  * transactions-<filter-slugs>-<YYYY-MM>.csv. Date bounds replace the month
- * fallback; everything is sanitized to [a-z0-9-].
+ * fallback; everything is sanitized to [a-z0-9-]. The date suffix is always
+ * preserved: only the filter-token head is truncated to fit.
  */
 export function buildTransactionsExportFilename(
   filters: TransactionViewFilters,
@@ -104,15 +122,28 @@ export function buildTransactionsExportFilename(
   pushSingleOrCount(tokens, filters.providers, filters.provider, "providers")
   pushSingleOrCount(tokens, filters.transactionTypes, filters.transactionType, "transaction-types")
   pushToken(tokens, filters.search)
+  pushExcludeTokens(tokens, filters.excludedCategories, "categories")
+  pushExcludeTokens(tokens, filters.excludedMerchants, "merchants")
+  pushExcludeTokens(tokens, filters.excludedAccounts, "accounts")
+  pushExcludeTokens(tokens, filters.excludedProviders, "providers")
+  pushExcludeTokens(tokens, filters.excludedTransactionTypes, "types")
+  if (filters.group) pushIdToken(tokens, "group", filters.group)
+  if (filters.importBatch) pushIdToken(tokens, "batch", filters.importBatch)
 
-  if (filters.from) pushToken(tokens, filters.from)
-  if (filters.to && filters.to !== filters.from) pushToken(tokens, filters.to)
-  if (!filters.from && !filters.to) {
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-    tokens.push(month)
+  const dateTokens: string[] = []
+  if (filters.from) pushToken(dateTokens, filters.from)
+  if (filters.to && filters.to !== filters.from) pushToken(dateTokens, filters.to)
+  if (dateTokens.length === 0) {
+    dateTokens.push(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`)
   }
+  const suffix = `-${dateTokens.join("-")}`
 
-  const stem = `transactions${tokens.length > 0 ? `-${tokens.join("-")}` : ""}`.slice(0, 120)
+  const head = `transactions${tokens.length > 0 ? `-${tokens.join("-")}` : ""}`
+  const available = 120 - suffix.length
+  const trimmedHead = head
+    .slice(0, Math.max("transactions".length, available))
+    .replaceAll(/-+$/g, "")
+  const stem = `${trimmedHead}${suffix}`
   return `${stem}.csv`
 }
 

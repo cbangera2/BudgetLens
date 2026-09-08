@@ -136,6 +136,34 @@ describe("buildTransactionsExportFilename", () => {
 
     expect(filename).toBe("transactions-2026-01.csv")
   })
+
+  it("tokens exclude-only, group, and batch filters distinctly", () => {
+    const filename = buildTransactionsExportFilename(
+      {
+        ...defaultTransactionFilters,
+        excludedCategories: ["Dining Out"],
+        excludedMerchants: ["A", "B"],
+        group: "grp_123",
+        importBatch: "batch-9",
+      },
+      new Date(2026, 0, 5),
+    )
+
+    expect(filename).toBe(
+      "transactions-not-dining-out-not-2-merchants-group-grp-123-batch-batch-9-2026-01.csv",
+    )
+  })
+
+  it("preserves the date suffix when filter tokens overflow", () => {
+    const filename = buildTransactionsExportFilename(
+      { ...defaultTransactionFilters, search: `${"x".repeat(200)}!` },
+      new Date(2026, 8, 15),
+    )
+
+    expect(filename.endsWith("-2026-09.csv")).toBe(true)
+    expect(filename.startsWith("transactions-")).toBe(true)
+    expect(filename.length).toBeLessThanOrEqual(124)
+  })
 })
 
 describe("sanitizeExportFilenameSegment", () => {
