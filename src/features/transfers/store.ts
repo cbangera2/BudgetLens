@@ -67,12 +67,19 @@ export function isConfirmedTransfer(id: string, flags: TransferFlags): boolean {
   return flags[id] === "confirmed"
 }
 
+export interface TransferPairRef {
+  expenseId: string
+  incomeId: string
+}
+
 export interface TransferFlagActions {
   flags: TransferFlags
   confirmedIds: Set<string>
   dismissedIds: Set<string>
   confirmPair: (expenseId: string, incomeId: string) => void
   dismissPair: (expenseId: string, incomeId: string) => void
+  dismissPairs: (pairs: readonly TransferPairRef[]) => void
+  restoreTransferFlags: (snapshot: TransferFlags, ids: readonly string[]) => void
   clearFlag: (id: string) => void
 }
 
@@ -118,6 +125,39 @@ export function useTransferFlags(): TransferFlagActions {
     [update],
   )
 
+  const dismissPairs = useCallback(
+    (pairs: readonly TransferPairRef[]) => {
+      if (pairs.length === 0) return
+      update((next) => {
+        for (const pair of pairs) {
+          next[pair.expenseId] = "dismissed"
+          next[pair.incomeId] = "dismissed"
+        }
+      })
+    },
+    [update],
+  )
+
+  /**
+   * Restore flags previously captured in `snapshot` for exactly `ids`,
+   * deleting ids that were unflagged. Powers session undo for bulk dismiss:
+   * same storage key as single dismiss, scoped to the dismissed batch so a
+   * stale Undo can never clobber unrelated flags.
+   */
+  const restoreTransferFlags = useCallback(
+    (snapshot: TransferFlags, ids: readonly string[]) => {
+      if (ids.length === 0) return
+      update((next) => {
+        for (const id of ids) {
+          const prior = snapshot[id]
+          if (prior === undefined) delete next[id]
+          else next[id] = prior
+        }
+      })
+    },
+    [update],
+  )
+
   const clearFlag = useCallback(
     (id: string) => {
       update((next) => {
@@ -133,6 +173,8 @@ export function useTransferFlags(): TransferFlagActions {
     dismissedIds: dismissedTransferIds(flags),
     confirmPair,
     dismissPair,
+    dismissPairs,
+    restoreTransferFlags,
     clearFlag,
   }
 }

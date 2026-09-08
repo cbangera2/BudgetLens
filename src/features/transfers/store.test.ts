@@ -88,4 +88,39 @@ describe("transfer flags store", () => {
     })
     expect(readTransferFlags()).toEqual({ fresh: "confirmed" })
   })
+
+  it("dismisses pairs in bulk through the same flags and restores the snapshot", () => {
+    window.localStorage.clear()
+    const { result } = renderHook(() => useTransferFlags())
+    const snapshot = readTransferFlags()
+    const targets = [
+      { expenseId: "out-a", incomeId: "in-a" },
+      { expenseId: "out-b", incomeId: "in-b" },
+    ]
+    const ids = targets.flatMap((pair) => [pair.expenseId, pair.incomeId])
+
+    act(() => {
+      result.current.dismissPairs(targets)
+    })
+    expect(readTransferFlags()).toEqual({
+      "out-a": "dismissed",
+      "in-a": "dismissed",
+      "out-b": "dismissed",
+      "in-b": "dismissed",
+    })
+    expect(result.current.dismissedIds).toEqual(new Set(ids))
+
+    act(() => {
+      result.current.confirmPair("other-out", "other-in")
+    })
+    act(() => {
+      result.current.restoreTransferFlags(snapshot, ids)
+    })
+    expect(readTransferFlags()).toEqual({
+      "other-out": "confirmed",
+      "other-in": "confirmed",
+    })
+    expect(result.current.dismissedIds).toEqual(new Set())
+    window.localStorage.clear()
+  })
 })

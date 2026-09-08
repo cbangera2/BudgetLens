@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Transaction } from "@/domain/models"
+import { UNDO_TTL_MS } from "@/lib/undo-buffer"
 
 import {
   detectTransferPairs,
@@ -11,7 +13,7 @@ import {
   transferPairIds,
   type TransferPair,
 } from "./detection"
-import type { TransferFlagActions } from "./store"
+import type { TransferFlagActions, TransferFlags } from "./store"
 
 function formatMoney(amountMinor: number): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(
@@ -21,6 +23,23 @@ function formatMoney(amountMinor: number): string {
 
 export function pairSelectionKey(pair: TransferPair): string {
   return `${pair.expenseId}::${pair.incomeId}`
+}
+
+/**
+ * Dismiss-all scoping, mirroring the approve-all selection model: when any
+ * suggested pair is checked only the checked subset is targeted, otherwise
+ * every visible suggestion is targeted.
+ */
+export function resolveDismissTargets(
+  suggested: readonly TransferPair[],
+  selectedKeys: ReadonlySet<string>,
+): TransferPair[] {
+  const selected = suggested.filter((pair) => selectedKeys.has(pairSelectionKey(pair)))
+  return selected.length > 0 ? selected : [...suggested]
+}
+
+function dismissToastCopy(count: number): string {
+  return count === 1 ? "1 suggested transfer dismissed" : `${count} suggested transfers dismissed`
 }
 
 export function TransferBadge() {
@@ -48,7 +67,16 @@ export function TransfersSection({
 }) {
   const byId = useMemo(() => new Map(transactions.map((row) => [row.id, row])), [transactions])
   const pairs = useMemo(() => detectTransferPairs(transactions), [transactions])
-  const { confirmedIds, dismissedIds, confirmPair, dismissPair, clearFlag } = flagActions
+  const {
+    flags,
+    confirmedIds,
+    dismissedIds,
+    confirmPair,
+    dismissPair,
+    dismissPairs,
+    restoreTransferFlags,
+    clearFlag,
+  } = flagActions
 
   const suggested = useMemo(
     () =>
@@ -120,6 +148,47 @@ export function TransfersSection({
     })
   }
 
+  // Dismiss-all targets the checked subset when any box is checked, else all
+  // visible suggestions. Dismissal itself only runs after the confirm dialog
+  // below, and stays undoable within the session via the toast action.
+  const dismissTargets = useMemo(
+    () => resolveDismissTargets(suggested, selectedKeys),
+    [suggested, selectedKeys],
+  )
+  const dismissCount = dismissTargets.length
+  const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false)
+
+  const confirmDismissAll = () => {
+    const targets = resolveDismissTargets(suggested, selectedKeys)
+    if (targets.length === 0) {
+      setDismissConfirmOpen(false)
+      return
+    }
+    const snapshot: TransferFlags = { ...flags }
+    const dismissedIdsList = targets.flatMap((pair) => [pair.expenseId, pair.incomeId])
+    dismissPairs(targets)
+    setSelectedKeys((previous) => {
+      const dismissedKeys = new Set(targets.map(pairSelectionKey))
+      const next = new Set<string>()
+      for (const key of previous) {
+        if (!dismissedKeys.has(key)) next.add(key)
+      }
+      return next
+    })
+    setDismissConfirmOpen(false)
+    toast(dismissToastCopy(targets.length), {
+      description: "Undo available for a few seconds.",
+      duration: UNDO_TTL_MS,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          restoreTransferFlags(snapshot, dismissedIdsList)
+          toast.success("Dismissed transfers restored")
+        },
+      },
+    })
+  }
+
   return (
     <section aria-label="Transfers">
       <Card>
@@ -172,6 +241,14 @@ export function TransfersSection({
                         onClick={approveSelected}
                       >
                         Approve all {selectedCount}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={dismissCount === 0}
+                        onClick={() => setDismissConfirmOpen(true)}
+                      >
+                        Dismiss all {dismissCount}
                       </Button>
                     </div>
                     <ul className="divide-y rounded-xl border">
@@ -264,6 +341,47 @@ export function TransfersSection({
           </div>
         </CardContent>
       </Card>
+      {dismissConfirmOpen && dismissCount > 0 && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDismissConfirmOpen(false)
+          }}
+        >
+          <dialog
+            open
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="dismiss-all-title"
+            aria-describedby="dismiss-all-description"
+            className="relative m-0 w-full max-w-md rounded-2xl border bg-background p-0 text-foreground shadow-2xl"
+          >
+            <Card className="border-0 shadow-none">
+              <CardHeader>
+                <CardTitle id="dismiss-all-title">
+                  Dismiss {dismissCount} suggested {dismissCount === 1 ? "transfer" : "transfers"}?
+                </CardTitle>
+                <CardDescription id="dismiss-all-description">
+                  {selectedCount > 0
+                    ? "Only the checked suggestions will be hidden."
+                    : "Every visible suggestion will be hidden."}{" "}
+                  Dismissed transfers stay dismissed in this browser, but you can undo for a few
+                  seconds after dismissing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-end gap-2">
+                <Button variant="ghost" autoFocus onClick={() => setDismissConfirmOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={confirmDismissAll}>
+                  Dismiss
+                </Button>
+              </CardContent>
+            </Card>
+          </dialog>
+        </div>
+      )}
     </section>
   )
 }
