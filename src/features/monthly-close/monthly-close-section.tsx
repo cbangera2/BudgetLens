@@ -6,10 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { repositories } from "@/db/repositories"
 import type { Transaction } from "@/domain/models"
-import { detectSpendingAnomalies, type SpendingAnomaly } from "@/features/assistant/data-tools"
 import { detectSubscriptions, normalizeMerchant } from "@/features/subscriptions/detect"
 
-import { closingMonthFor, formatMonthLabel, monthRange } from "./month"
+import { closingMonthFor, formatMonthLabel } from "./month"
 import {
   clearRecurringDecision,
   closeMonth,
@@ -31,9 +30,10 @@ import {
   type MonthlyCloseStoreShape,
 } from "./store"
 import {
-  buildCloseShareText,
   buildCloseVerdict,
+  closeMonthMovers,
   formatCloseMoney,
+  formatCloseMover,
   summarizeCloseMonth,
   uncategorizedForMonth,
 } from "./summary"
@@ -289,20 +289,6 @@ function RecurringStep({
   )
 }
 
-function anomalyLine(anomaly: SpendingAnomaly): string {
-  if (anomaly.changePct === null) {
-    return `${anomaly.category}: ${anomaly.current} (new vs ${anomaly.average})`
-  }
-  const sign = anomaly.changePct >= 0 ? "+" : ""
-  return `${anomaly.category}: ${anomaly.current} vs ${anomaly.average} (${sign}${anomaly.changePct}%)`
-}
-
-function isAnomalyListResult(value: unknown): value is { anomalies: SpendingAnomaly[] } {
-  if (typeof value !== "object" || value === null) return false
-  if (!("anomalies" in value)) return false
-  return Array.isArray(value.anomalies)
-}
-
 export function MonthlyCloseSection({
   transactions: injectedTransactions,
   storage: storageProp,
@@ -323,7 +309,6 @@ export function MonthlyCloseSection({
   const transactions = injectedTransactions ?? liveTransactions
   const closingMonth = closingMonthFor(now)
   const monthLabel = formatMonthLabel(closingMonth)
-  const range = monthRange(closingMonth)
   const record = getMonthRecord(shape, closingMonth)
 
   const monthTransactions = useMemo(
@@ -352,33 +337,12 @@ export function MonthlyCloseSection({
     [transactions, closingMonth],
   )
   const verdict = useMemo(() => (summary ? buildCloseVerdict(summary) : ""), [summary])
+  const movers = useMemo(
+    () => (transactions ? closeMonthMovers(transactions, closingMonth) : null),
+    [transactions, closingMonth],
+  )
 
-  const [anomalies, setAnomalies] = useState<SpendingAnomaly[] | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    setAnomalies(null)
-    void detectSpendingAnomalies(repositories, {
-      referenceDate: range.to,
-      thresholdPct: 30,
-      trailingMonths: 3,
-      minSpendMinor: 0,
-    })
-      .then((result) => {
-        if (cancelled) return
-        const list = isAnomalyListResult(result) ? result.anomalies : []
-        setAnomalies(Array.isArray(list) ? list : [])
-      })
-      .catch(() => {
-        if (!cancelled) setAnomalies([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [range.to])
-
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
-
-  if (!transactions || !uncategorized || !expectedRecurring || !summary) {
+  if (!transactions || !uncategorized || !expectedRecurring || !summary || !movers) {
     return <output>Loading monthly close…</output>
   }
 
@@ -406,8 +370,6 @@ export function MonthlyCloseSection({
   }
 
   if (record.closedAt) {
-    const anomalyLines = (anomalies ?? []).map(anomalyLine)
-    const shareText = buildCloseShareText(summary, verdict, anomalyLines)
     return (
       <section aria-label="Monthly close" data-testid="monthly-close-closed">
         <Card>
@@ -430,24 +392,6 @@ export function MonthlyCloseSection({
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const clipboard = navigator.clipboard
-                  if (!clipboard) {
-                    setCopyState("failed")
-                    return
-                  }
-                  void clipboard
-                    .writeText(shareText)
-                    .then(() => setCopyState("copied"))
-                    .catch(() => setCopyState("failed"))
-                }}
-              >
-                {copyState === "copied" ? "Summary copied" : "Copy summary"}
-              </Button>
-              <Button
-                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => update((current) => reopenMonth(current, closingMonth))}
@@ -455,11 +399,6 @@ export function MonthlyCloseSection({
                 Reopen
               </Button>
             </div>
-            {copyState === "failed" ? (
-              <p role="alert" className="text-xs text-muted-foreground">
-                Copy is unavailable in this browser.
-              </p>
-            ) : null}
           </CardContent>
         </Card>
       </section>
@@ -702,16 +641,14 @@ export function MonthlyCloseSection({
               </dl>
               <div className="grid gap-2">
                 <h3 className="text-sm font-medium">Variance highlights</h3>
-                {anomalies === null ? (
-                  <p className="text-sm text-muted-foreground">Checking variance…</p>
-                ) : anomalies.length === 0 ? (
+                {movers.movers.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No big movers vs the trailing average. Spending looks steady.
+                    No big movers vs {movers.previousMonth}. Spending looks steady.
                   </p>
                 ) : (
                   <ul className="grid gap-1 text-sm tabular-nums">
-                    {anomalies.slice(0, 3).map((anomaly) => (
-                      <li key={anomaly.category}>- {anomalyLine(anomaly)}</li>
+                    {movers.movers.map((mover) => (
+                      <li key={mover.category}>- {formatCloseMover(mover)}</li>
                     ))}
                   </ul>
                 )}
