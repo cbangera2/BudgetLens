@@ -6,18 +6,19 @@
 // in the request path whenever the demo key is active) + a $0-5 capped
 // OpenRouter key (repo secret OPENROUTER_KEY, set by a human).
 //
-// Verified 2026-09-06 via
+// Verified 2026-09-07 via
 // https://openrouter.ai/api/v1/models?supported_parameters=tools: every id
 // below ends in ":free", has `"prompt": "0", "completion": "0"` pricing, and
 // lists both "tools" and "tool_choice" in supported_parameters. The assistant
 // depends on tool_calls, so a non-tool model would silently break it.
 // Re-verify before rotating DEMO_DEFAULT_MODEL.
 //
-// Default is MiniMax M3: the most headroom on OpenRouter's free shared pool
-// (GLM 5.2 and Gemma 4 both hit upstream 429s during live relay verification
-// on 2026-09-06; M3 answered 200 on the first try).
+// Default is Nemotron 3.5 Lightning: speed-branded, 1M context for snapshot +
+// tool-loop headroom, served by NVIDIA capacity. MiniMax M3/M2.7 and GLM 5.2
+// left the free pool (gone from the tools-filtered list 2026-09-07); GLM 5.2
+// additionally choked in live use.
 
-export const DEMO_DEFAULT_MODEL = "minimax/minimax-m3:free"
+export const DEMO_DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning:free"
 
 export const DEMO_MODEL_ALLOWLIST: readonly string[] = [
   "cohere/north-mini-code:free",
@@ -27,8 +28,6 @@ export const DEMO_MODEL_ALLOWLIST: readonly string[] = [
   "inclusionai/ling-3.0-flash-fin:free",
   "inclusionai/ling-3.0-flash-sante:free",
   "liquid/lfm-2.5-2.6b:free",
-  "minimax/minimax-m2.7:free",
-  "minimax/minimax-m3:free",
   "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
   "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -37,7 +36,6 @@ export const DEMO_MODEL_ALLOWLIST: readonly string[] = [
   "poolside/laguna-xs-2.1:free",
   "thinkingmachines/inkling-small:free",
   "thinkingmachines/inkling:free",
-  "z-ai/glm-5.2:free",
 ]
 
 const DEMO_MODEL_SET: ReadonlySet<string> = new Set(DEMO_MODEL_ALLOWLIST)
