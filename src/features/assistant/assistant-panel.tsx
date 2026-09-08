@@ -365,6 +365,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [showSearch, setShowSearch] = useState(false)
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
+  const [streamingContent, setStreamingContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Awaiting explicit hosted-data opt-in: the question to send on approval.
   const [consentPending, setConsentPending] = useState<string | null>(null)
@@ -505,7 +506,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" })
-  }, [messages, busy])
+  }, [messages, busy, streamingContent])
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
@@ -595,6 +596,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   async function handleNewChat(): Promise<void> {
     abortRef.current?.abort()
+    setStreamingContent(null)
     setMessages([])
     storedIdsRef.current = new Set()
     setProposal(null)
@@ -613,6 +615,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
 
   async function handleSelectThread(id: string): Promise<void> {
     abortRef.current?.abort()
+    setStreamingContent(null)
     const stored = await listMessages(id)
     setMessages(
       stored.map((item) => ({
@@ -642,6 +645,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     await deleteThread(id)
     if (id === activeThreadId) {
       abortRef.current?.abort()
+      setStreamingContent(null)
       setMessages([])
       storedIdsRef.current = new Set()
       setActiveThreadId(null)
@@ -879,17 +883,44 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     } catch {
       citeRowsRef.current = []
     }
-    const turn = await requestChatTurn({
-      baseURL,
-      apiKey,
-      model: settings.model,
-      system: ASSISTANT_SYSTEM_PROMPT,
-      history,
-      tools: ASSISTANT_TOOL_SCHEMAS,
-      signal: controller.signal,
-    })
+    // Streaming progress: separate from `messages` so intermediate deltas never
+    // reach the thread store; only the finalized turn is appended below.
+    setStreamingContent("")
+    let latestStreaming = ""
+    const handleProgress = (contentSoFar: string) => {
+      latestStreaming = contentSoFar
+      setStreamingContent(contentSoFar)
+    }
+    const trace: ToolTrace[] = []
+    const appendPartial = (value: string) => {
+      if (!value) return
+      const finished =
+        trace.length > 0 ? finalizeAssistantMessage(value, trace) : finalizeAssistantMessage(value)
+      setMessages((current) => [...current, finished])
+    }
+    let turn
+    try {
+      turn = await requestChatTurn({
+        baseURL,
+        apiKey,
+        model: settings.model,
+        system: ASSISTANT_SYSTEM_PROMPT,
+        history,
+        tools: ASSISTANT_TOOL_SCHEMAS,
+        signal: controller.signal,
+        onContent: handleProgress,
+      })
+    } catch (caught) {
+      // Stop halts mid-stream cleanly with no message (existing abort
+      // behavior); mid-stream failures keep what arrived plus the error.
+      setStreamingContent(null)
+      if (caught instanceof DOMException && caught.name === "AbortError") return
+      appendPartial(latestStreaming)
+      throw caught
+    }
 
     if (turn.toolCalls.length === 0) {
+      setStreamingContent(null)
       setMessages((current) => [
         ...current,
         finalizeAssistantMessage(turn.content || "No response from provider."),
@@ -897,7 +928,6 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       return
     }
 
-    const trace: ToolTrace[] = []
     const toolOutputs: Array<{ id: string; name: string; output: unknown }> = []
     for (const call of turn.toolCalls.slice(0, 4)) {
       if (call.name === "show_transactions_view") {
@@ -962,18 +992,31 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       }
     }
 
-    const finalAnswer = await sendToolResults({
-      baseURL,
-      apiKey,
-      model: settings.model,
-      system: ASSISTANT_SYSTEM_PROMPT,
-      history,
-      pendingAssistantContent: turn.content,
-      pendingToolCalls: turn.toolCalls,
-      toolOutputs,
-      signal: controller.signal,
-    })
+    let finalAnswer: string
+    try {
+      finalAnswer = await sendToolResults({
+        baseURL,
+        apiKey,
+        model: settings.model,
+        system: ASSISTANT_SYSTEM_PROMPT,
+        history,
+        pendingAssistantContent: turn.content,
+        pendingToolCalls: turn.toolCalls,
+        toolOutputs,
+        signal: controller.signal,
+        onContent: handleProgress,
+      })
+    } catch (caught) {
+      // Stop stays silent; mid-stream failures keep the partial answer with
+      // the tool trace plus the error banner from the caller.
+      setStreamingContent(null)
+      if (caught instanceof DOMException && caught.name === "AbortError") return
+      if (latestStreaming) appendPartial(latestStreaming)
+      else if (trace.length > 0) appendPartial("The provider stopped mid-answer.")
+      throw caught
+    }
 
+    setStreamingContent(null)
     setMessages((current) => [...current, finalizeAssistantMessage(finalAnswer, trace)])
   }
 
@@ -1029,6 +1072,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       if (caught instanceof DOMException && caught.name === "AbortError") return
       setError(caught instanceof Error ? caught.message : "Assistant request failed.")
     } finally {
+      setStreamingContent(null)
       setBusy(false)
       abortRef.current = null
     }
@@ -1195,6 +1239,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       if (caught instanceof DOMException && caught.name === "AbortError") return
       setError(caught instanceof Error ? caught.message : "Assistant request failed.")
     } finally {
+      setStreamingContent(null)
       setBusy(false)
       abortRef.current = null
     }
@@ -1819,7 +1864,19 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           ),
         )}
 
-        {busy && (
+        {streamingContent !== null && streamingContent.length > 0 && (
+          <div className="flex justify-start" aria-label="Assistant response in progress">
+            <div className="max-w-[92%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm">
+              <Markdown
+                text={streamingContent}
+                id="assistant-streaming"
+                navigate={navigateToTransactions}
+              />
+            </div>
+          </div>
+        )}
+
+        {busy && (streamingContent === null || streamingContent.length === 0) && (
           <div className="flex justify-start" aria-label="Assistant is thinking">
             <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-muted px-4 py-3">
               <span className="typing-dot size-1.5 rounded-full bg-muted-foreground" />
