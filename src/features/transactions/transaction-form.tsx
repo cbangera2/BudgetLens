@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select"
 import type { Transaction, TransactionDraft, TransactionGroup } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT, effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import { OcrDraftSection } from "@/features/receipts/ocr-section"
 import { ReceiptSection } from "@/features/receipts/receipt-section"
 
 import {
@@ -188,6 +189,20 @@ export function TransactionForm({
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
+      )}
+      {!transaction && (
+        <OcrDraftSection
+          onApply={(patch) =>
+            setValues((current) => ({
+              ...current,
+              // OCR fills only the fields it recognized; anything it missed
+              // keeps the current form value for the user to complete.
+              date: patch.date || current.date,
+              description: patch.description || current.description,
+              amount: patch.amount || current.amount,
+            }))
+          }
+        />
       )}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="grid gap-1.5">

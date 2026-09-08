@@ -17,6 +17,7 @@
 
 import { BiometricAuth } from "@aparajita/capacitor-biometric-auth"
 import { KeychainAccess, SecureStorage } from "@aparajita/capacitor-secure-storage"
+import { Ocr } from "@capacitor-community/image-to-text"
 import type { PermissionState } from "@capacitor/core"
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem"
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics"
@@ -441,6 +442,34 @@ export async function readStagedWidgetSnapshot(): Promise<string | null> {
     return typeof result.data === "string" ? result.data : null
   } catch {
     return null
+  }
+}
+
+// Receipt OCR (feature: src/features/receipts/ocr-*). On-device text
+// recognition via @capacitor-community/image-to-text 8.0.0 (pinned exact):
+// Apple Vision on iOS, ML Kit on Android, no server involved, so receipt
+// contents never leave the device. The plugin has no web implementation;
+// every entry here is capability-gated (see ocr-capability.ts) and never
+// throws, so web/desktop builds stay green with zero native runtime.
+
+/** True only where the on-device OCR plugin can run. Web: false. */
+export function isReceiptOcrSupported(): boolean {
+  return isNative()
+}
+
+/**
+ * Recognize text lines in a base64-encoded image (no data-URL prefix).
+ * Resolves [] on web and on any native failure, so callers treat "no lines"
+ * as "no candidates" without error UI. Never throws.
+ */
+export async function detectReceiptTextLines(base64Data: string): Promise<string[]> {
+  if (!isNative()) return []
+  if (!base64Data) return []
+  try {
+    const result = await Ocr.detectText({ base64: base64Data })
+    return result.textDetections.map((detection) => detection.text).filter((text) => text.trim())
+  } catch {
+    return []
   }
 }
 
