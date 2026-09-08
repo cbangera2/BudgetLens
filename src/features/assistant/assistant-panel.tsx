@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { COARSE_POINTER_QUERY } from "@/components/mobile/use-media-query"
 import { repositories } from "@/db/repositories"
 import {
   extractCitations,
@@ -194,6 +195,28 @@ function isThinkingLevel(value: string): value is ThinkingLevel {
   return THINKING_LEVELS.some((level) => level === value)
 }
 
+/**
+ * First-run layout: touch-first devices open fullscreen (a floating card
+ * covers the whole phone screen anyway, so it buys nothing). Applies only
+ * when nothing is stored — once the user toggles, their choice persists.
+ */
+export function defaultAssistantLayout(): AssistantWindowLayout {
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(COARSE_POINTER_QUERY).matches
+  ) {
+    try {
+      if (window.localStorage.getItem(ASSISTANT_LAYOUT_KEY) === null) {
+        return { ...DEFAULT_ASSISTANT_LAYOUT, fullscreen: true }
+      }
+    } catch {
+      // Private-mode storage failure: fall through to stored/default layout.
+    }
+  }
+  return readAssistantLayout(window.localStorage)
+}
+
 function messageId(): string {
   return globalThis.crypto.randomUUID()
 }
@@ -321,9 +344,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [isNative] = useState(() => isNativeCapacitorSync())
   const keychainCapable = isDesktop || isNative
   const [showSettings, setShowSettings] = useState(false)
-  const [layout, setLayout] = useState<AssistantWindowLayout>(() =>
-    readAssistantLayout(window.localStorage),
-  )
+  const [layout, setLayout] = useState<AssistantWindowLayout>(() => defaultAssistantLayout())
   const [messages, setMessages] = useState<PanelMessage[]>([])
   const [harnessSessionId, setHarnessSessionId] = useState<string | undefined>(undefined)
   const [harnessModels, setHarnessModels] = useState<HarnessModelOption[] | null>(null)
@@ -1324,7 +1345,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           </span>
         </button>
       )}
-      <header className="flex items-center gap-1.5 border-b px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+      <header className="flex items-center gap-1 border-b px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground sm:size-9">
           <Bot className="size-4 sm:size-5" aria-hidden="true" />
         </span>
@@ -1348,7 +1369,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Chat history"
           title="Chat history"
           aria-expanded={showHistory}
@@ -1359,7 +1380,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Assistant settings"
           title="Assistant settings"
           aria-expanded={showSettings}
@@ -1370,7 +1391,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="New chat"
           title="New chat"
           onClick={() => {
@@ -1382,7 +1403,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
           title={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
           aria-pressed={layout.fullscreen}
@@ -1399,7 +1420,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Close assistant"
           onClick={onClose}
         >
