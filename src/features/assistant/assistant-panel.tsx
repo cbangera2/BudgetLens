@@ -66,7 +66,6 @@ import {
   ASSISTANT_SETTINGS_KEY,
   describeNativeBlock,
   formatMinor,
-  getPartialContent,
   isAssistantProviderId,
   isLocalBaseURL,
   listProviderModels,
@@ -893,6 +892,12 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       setStreamingContent(contentSoFar)
     }
     const trace: ToolTrace[] = []
+    const appendPartial = (value: string) => {
+      if (!value) return
+      const finished =
+        trace.length > 0 ? finalizeAssistantMessage(value, trace) : finalizeAssistantMessage(value)
+      setMessages((current) => [...current, finished])
+    }
     let turn
     try {
       turn = await requestChatTurn({
@@ -910,10 +915,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       // behavior); mid-stream failures keep what arrived plus the error.
       setStreamingContent(null)
       if (caught instanceof DOMException && caught.name === "AbortError") return
-      const partial = latestStreaming || getPartialContent(caught) || ""
-      if (partial) {
-        setMessages((current) => [...current, finalizeAssistantMessage(partial)])
-      }
+      appendPartial(latestStreaming)
       throw caught
     }
 
@@ -1009,19 +1011,8 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       // the tool trace plus the error banner from the caller.
       setStreamingContent(null)
       if (caught instanceof DOMException && caught.name === "AbortError") return
-      const partial = latestStreaming || getPartialContent(caught) || ""
-      if (partial) {
-        const finalized =
-          trace.length > 0
-            ? finalizeAssistantMessage(partial, trace)
-            : finalizeAssistantMessage(partial)
-        setMessages((current) => [...current, finalized])
-      } else if (trace.length > 0) {
-        setMessages((current) => [
-          ...current,
-          finalizeAssistantMessage("The provider stopped mid-answer.", trace),
-        ])
-      }
+      if (latestStreaming) appendPartial(latestStreaming)
+      else if (trace.length > 0) appendPartial("The provider stopped mid-answer.")
       throw caught
     }
 

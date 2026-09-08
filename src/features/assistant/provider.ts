@@ -434,10 +434,7 @@ function applyStreamDelta(
     if (typeof entry.id === "string" && entry.id && !state.id) state.id = entry.id
     const fn: unknown = entry.function
     if (!isRecord(fn)) continue
-    if (typeof fn.name === "string" && fn.name) {
-      if (!state.name) state.name = fn.name
-      else if (state.name !== fn.name) state.name += fn.name
-    }
+    if (typeof fn.name === "string" && fn.name && !state.name) state.name = fn.name
     if (typeof fn.arguments === "string" && fn.arguments) state.arguments += fn.arguments
   }
 }
@@ -458,12 +455,8 @@ function finalizeStreamAccumulator(acc: StreamAccumulator): ProviderTurnResult {
 
 function throwIfAborted(signal: AbortSignal, partialContent: string): void {
   if (!signal.aborted) return
-  const reason: unknown = signal.reason
   // Timeouts keep their semantics (surfaced, not silently swallowed as Stop).
-  if (errorName(reason) === "TimeoutError") {
-    if (reason instanceof DOMException || reason instanceof Error) {
-      throw attachPartialContent(reason, partialContent)
-    }
+  if (errorName(signal.reason) === "TimeoutError") {
     throw attachPartialContent(
       new DOMException("Assistant request timed out.", "TimeoutError"),
       partialContent,
@@ -480,82 +473,51 @@ async function readSSEStream(
   const reader = body.getReader()
   const decoder = new TextDecoder()
   const acc: StreamAccumulator = { content: "", tools: [] }
-  let buffer = ""
-  let rawText = ""
-  let gotEvent = false
+  let text = ""
+  let cursor = 0
   let done = false
+  const handleLine = (line: string): void => {
+    const trimmed = line.endsWith("\r") ? line.slice(0, -1).trim() : line.trim()
+    if (!trimmed || trimmed.startsWith(":") || !trimmed.startsWith("data:")) return
+    const data = trimmed.slice(5).trim()
+    if (!data) return
+    if (data === "[DONE]") {
+      done = true
+      return
+    }
+    let event: unknown
+    try {
+      event = JSON.parse(data) as unknown
+    } catch {
+      return
+    }
+    if (isRecord(event) && "error" in event) {
+      throw attachPartialContent(
+        new Error(`Provider stream: ${streamErrorDetail(event.error)}`),
+        acc.content,
+      )
+    }
+    applyStreamDelta(acc, event, onContent)
+    throwIfAborted(signal, acc.content)
+  }
   try {
     for (;;) {
       throwIfAborted(signal, acc.content)
       // oxlint-disable-next-line no-await-in-loop -- Sequential stream reads.
       const read = await reader.read()
       if (read.done) break
-      const chunkText = decoder.decode(read.value, { stream: true })
-      buffer += chunkText
-      rawText += chunkText
-      let newline = buffer.indexOf("\n")
-      while (newline >= 0 && !done) {
-        let line = buffer.slice(0, newline)
-        buffer = buffer.slice(newline + 1)
-        if (line.endsWith("\r")) line = line.slice(0, -1)
-        const trimmed = line.trim()
-        if (trimmed && !trimmed.startsWith(":") && trimmed.startsWith("data:")) {
-          const data = trimmed.slice(5).trim()
-          if (data === "[DONE]") {
-            done = true
-            break
-          }
-          if (data) {
-            let event: unknown = null
-            try {
-              event = JSON.parse(data) as unknown
-            } catch {
-              event = null
-            }
-            if (event !== null) {
-              if (isRecord(event) && "error" in event) {
-                const detail = streamErrorDetail(event.error)
-                throw attachPartialContent(new Error(`Provider stream: ${detail}`), acc.content)
-              }
-              gotEvent = true
-              applyStreamDelta(acc, event, onContent)
-              throwIfAborted(signal, acc.content)
-            }
-          }
-        } else if (trimmed === "" || trimmed.startsWith(":")) {
-          // Event boundary or keep-alive comment: no payload.
-        }
-        newline = buffer.indexOf("\n")
+      text += decoder.decode(read.value, { stream: true })
+      let newline = text.indexOf("\n", cursor)
+      while (newline >= 0) {
+        handleLine(text.slice(cursor, newline))
+        cursor = newline + 1
+        if (done) break
+        newline = text.indexOf("\n", cursor)
       }
       if (done) break
     }
-    const tail = buffer.trim()
-    if (!done && tail.startsWith("data:")) {
-      const data = tail.slice(5).trim()
-      if (data && data !== "[DONE]") {
-        try {
-          const event = JSON.parse(data) as unknown
-          if (isRecord(event) && "error" in event) {
-            const detail = streamErrorDetail(event.error)
-            throw attachPartialContent(new Error(`Provider stream: ${detail}`), acc.content)
-          }
-          gotEvent = true
-          applyStreamDelta(acc, event, onContent)
-        } catch (error) {
-          if (error instanceof Error && error.message.startsWith("Provider stream:")) throw error
-          // Trailing garbage without a newline: ignore when we already have events.
-        }
-      }
-    }
-    // Providers that ignore `stream: true` answer with plain JSON despite the
-    // 200: treat buffered JSON as a non-streaming turn instead of an empty one.
-    if (!gotEvent && !acc.content && acc.tools.length === 0 && rawText.trim()) {
-      try {
-        return finalizeStreamAccumulator(accFromNonStreaming(rawText))
-      } catch {
-        // Fall through to the empty result below.
-      }
-    }
+    // Whatever remains at end-of-stream is complete by definition.
+    if (!done) handleLine(text.slice(cursor))
     return finalizeStreamAccumulator(acc)
   } catch (error) {
     // Normalize cross-realm aborts so Stop stays recognizable via instanceof.
@@ -574,16 +536,6 @@ async function readSSEStream(
   }
 }
 
-function accFromNonStreaming(rawText: string): StreamAccumulator {
-  const payload = JSON.parse(rawText) as unknown
-  const turn = extractTurnMessage(payload)
-  const acc: StreamAccumulator = { content: turn.content, tools: [] }
-  for (const call of turn.toolCalls) {
-    acc.tools.push({ id: call.id, name: call.name, arguments: JSON.stringify(call.args ?? {}) })
-  }
-  return acc
-}
-
 export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
 const PROVIDER_MAX_ATTEMPTS = 3
 const PROVIDER_RETRY_BASE_MS = 500
@@ -598,7 +550,6 @@ const PROVIDER_RETRY_CAP_MS = 1_500
 function isRetryableTransportError(error: unknown): boolean {
   const name = errorName(error)
   if (name === "AbortError" || name === "TimeoutError") return false
-  if (error instanceof DOMException && error.name === "AbortError") return false
   if (error instanceof TypeError) return true
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : ""
   return /Provider 5\d\d/.test(message)
@@ -696,6 +647,54 @@ function invokeWithAbort<T>(
   })
 }
 
+function chatRequestBody(
+  model: string,
+  messages: ChatCompletionsMessage[],
+  tools: ChatFunctionTool[] | undefined,
+  stream: boolean,
+): string {
+  return JSON.stringify({
+    model,
+    messages,
+    ...(tools && tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
+    temperature: 0.2,
+    ...(stream ? { stream: true } : {}),
+  })
+}
+
+function chatRequestHeaders(apiKey: string): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+  }
+}
+
+async function throwProviderError(response: Response): Promise<never> {
+  const detail = await response.text().catch(() => "")
+  throw new Error(
+    `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
+  )
+}
+
+async function withTransportRetry<T>(
+  signal: AbortSignal,
+  retryable: (error: unknown) => boolean,
+  run: () => Promise<T>,
+): Promise<T> {
+  let attempt = 0
+  for (;;) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      return await run()
+    } catch (error) {
+      if (attempt + 1 >= PROVIDER_MAX_ATTEMPTS || !retryable(error)) throw error
+      attempt += 1
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      await retrySleep(transportRetryDelayMs(attempt - 1) + Math.floor(Math.random() * 250), signal)
+    }
+  }
+}
+
 async function postChatCompletions(options: {
   baseURL: string
   apiKey: string
@@ -723,45 +722,18 @@ async function postChatCompletions(options: {
   }
 
   const signal = withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS)
-  const body = JSON.stringify({
-    model: options.model,
-    messages: options.messages,
-    ...(options.tools && options.tools.length > 0
-      ? { tools: options.tools, tool_choice: "auto" }
-      : {}),
-    temperature: 0.2,
-  })
-
-  let attempt = 0
-  for (;;) {
-    try {
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
-        method: "POST",
-        signal,
-        headers: {
-          "content-type": "application/json",
-          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
-        },
-        body,
-      })
-
-      if (!response.ok) {
-        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-        const detail = await response.text().catch(() => "")
-        throw new Error(
-          `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
-        )
-      }
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      return (await response.json()) as unknown
-    } catch (error) {
-      if (attempt + 1 >= PROVIDER_MAX_ATTEMPTS || !isRetryableTransportError(error)) throw error
-      attempt += 1
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      await retrySleep(transportRetryDelayMs(attempt - 1) + Math.floor(Math.random() * 250), signal)
-    }
+  const url = joinURL(options.baseURL, "/chat/completions")
+  const init = {
+    method: "POST",
+    signal,
+    headers: chatRequestHeaders(options.apiKey),
+    body: chatRequestBody(options.model, options.messages, options.tools, false),
   }
+  return await withTransportRetry(signal, isRetryableTransportError, async () => {
+    const response = await fetch(url, init)
+    if (!response.ok) await throwProviderError(response)
+    return (await response.json()) as unknown
+  })
 }
 
 /**
@@ -786,7 +758,7 @@ async function postChatCompletionsStream(options: {
 }): Promise<ProviderTurnResult> {
   assertDemoModelAllowed(options.baseURL, options.apiKey, options.model)
   // Desktop binary stays non-streaming through the Rust proxy (matching the
-  // Tauri command today); report the final content once for uniform callers.
+  // Tauri command today).
   if (isTauriSync()) {
     const payload = await postChatCompletions({
       baseURL: options.baseURL,
@@ -797,94 +769,56 @@ async function postChatCompletionsStream(options: {
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     })
-    const turn = extractTurnMessage(payload)
-    options.onContent?.(turn.content)
-    return turn
+    return extractTurnMessage(payload)
   }
 
   const signal = withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS)
-  const body = JSON.stringify({
-    model: options.model,
-    messages: options.messages,
-    ...(options.tools && options.tools.length > 0
-      ? { tools: options.tools, tool_choice: "auto" }
-      : {}),
-    temperature: 0.2,
-    stream: true,
-  })
-
-  let attempt = 0
-  for (;;) {
-    try {
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
-        method: "POST",
-        signal,
-        headers: {
-          "content-type": "application/json",
-          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
-        },
-        body,
-      })
-
-      if (!response.ok) {
-        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-        const detail = await response.text().catch(() => "")
-        throw new Error(
-          `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
-        )
-      }
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Test doubles stub fetch without a full Response body.
-      const streamBody = (response as unknown as { body?: ReadableStream<Uint8Array> | null }).body
-      if (!streamBody) {
-        // Buffered mock or non-streaming proxy: parse the JSON payload as a turn.
-        // oxlint-disable-next-line no-await-in-loop, typescript/no-unsafe-type-assertion -- Sequential retry; test doubles stub fetch without a full Response shape.
-        const payload = await (response as unknown as { json: () => Promise<unknown> }).json()
-        const turn = extractTurnMessage(payload)
-        options.onContent?.(turn.content)
-        return turn
-      }
-      const contentType =
-        response.headers instanceof Headers ? (response.headers.get("content-type") ?? "") : ""
-      if (contentType.includes("application/json")) {
-        // Provider ignored `stream: true` and answered buffered JSON.
-        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-        const payload = (await response.json()) as unknown
-        const turn = extractTurnMessage(payload)
-        options.onContent?.(turn.content)
-        return turn
-      }
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      return await readSSEStream(streamBody, signal, options.onContent)
-    } catch (error) {
-      // What already streamed must surface, never retry into a duplicate.
-      const partial = getPartialContent(error)
-      if (partial && partial.length > 0) throw error
-      if (
-        error instanceof DOMException ||
-        isAbortError(error) ||
-        errorName(error) === "TimeoutError"
-      ) {
-        throw error
-      }
-      if (attempt + 1 >= PROVIDER_MAX_ATTEMPTS || !isRetryableTransportError(error)) throw error
-      attempt += 1
-      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
-      await retrySleep(transportRetryDelayMs(attempt - 1) + Math.floor(Math.random() * 250), signal)
-    }
+  const url = joinURL(options.baseURL, "/chat/completions")
+  const init = {
+    method: "POST",
+    signal,
+    headers: chatRequestHeaders(options.apiKey),
+    body: chatRequestBody(options.model, options.messages, options.tools, true),
   }
+  // What already streamed must surface, never retry into a duplicate.
+  const retryable = (error: unknown): boolean => {
+    const partial = getPartialContent(error)
+    return !(partial && partial.length > 0) && isRetryableTransportError(error)
+  }
+  return await withTransportRetry(signal, retryable, async () => {
+    const response = await fetch(url, init)
+    if (!response.ok) await throwProviderError(response)
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Test doubles stub fetch without a full Response body.
+    const streamBody = (response as unknown as { body?: ReadableStream<Uint8Array> | null }).body
+    if (!streamBody) {
+      // Buffered mock or non-streaming proxy: parse the JSON payload as a turn.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Test doubles stub fetch without a full Response shape.
+      const payload = await (response as unknown as { json: () => Promise<unknown> }).json()
+      const turn = extractTurnMessage(payload)
+      options.onContent?.(turn.content)
+      return turn
+    }
+    const contentType =
+      response.headers instanceof Headers ? (response.headers.get("content-type") ?? "") : ""
+    if (contentType.includes("application/json")) {
+      // Provider ignored `stream: true` and answered buffered JSON.
+      const payload = (await response.json()) as unknown
+      const turn = extractTurnMessage(payload)
+      options.onContent?.(turn.content)
+      return turn
+    }
+    return await readSSEStream(streamBody, signal, options.onContent)
+  })
 }
 
-async function requestChatTurnJson(
+async function postTurnJson(
   baseURL: string,
   apiKey: string,
   model: string,
   messages: ChatCompletionsMessage[],
   tools: ChatFunctionTool[],
   signal: AbortSignal | undefined,
-  onContent: ChatStreamProgress | undefined,
 ): Promise<ProviderTurnResult> {
-  const withTools = tools.length > 0
   try {
     const payload = await postChatCompletions({
       baseURL,
@@ -894,13 +828,11 @@ async function requestChatTurnJson(
       tools,
       ...(signal ? { signal } : {}),
     })
-    const turn = extractTurnMessage(payload)
-    onContent?.(turn.content)
-    return turn
+    return extractTurnMessage(payload)
   } catch (error) {
     // Local proxies often 400 on unknown fields (tools/tool_choice) or on
     // models without function calling: retry the same turn as plain completion.
-    if (withTools && isRetryableToolError(error)) {
+    if (tools.length > 0 && isRetryableToolError(error)) {
       const payload = await postChatCompletions({
         baseURL,
         apiKey,
@@ -908,10 +840,26 @@ async function requestChatTurnJson(
         messages,
         ...(signal ? { signal } : {}),
       })
-      const turn = extractTurnMessage(payload)
-      onContent?.(turn.content)
-      return turn
+      return extractTurnMessage(payload)
     }
+    throw error
+  }
+}
+
+async function streamFirstJsonFallback<T>(
+  stream: () => Promise<T>,
+  json: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await stream()
+  } catch (error) {
+    // Aborts and mid-stream failures (partial content present) surface as-is:
+    // what arrived stays visible via onContent/partialContent, never retried.
+    if (error instanceof DOMException || isAbortError(error)) throw error
+    const partial = getPartialContent(error)
+    if (partial && partial.length > 0) throw error
+    // Provider rejected `stream: true`: retry once without it.
+    if (isStreamNotSupportedError(error)) return await json()
     throw error
   }
 }
@@ -940,52 +888,35 @@ export async function requestChatTurn(options: {
     ...(options.signal ? { signal: options.signal } : {}),
     ...(options.onContent ? { onContent: options.onContent } : {}),
   }
-  try {
-    return await postChatCompletionsStream({ ...streamBase, tools: options.tools })
-  } catch (error) {
-    // Aborts and mid-stream failures (partial content present) surface as-is:
-    // what arrived stays visible via onContent/partialContent, never retried.
-    if (error instanceof DOMException || isAbortError(error)) throw error
-    const partial = getPartialContent(error)
-    if (partial && partial.length > 0) throw error
-    // Provider rejected `stream: true`: retry once without it, keeping the
-    // existing tool-fallback pattern (with tools, then plain on tool errors).
-    if (isStreamNotSupportedError(error)) {
-      return await requestChatTurnJson(
+  return await streamFirstJsonFallback(
+    async () => {
+      try {
+        return await postChatCompletionsStream({ ...streamBase, tools: options.tools })
+      } catch (error) {
+        // Local proxies often 400 on unknown fields (tools/tool_choice):
+        // retry the same turn streaming as a plain completion before giving up.
+        if (
+          withTools &&
+          !(error instanceof DOMException) &&
+          !isAbortError(error) &&
+          !getPartialContent(error) &&
+          isRetryableToolError(error)
+        ) {
+          return await postChatCompletionsStream({ ...streamBase })
+        }
+        throw error
+      }
+    },
+    async () =>
+      await postTurnJson(
         options.baseURL,
         options.apiKey,
         options.model,
         messages,
         options.tools,
         options.signal,
-        options.onContent,
-      )
-    }
-    // Local proxies often 400 on unknown fields (tools/tool_choice): retry the
-    // same turn streaming as a plain completion before giving up.
-    if (withTools && isRetryableToolError(error)) {
-      try {
-        return await postChatCompletionsStream({ ...streamBase })
-      } catch (plainError) {
-        if (plainError instanceof DOMException || isAbortError(plainError)) throw plainError
-        const plainPartial = getPartialContent(plainError)
-        if (plainPartial && plainPartial.length > 0) throw plainError
-        if (isStreamNotSupportedError(plainError)) {
-          return await requestChatTurnJson(
-            options.baseURL,
-            options.apiKey,
-            options.model,
-            messages,
-            [],
-            options.signal,
-            options.onContent,
-          )
-        }
-        throw plainError
-      }
-    }
-    throw error
-  }
+      ),
+  )
 }
 
 function isRetryableToolError(error: unknown): boolean {
@@ -1129,22 +1060,19 @@ export async function sendToolResults(options: {
     })),
   ]
 
-  try {
-    const turn = await postChatCompletionsStream({
-      baseURL: options.baseURL,
-      apiKey: options.apiKey,
-      model: options.model,
-      messages,
-      ...(options.signal ? { signal: options.signal } : {}),
-      ...(options.onContent ? { onContent: options.onContent } : {}),
-    })
-    return turn.content || "Done."
-  } catch (error) {
-    if (error instanceof DOMException || isAbortError(error)) throw error
-    const partial = getPartialContent(error)
-    if (partial && partial.length > 0) throw error
-    // Provider rejected `stream: true`: retry once without it.
-    if (isStreamNotSupportedError(error)) {
+  return await streamFirstJsonFallback(
+    async () => {
+      const turn = await postChatCompletionsStream({
+        baseURL: options.baseURL,
+        apiKey: options.apiKey,
+        model: options.model,
+        messages,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.onContent ? { onContent: options.onContent } : {}),
+      })
+      return turn.content || "Done."
+    },
+    async () => {
       const payload = await postChatCompletions({
         baseURL: options.baseURL,
         apiKey: options.apiKey,
@@ -1152,12 +1080,9 @@ export async function sendToolResults(options: {
         messages,
         ...(options.signal ? { signal: options.signal } : {}),
       })
-      const content = extractContent(payload) || "Done."
-      options.onContent?.(content)
-      return content
-    }
-    throw error
-  }
+      return extractContent(payload) || "Done."
+    },
+  )
 }
 
 export function formatMinor(amountMinor: number, currency = "USD"): string {
