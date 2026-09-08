@@ -17,7 +17,6 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { COARSE_POINTER_QUERY } from "@/components/mobile/use-media-query"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { repositories } from "@/db/repositories"
