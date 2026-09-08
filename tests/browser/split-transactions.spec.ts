@@ -74,6 +74,18 @@ test("split a transaction two ways, category totals follow parts, unsplit restor
   await expect(page.getByRole("rowheader", { name: childHousehold })).toBeVisible()
   await expect(page.locator("tbody")).toContainText("40.00")
 
+  // Split parts are protected: no direct edit, split, or delete.
+  await page.goto("/transactions")
+  await page.getByRole("link", { name: childGroceries, exact: true }).press("Enter")
+  await expect(page).toHaveURL(/\/transactions\/.+/)
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "Split", exact: true })).toHaveCount(0)
+  await activateButton(page.getByRole("button", { name: "Delete", exact: true }))
+  const blockedDelete = page.getByRole("alertdialog", { name: "Delete transaction?" })
+  await expect(blockedDelete).toBeVisible()
+  await expect(blockedDelete.getByRole("button", { name: "Delete", exact: true })).toBeDisabled()
+  await activateButton(blockedDelete.getByRole("button", { name: "Cancel" }))
+
   // Unsplit restores the original single row.
   await page.goto(parentUrl)
   await expect(page.getByText("Split across 2 categories")).toBeVisible()

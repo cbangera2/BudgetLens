@@ -194,8 +194,14 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
           )}
           <Button
             variant="outline"
-            disabled={isSuperseded}
-            title={isSuperseded ? "Unsplit before editing." : undefined}
+            disabled={isSuperseded || isChild}
+            title={
+              isSuperseded
+                ? "Unsplit before editing."
+                : isChild
+                  ? "Unsplit the original transaction to edit its parts."
+                  : undefined
+            }
             onClick={() => setEditing(true)}
           >
             <Pencil className="size-4" aria-hidden="true" /> Edit
@@ -550,6 +556,11 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                       This transaction is split across {splitChildren.length} parts. Unsplit it
                       first, then delete the restored row or its parts.
                     </>
+                  ) : isChild ? (
+                    <>
+                      This is a split part. Unsplit the original transaction first, then delete the
+                      restored row.
+                    </>
                   ) : (
                     <>This permanently removes {transaction.description} from this browser.</>
                   )}
@@ -561,7 +572,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 </Button>
                 <Button
                   variant="destructive"
-                  disabled={splitChildren.length > 0}
+                  disabled={splitChildren.length > 0 || isChild}
                   onClick={() => {
                     const snapshot = transaction
                     void (async () => {

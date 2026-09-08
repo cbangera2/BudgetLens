@@ -135,6 +135,7 @@ export function allocateByWeights(totalMinor: number, weights: readonly number[]
     throw new Error("Weights must be positive finite numbers.")
   }
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
+  if (!Number.isFinite(totalWeight)) throw new Error("Weights must total a finite number.")
   const parts = weights.map((weight) => Math.trunc((totalMinor * weight) / totalWeight))
   const remainder = totalMinor - parts.reduce((sum, part) => sum + part, 0)
   let target = 0
@@ -169,9 +170,28 @@ export function childDescription(
 }
 
 function cleanSplitLabels(labels: readonly string[]): string[] {
-  return labels.filter(
-    (label) => label !== SPLIT_PARENT_LABEL && !label.startsWith(SPLIT_CHILD_LABEL_PREFIX),
-  )
+  // Strip only live split markers: the parent marker and well-formed child
+  // links. Malformed lookalikes (e.g. a bare `split:child:` label, which
+  // splitChildParentId does not treat as a link) are user data and survive.
+  return labels.filter((label) => {
+    if (label === SPLIT_PARENT_LABEL) return false
+    if (!label.startsWith(SPLIT_CHILD_LABEL_PREFIX)) return true
+    return label.slice(SPLIT_CHILD_LABEL_PREFIX.length) === ""
+  })
+}
+
+/**
+ * Allocation status for the split dialog, compared by magnitude so expense
+ * splits read correctly (a -$100 parent with -$50 entered has $50 left, not
+ * $50 over).
+ */
+export function splitRemainingStatus(
+  parentMinor: number,
+  enteredMinor: number,
+): "balanced" | "left" | "over" {
+  const remaining = Math.abs(parentMinor) - Math.abs(enteredMinor)
+  if (remaining === 0) return "balanced"
+  return remaining > 0 ? "left" : "over"
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   SPLIT_CHILD_LABEL_PREFIX,
   SPLIT_PARENT_LABEL,
   splitChildParentId,
+  splitRemainingStatus,
   validateSplitParts,
 } from "./splits"
 
@@ -92,6 +93,16 @@ describe("dust allocation", () => {
     expect(() => allocateByWeights(-100, [])).toThrow(/weight/)
     expect(() => allocateByWeights(-100, [1, 0])).toThrow(/positive/)
     expect(() => allocateByWeights(10.5, [1, 1])).toThrow(/minor units/)
+    expect(() => allocateByWeights(-100, [Number.MAX_VALUE, Number.MAX_VALUE])).toThrow(/finite/)
+  })
+
+  it("reports remaining status by magnitude for expenses and income", () => {
+    expect(splitRemainingStatus(-10_000, -5000)).toBe("left")
+    expect(splitRemainingStatus(-10_000, -10_000)).toBe("balanced")
+    expect(splitRemainingStatus(-10_000, -12_000)).toBe("over")
+    expect(splitRemainingStatus(10_000, 4000)).toBe("left")
+    expect(splitRemainingStatus(10_000, 10_000)).toBe("balanced")
+    expect(splitRemainingStatus(10_000, 11_000)).toBe("over")
   })
 })
 
@@ -195,6 +206,18 @@ describe("split builders", () => {
   it("restores labels on unsplit", () => {
     const marked = buildTransaction({ labels: ["weekly", SPLIT_PARENT_LABEL] })
     expect(buildUnsplitParentLabels(marked)).toEqual(["weekly"])
+  })
+
+  it("preserves malformed lookalike labels across split and unsplit", () => {
+    const base = parent()
+    const marked = buildTransaction({ labels: ["split:child:"] })
+    expect(splitChildParentId(marked)).toBeNull()
+    const { parentLabels } = buildSplitChildren({ ...base, labels: ["split:child:"] }, [
+      { category: "A", amountMinor: -5000 },
+      { category: "B", amountMinor: -5000 },
+    ])
+    expect(parentLabels).toContain("split:child:")
+    expect(buildUnsplitParentLabels({ ...base, labels: parentLabels })).toContain("split:child:")
   })
 
   it("throws on invalid splits", () => {

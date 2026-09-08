@@ -29,6 +29,7 @@ import { SplitDialog } from "@/features/splits/split-dialog"
 import { splitTransaction } from "@/features/splits/split-operations"
 import {
   collectSplitParentIds,
+  isActiveTransaction,
   isSplitChild,
   isSupersededSplitParent,
   onlyActiveTransactions,
@@ -203,6 +204,20 @@ export function TransactionsPageContent() {
     setFilters((current) => ({ ...current, ...patch }))
 
   const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups])
+  const transactionsById = useMemo(
+    () => new Map((transactions ?? []).map((row) => [row.id, row])),
+    [transactions],
+  )
+  // Split parts are never deleted directly (unsplit first); the bulk Delete
+  // action stays disabled while any selected row is a split part.
+  const selectionHasSplitParts = useMemo(
+    () =>
+      [...selected].some((id) => {
+        const row = transactionsById.get(id)
+        return row !== undefined && isSplitChild(row)
+      }),
+    [selected, transactionsById],
+  )
   const transferFlags = useTransferFlags()
   const flaggedTransferIds = useMemo(() => {
     const pairs = detectTransferPairs(transactions ?? [])
@@ -289,8 +304,15 @@ export function TransactionsPageContent() {
   }
 
   async function bulkRemove() {
-    const ids = [...selected]
+    // Split members are never removed directly: children would orphan their
+    // parent's exact total, and superseded parents would orphan children.
+    // Unsplit first. Stale ids (e.g. a parent selected before it was split)
+    // are skipped and dropped from the selection.
     const byId = new Map((transactions ?? []).map((row) => [row.id, row]))
+    const ids = [...selected].filter((id) => {
+      const row = byId.get(id)
+      return row && isActiveTransaction(row) && !isSplitChild(row)
+    })
     const removed: Transaction[] = []
     let failed = false
     for (const id of ids) {
@@ -521,7 +543,16 @@ export function TransactionsPageContent() {
                   existingCategories={categoryOptions}
                   onClose={() => setSplitting(null)}
                   onSplit={async (parts) => {
-                    await splitTransaction(repositories, splitting.id, parts)
+                    const splitId = splitting.id
+                    await splitTransaction(repositories, splitId, parts)
+                    // The parent leaves the visible list; drop it from the
+                    // selection so a later bulk delete cannot orphan children.
+                    setSelected((current) => {
+                      if (!current.has(splitId)) return current
+                      const next = new Set(current)
+                      next.delete(splitId)
+                      return next
+                    })
                     setSplitting(null)
                   }}
                 />
@@ -648,10 +679,19 @@ export function TransactionsPageContent() {
               variant="ghost"
               size="sm"
               aria-label="Delete selected"
+              disabled={selectionHasSplitParts}
+              title={
+                selectionHasSplitParts ? "Unsplit split parts before deleting them." : undefined
+              }
               onClick={() => setBulkDeleting(true)}
             >
               <Trash2 className="size-4" aria-hidden="true" /> Delete
             </Button>
+            {selectionHasSplitParts && (
+              <span className="text-xs text-muted-foreground">
+                Selection includes split parts — unsplit first to delete them.
+              </span>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -942,6 +982,12 @@ export function TransactionsPageContent() {
                               size="icon"
                               variant="ghost"
                               aria-label={`Edit ${transaction.description}`}
+                              disabled={isSplitChild(transaction)}
+                              title={
+                                isSplitChild(transaction)
+                                  ? "Unsplit the original transaction to edit its parts."
+                                  : undefined
+                              }
                               onClick={() => setEditing(transaction)}
                             >
                               <Pencil className="size-4" />
@@ -950,6 +996,12 @@ export function TransactionsPageContent() {
                               size="icon"
                               variant="ghost"
                               aria-label={`Delete ${transaction.description}`}
+                              disabled={isSplitChild(transaction)}
+                              title={
+                                isSplitChild(transaction)
+                                  ? "Unsplit the original transaction to delete its parts."
+                                  : undefined
+                              }
                               onClick={() => setDeleting(transaction)}
                             >
                               <Trash2 className="size-4" />

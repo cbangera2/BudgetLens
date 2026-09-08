@@ -10,6 +10,7 @@ import {
   allocateEvenSplit,
   MAX_SPLIT_PARTS,
   MIN_SPLIT_PARTS,
+  splitRemainingStatus,
   validateSplitParts,
   type SplitPartInput,
 } from "./splits"
@@ -78,6 +79,7 @@ export function SplitDialog({
       : validateSplitParts(parent, readyParts)
   const enteredTotal = (readyParts ?? []).reduce((sum, part) => sum + part.amountMinor, 0)
   const remaining = parent.amountMinor - enteredTotal
+  const remainingStatus = splitRemainingStatus(parent.amountMinor, enteredTotal)
 
   function setRow(index: number, patch: Partial<SplitRow>) {
     setRows((current) =>
@@ -189,9 +191,9 @@ export function SplitDialog({
       </datalist>
       <p className="text-sm text-muted-foreground" aria-live="polite">
         Entered {formatMoney(enteredTotal)}
-        {remaining !== 0
-          ? ` · ${formatMoney(Math.abs(remaining))} ${remaining > 0 ? "left to assign" : "over"}`
-          : " · balanced"}
+        {remainingStatus === "balanced"
+          ? " · balanced"
+          : ` · ${formatMoney(Math.abs(remaining))} ${remainingStatus === "left" ? "left to assign" : "over"}`}
       </p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>
