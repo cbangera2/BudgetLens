@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { useLiveQuery } from "dexie-react-hooks"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,6 +61,12 @@ export function SubscriptionsSection() {
               </ul>
             </div>
           )}
+          {/* bill-creep anchor: the creep list lives on Bills; link it from Subscriptions. */}
+          <p className="mt-4 text-sm text-muted-foreground">
+            <Link to="/bills" className="font-medium underline underline-offset-4">
+              View bill creep increases
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </section>

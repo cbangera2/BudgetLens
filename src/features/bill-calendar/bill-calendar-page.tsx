@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { repositories } from "@/db/repositories"
 import type { IsoDate, Transaction } from "@/domain/models"
+import { BillCreepSection } from "@/features/bill-creep/bill-creep-section"
 import { detectSubscriptions } from "@/features/subscriptions/detect"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { confirmedTransferIds, readTransferFlags } from "@/features/transfers/store"
@@ -448,6 +449,8 @@ export function BillCalendarPageContent({
           </CardContent>
         </Card>
       </section>
+      {/* bill-creep anchor: creep list lives on Bills below the calendar. */}
+      <BillCreepSection transactions={transactions} />
       {editingSubscription ? (
         <BillEditDialog
           subscription={editingSubscription}
