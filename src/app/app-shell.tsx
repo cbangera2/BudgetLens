@@ -1,6 +1,7 @@
 import { Link, Outlet } from "@tanstack/react-router"
 import {
   BarChart3,
+  FileText,
   Inbox,
   Landmark,
   Layers,
@@ -37,6 +38,7 @@ const navigation = [
   { to: "/bills", label: "Bills", icon: ReceiptText },
   { to: "/groups", label: "Groups", icon: Layers },
   { to: "/budgets", label: "Budgets", icon: Target },
+  { to: "/tax-summary", label: "Tax", icon: FileText },
   { to: "/imports", label: "Imports", icon: Upload },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const

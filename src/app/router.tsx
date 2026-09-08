@@ -59,6 +59,11 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/tax-summary",
+    component: lazyRouteComponent(() => import("@/routes/tax-summary"), "TaxSummaryPage"),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/bills",
     component: lazyRouteComponent(() => import("@/routes/bills"), "BillsPage"),
   }),
