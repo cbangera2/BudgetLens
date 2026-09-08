@@ -4,6 +4,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Download,
   Pencil,
   Plus,
   Receipt,
@@ -30,6 +31,11 @@ import { TransferBadge } from "@/features/transfers/transfers-section"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { ActiveFilterChips } from "./active-filter-chips"
+import {
+  buildTransactionsExportFilename,
+  downloadCsvFile,
+  serializeTransactionsToCsv,
+} from "./csv-export"
 import {
   defaultTransactionFilters,
   filterAndSortTransactions,
@@ -357,6 +363,11 @@ export function TransactionsPageContent() {
     setEditing(null)
   }
 
+  function handleExport() {
+    const csv = serializeTransactionsToCsv(ordered)
+    downloadCsvFile(buildTransactionsExportFilename(filters), csv)
+  }
+
   if (!transactions) return <output>Loading transactions…</output>
   return (
     <div className="grid gap-6">
@@ -367,9 +378,14 @@ export function TransactionsPageContent() {
             Search, filter, and maintain your locally stored activity.
           </p>
         </div>
-        <Button onClick={() => setEditing("new")}>
-          <Plus className="size-4" aria-hidden="true" /> Add transaction
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="size-4" aria-hidden="true" /> Export CSV
+          </Button>
+          <Button onClick={() => setEditing("new")}>
+            <Plus className="size-4" aria-hidden="true" /> Add transaction
+          </Button>
+        </div>
       </div>
 
       {editing && (
