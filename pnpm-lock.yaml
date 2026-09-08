@@ -14,6 +14,9 @@ importers:
       '@aparajita/capacitor-secure-storage':
         specifier: 8.0.0
         version: 8.0.0
+      '@capacitor-community/image-to-text':
+        specifier: 8.0.0
+        version: 8.0.0(@capacitor/core@8.5.1)
       '@capacitor/core':
         specifier: 8.5.1
         version: 8.5.1
@@ -249,6 +252,11 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@capacitor-community/image-to-text@8.0.0':
+    resolution: {integrity: sha512-leQEfcbi5eKf2TP8G4ASjOerSV0TyGD1kan2eFxWIGm+X+j3VpqbYH7A4GPcQYfS3TKEDDkr/TjzZfuT/B9W3A==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/android@8.5.1':
     resolution: {integrity: sha512-o8fUIPDSEASeXHHrDz26WU7OlyiRb+QqtI9KFdnLS1jUL77o5iGrvegibaZX8rWpiCyDJ6jlUhhhHlfeq3ou9A==}
@@ -3636,6 +3644,10 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@capacitor-community/image-to-text@8.0.0(@capacitor/core@8.5.1)':
+    dependencies:
+      '@capacitor/core': 8.5.1
 
   '@capacitor/android@8.5.1(@capacitor/core@8.5.1)':
     dependencies:
