@@ -70,9 +70,11 @@ import {
   isLocalBaseURL,
   listProviderModels,
   needsHostedConsent,
+  parseTextToolCalls,
   readAssistantSettings,
   requestChatTurn,
   sendToolResults,
+  stripTextToolCalls,
   toPersistableSettings,
   visibleAssistantPresets,
   type AssistantProviderId,
@@ -917,6 +919,29 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
       if (caught instanceof DOMException && caught.name === "AbortError") return
       appendPartial(latestStreaming)
       throw caught
+    }
+
+    if (turn.toolCalls.length === 0 && turn.content) {
+      // Fallback for models that emit `<function=name>` blocks as text
+      // instead of native tool_calls: parse and execute them through the same
+      // pipeline. Anything unparseable is stripped so raw syntax never
+      // reaches the user.
+      const parsed = parseTextToolCalls(
+        turn.content,
+        ASSISTANT_TOOL_SCHEMAS.map((tool) => tool.function.name),
+      )
+      if (parsed.length > 0) {
+        turn = {
+          content: stripTextToolCalls(turn.content).trim(),
+          toolCalls: parsed.map((call, index) => ({
+            id: `text-${index}`,
+            name: call.name,
+            args: call.args,
+          })),
+        }
+      } else {
+        turn = { content: stripTextToolCalls(turn.content).trim(), toolCalls: [] }
+      }
     }
 
     if (turn.toolCalls.length === 0) {

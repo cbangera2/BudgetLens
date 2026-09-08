@@ -604,6 +604,7 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   "Rules:",
   "- Prefer spending_by_category / budget_status aggregates over raw rows.",
   "- Never invent transactions, balances, or budget numbers; call a tool first.",
+  "- Always call tools through native function calling; never emit <function>, <tool_call>, or JSON tool-call blocks as text.",
   "- Amounts are in minor units in tool I/O; show formatted currency to the user.",
   "- propose_budget_change, propose_recategorize, create_transaction, delete_transaction, propose_transaction, save_chart only draft; the UI applies them after explicit approval.",
   "- propose_transaction parses natural-language adds (e.g. 'spent $12 on coffee yesterday'); save_chart persists the current answer's chart spec to the dashboard.",

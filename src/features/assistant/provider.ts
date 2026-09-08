@@ -289,6 +289,110 @@ function parseToolArgs(raw: unknown): unknown {
   }
 }
 
+const TEXT_FUNCTION_PATTERN = "<function\\s*=\\s*[\"']?([\\w-]+)[\"']?\\s*>"
+const TEXT_FUNCTION_CLOSE_PATTERN = "</function\\s*>"
+const TEXT_PARAMETER_PATTERN = "<parameter\\s*=\\s*[\"']?([\\w-]+)[\"']?\\s*>"
+const TEXT_PARAMETER_CLOSE_PATTERN = "</parameter\\s*>"
+
+export interface TextToolCall {
+  name: string
+  args: Record<string, string>
+}
+
+function collectOpens(
+  text: string,
+  pattern: string,
+): Array<{ name: string; start: number; end: number }> {
+  const found: Array<{ name: string; start: number; end: number }> = []
+  for (const match of text.matchAll(new RegExp(pattern, "gi"))) {
+    if (match.index === undefined || !match[1]) continue
+    found.push({ name: match[1], start: match.index, end: match.index + match[0].length })
+  }
+  return found
+}
+
+/** Index just past the first closer at/after `from`, or null when unclosed. */
+function findCloser(text: string, pattern: string, from: number): number | null {
+  const closer = new RegExp(pattern, "gi")
+  closer.lastIndex = from
+  const match = closer.exec(text)
+  return match && match.index !== undefined ? match.index + match[0].length : null
+}
+
+/**
+ * Fallback for models that emit tool calls as text (`<function=name>` blocks)
+ * instead of native `tool_calls`. Only names in `validNames` are accepted;
+ * everything else is ignored so prose is never executed. Returns the calls
+ * in document order.
+ */
+export function parseTextToolCalls(content: string, validNames: readonly string[]): TextToolCall[] {
+  if (!content || validNames.length === 0) return []
+  const valid = new Set(validNames)
+  const calls: TextToolCall[] = []
+  const opens = collectOpens(content, TEXT_FUNCTION_PATTERN)
+  for (const [index, open] of opens.entries()) {
+    if (!valid.has(open.name)) continue
+    const nextStart =
+      index + 1 < opens.length ? (opens[index + 1]?.start ?? content.length) : content.length
+    // A block ends at its own closer; without one it runs to the next block
+    // (an unclosed trailing block still yields its params).
+    const ownClose = findCloser(content, TEXT_FUNCTION_CLOSE_PATTERN, open.end)
+    const bodyEnd = ownClose !== null && ownClose <= nextStart ? ownClose : nextStart
+    const body = content.slice(open.end, bodyEnd)
+    const args: Record<string, string> = {}
+    const params = collectOpens(body, TEXT_PARAMETER_PATTERN)
+    for (const [paramIndex, param] of params.entries()) {
+      const paramNext =
+        paramIndex + 1 < params.length
+          ? (params[paramIndex + 1]?.start ?? body.length)
+          : body.length
+      const paramClose = findCloser(body, TEXT_PARAMETER_CLOSE_PATTERN, param.end)
+      const valueEnd = paramClose !== null && paramClose <= paramNext ? paramClose : paramNext
+      // Cut the closer tag itself out of the value.
+      const raw = body
+        .slice(param.end, valueEnd)
+        .replace(new RegExp(TEXT_PARAMETER_CLOSE_PATTERN, "gi"), "")
+      args[param.name] = raw.trim()
+    }
+    calls.push({ name: open.name, args })
+  }
+  return calls
+}
+
+/** Remove text-format tool-call blocks so raw syntax never reaches the user. */
+export function stripTextToolCalls(content: string): string {
+  if (!content) return content
+  const opens = collectOpens(content, TEXT_FUNCTION_PATTERN)
+  if (opens.length === 0) return content
+  let out = ""
+  let cursor = 0
+  for (const [index, open] of opens.entries()) {
+    out += content.slice(cursor, open.start)
+    const nextStart =
+      index + 1 < opens.length ? (opens[index + 1]?.start ?? content.length) : content.length
+    const ownClose = findCloser(content, TEXT_FUNCTION_CLOSE_PATTERN, open.end)
+    if (ownClose !== null && ownClose <= nextStart) {
+      cursor = ownClose
+      continue
+    }
+    // Unclosed block: drop through its last parameter so trailing prose survives.
+    const params = collectOpens(content.slice(open.end, nextStart), TEXT_PARAMETER_PATTERN)
+    if (params.length === 0) {
+      cursor = nextStart
+      continue
+    }
+    const last = params[params.length - 1]
+    if (!last) {
+      cursor = nextStart
+      continue
+    }
+    const lastClose = findCloser(content, TEXT_PARAMETER_CLOSE_PATTERN, open.end + last.end)
+    cursor = lastClose !== null && lastClose <= nextStart ? lastClose : nextStart
+  }
+  out += content.slice(cursor)
+  return out
+}
+
 function extractTurnMessage(payload: unknown): ProviderTurnResult {
   if (!isRecord(payload)) return { content: "", toolCalls: [] }
   const choices = payload.choices

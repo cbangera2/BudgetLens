@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   isLocalBaseURL,
   listProviderModels,
+  parseTextToolCalls,
   readAssistantSettings,
   requestChatTurn,
+  stripTextToolCalls,
 } from "@/features/assistant/provider"
 
 interface StubResponse {
@@ -251,5 +253,63 @@ describe("requestChatTurn abort compatibility (no AbortSignal.any)", () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow(DOMException)
+  })
+})
+
+describe("parseTextToolCalls", () => {
+  const valid = ["spending_by_category", "budget_status"]
+
+  it("parses the reported <function=> shape, unclosed", () => {
+    const content = [
+      "Make a graph of my spending",
+      "<function=spending_by_category>",
+      "<parameter=startDate>",
+      "2025-08-01",
+      "</parameter>",
+      "<parameter=endDate>",
+      "2025-08-31",
+      "</parameter>",
+    ].join("\n")
+    expect(parseTextToolCalls(content, valid)).toEqual([
+      {
+        name: "spending_by_category",
+        args: { startDate: "2025-08-01", endDate: "2025-08-31" },
+      },
+    ])
+  })
+
+  it("handles closed blocks, quoted attrs, and multiple calls in order", () => {
+    const content = [
+      '<function="budget_status"><parameter="period">month</parameter></function>',
+      "between",
+      "<function=spending_by_category><parameter=startDate>2025-01-01</parameter></function>",
+    ].join("\n")
+    expect(parseTextToolCalls(content, valid)).toEqual([
+      { name: "budget_status", args: { period: "month" } },
+      { name: "spending_by_category", args: { startDate: "2025-01-01" } },
+    ])
+  })
+
+  it("ignores unknown tool names and prose without blocks", () => {
+    expect(parseTextToolCalls("Just a plain answer.", valid)).toEqual([])
+    expect(
+      parseTextToolCalls(
+        "<function=delete_everything><parameter=x>1</parameter></function>",
+        valid,
+      ),
+    ).toEqual([])
+    expect(parseTextToolCalls("", valid)).toEqual([])
+  })
+})
+
+describe("stripTextToolCalls", () => {
+  it("removes blocks but keeps surrounding prose", () => {
+    const content =
+      "Here you go:\n<function=spending_by_category>\n<parameter=startDate>2025-08-01</parameter>\nDone!"
+    expect(stripTextToolCalls(content)).toBe("Here you go:\n\nDone!")
+  })
+
+  it("leaves prose without blocks untouched", () => {
+    expect(stripTextToolCalls("Plain answer.")).toBe("Plain answer.")
   })
 })
