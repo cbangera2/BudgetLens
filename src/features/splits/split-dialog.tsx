@@ -118,9 +118,8 @@ export function SplitDialog({
         </p>
       )}
       <p className="text-sm text-muted-foreground">
-        Splitting {formatMoney(parent.amountMinor)} across {rows.length} categories. Parts must
-        total exactly {formatMoney(parent.amountMinor)}; the original row is kept underneath and
-        restored if you unsplit.
+        Splitting {formatMoney(parent.amountMinor)} into {rows.length} parts totalling exactly{" "}
+        {formatMoney(parent.amountMinor)}. The original row is kept and restored on unsplit.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" variant="outline" size="sm" onClick={splitEvenly}>

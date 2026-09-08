@@ -199,7 +199,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
               isSuperseded
                 ? "Unsplit before editing."
                 : isChild
-                  ? "Unsplit the original transaction to edit its parts."
+                  ? "Unsplit to edit parts."
                   : undefined
             }
             onClick={() => setEditing(true)}
@@ -221,8 +221,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
           <CardContent className="pt-6 text-sm">
             <p className="font-medium">Split across {splitChildren.length} categories</p>
             <p className="mt-1 text-muted-foreground">
-              This row is kept as the original and excluded from totals. Its parts below sum to{" "}
-              {formatMoney(normalized)}.
+              Original row, excluded from totals. Parts sum to {formatMoney(normalized)}.
             </p>
           </CardContent>
         </Card>
@@ -241,7 +240,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
               </Link>
             </p>
             <p className="mt-1 text-muted-foreground">
-              Unsplit from the original transaction to restore it.
+              Unsplit the original to restore it.
             </p>
           </CardContent>
         </Card>
@@ -251,7 +250,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
         <Card>
           <CardHeader>
             <CardTitle>Split parts</CardTitle>
-            <CardDescription>Each part carries its own category.</CardDescription>
+            <CardDescription>One category per part.</CardDescription>
           </CardHeader>
           <CardContent>
             <ul className="divide-y text-sm">
@@ -553,14 +552,10 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 <CardDescription id="delete-description">
                   {splitChildren.length > 0 ? (
                     <>
-                      This transaction is split across {splitChildren.length} parts. Unsplit it
-                      first, then delete the restored row or its parts.
+                      Split into {splitChildren.length} parts. Unsplit first to delete it.
                     </>
                   ) : isChild ? (
-                    <>
-                      This is a split part. Unsplit the original transaction first, then delete the
-                      restored row.
-                    </>
+                    <>This is a split part. Unsplit the original first.</>
                   ) : (
                     <>This permanently removes {transaction.description} from this browser.</>
                   )}

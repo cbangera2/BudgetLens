@@ -476,7 +476,7 @@ export function TransactionsPageContent() {
                           setEditing(null)
                         }}
                       >
-                        Split across categories…
+                        Split…
                       </Button>
                     </div>
                   )}
@@ -689,7 +689,7 @@ export function TransactionsPageContent() {
             </Button>
             {selectionHasSplitParts && (
               <span className="text-xs text-muted-foreground">
-                Selection includes split parts — unsplit first to delete them.
+                Split parts selected — unsplit first to delete.
               </span>
             )}
             <Button
@@ -984,9 +984,7 @@ export function TransactionsPageContent() {
                               aria-label={`Edit ${transaction.description}`}
                               disabled={isSplitChild(transaction)}
                               title={
-                                isSplitChild(transaction)
-                                  ? "Unsplit the original transaction to edit its parts."
-                                  : undefined
+                                isSplitChild(transaction) ? "Unsplit to edit parts." : undefined
                               }
                               onClick={() => setEditing(transaction)}
                             >
@@ -998,9 +996,7 @@ export function TransactionsPageContent() {
                               aria-label={`Delete ${transaction.description}`}
                               disabled={isSplitChild(transaction)}
                               title={
-                                isSplitChild(transaction)
-                                  ? "Unsplit the original transaction to delete its parts."
-                                  : undefined
+                                isSplitChild(transaction) ? "Unsplit to delete parts." : undefined
                               }
                               onClick={() => setDeleting(transaction)}
                             >
