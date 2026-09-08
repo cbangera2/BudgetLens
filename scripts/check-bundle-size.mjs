@@ -5,10 +5,10 @@
 // 500 kB per-chunk hint, so a per-chunk cap would be red on arrival; a total
 // cap still catches the failure mode we care about: an accidentally huge new
 // dependency or a lost code-split boundary inflating what ships.
-// Cap: 1,690,000 bytes raw -- raised from 1,670,000 on the budget-templates
-// PR for intentional growth (local re-measure 1,675,005 bytes: the templates
-// feature adds ~11.7 kB). See the notes above for the prior compositional
-// bumps. Still tight enough to bite on a real regression.
+// Cap: 1,705,000 bytes raw -- raised from 1,690,000 for the 1.1 feature
+// batch (local re-measure 1,691,879 bytes: forecast, CSV mapping, compact
+// filters, and review-hub growth since the templates bump). Still tight
+// enough to bite on a real regression.
 // Raise it deliberately in a PR (re-measure, update BOTH numbers below) when
 // growth is intentional; never silence it by excluding files.
 //
@@ -21,7 +21,7 @@ import { join, resolve } from "node:path"
 const REPO_ROOT = resolve(import.meta.dirname, "..")
 const DIST_DIR = join(REPO_ROOT, "dist")
 const BASELINE_BYTES = 1_471_039 // measured via `pnpm build` on base 47af951
-const CAP_BYTES = 1_690_000 // raised deliberately; see note above
+const CAP_BYTES = 1_705_000 // raised deliberately; see note above
 
 function collectJsFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true })
