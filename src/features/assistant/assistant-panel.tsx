@@ -1316,7 +1316,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           onPointerMove={moveResizeDrag}
           onPointerUp={stopResizeDrag}
           onPointerCancel={stopResizeDrag}
-          className="absolute top-0 left-0 z-20 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-br-xl text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100"
+          className="absolute top-0 left-0 z-20 hidden size-7 cursor-nwse-resize touch-none place-items-center rounded-br-xl text-muted-foreground opacity-60 hover:bg-accent hover:opacity-100 [@media(pointer:fine)]:grid"
         >
           <span aria-hidden="true" className="flex flex-col items-start gap-[3px] p-1.5">
             <span className="block h-px w-3 rotate-[-45deg] bg-current" />
@@ -1324,9 +1324,9 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
           </span>
         </button>
       )}
-      <header className="flex items-center gap-3 border-b px-4 py-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
-          <Bot className="size-5" aria-hidden="true" />
+      <header className="flex items-center gap-1 border-b px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground sm:size-9">
+          <Bot className="size-4 sm:size-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 truncate text-sm font-semibold">
@@ -1337,7 +1337,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
               </span>
             )}
           </p>
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             <span
               aria-hidden="true"
               className={`size-1.5 rounded-full ${busy ? "animate-pulse bg-amber-500" : "bg-emerald-500"}`}
@@ -1348,7 +1348,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Chat history"
           title="Chat history"
           aria-expanded={showHistory}
@@ -1359,7 +1359,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Assistant settings"
           title="Assistant settings"
           aria-expanded={showSettings}
@@ -1370,7 +1370,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="New chat"
           title="New chat"
           onClick={() => {
@@ -1382,7 +1382,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
           title={layout.fullscreen ? "Exit fullscreen" : "Expand to fullscreen"}
           aria-pressed={layout.fullscreen}
@@ -1399,7 +1399,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
+          className="size-7 sm:size-8"
           aria-label="Close assistant"
           onClick={onClose}
         >
@@ -1775,7 +1775,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         ref={logRef}
         role="log"
         aria-label="Assistant conversation"
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-4"
       >
         {messages.length === 0 && !busy && (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
@@ -1809,13 +1809,13 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
         {messages.map((item) =>
           item.role === "user" ? (
             <div key={item.id} className="flex justify-end">
-              <p className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+              <p className="max-w-[92%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-sm text-primary-foreground sm:max-w-[85%]">
                 {item.content}
               </p>
             </div>
           ) : (
             <div key={item.id} className="flex justify-start">
-              <div className="max-w-[92%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm">
+              <div className="max-w-[97%] space-y-2 rounded-2xl rounded-bl-md bg-muted px-3.5 py-2.5 text-sm sm:max-w-[92%]">
                 <Markdown
                   text={item.citedText ?? item.content}
                   id={item.id}
