@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { repositories } from "@/db/repositories"
+import { MonthlyCloseSection } from "@/features/monthly-close/monthly-close-section"
 import { useTransactionRules } from "@/features/rules/store"
 import { SubscriptionsSection } from "@/features/subscriptions/subscriptions-section"
 import { useTransferFlags } from "@/features/transfers/store"
@@ -143,6 +144,7 @@ export function ReviewPageContent() {
         <h1 className="text-3xl font-semibold tracking-tight">Review</h1>
         <p className="mt-1 text-muted-foreground">Things the app found for you to approve.</p>
       </div>
+      <MonthlyCloseSection transactions={transactions} />
       <ReviewQueueCards counts={counts} />
       <div id="review-transfers" className="scroll-mt-24">
         <TransfersSection transactions={transactions} flagActions={transferFlags} />
