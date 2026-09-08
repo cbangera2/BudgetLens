@@ -15,6 +15,14 @@ import {
   validateCsvMapping,
 } from "@/features/imports/csv-mapping"
 import { importService } from "@/features/imports/import-service"
+import type { MappingProfileInput, RankedMappingProfile } from "@/features/imports/mapping-profiles"
+import {
+  applyMappingProfileToHeaders,
+  resolveMappingProfileForHeaders,
+  suggestMappingProfileName,
+  useMappingProfiles,
+} from "@/features/imports/mapping-profiles"
+import { MappingProfilesSection } from "@/features/imports/mapping-profiles-section"
 import {
   importFileType,
   isUnsupportedHeadersError,
@@ -192,6 +200,12 @@ export function ImportPage() {
     type: "",
   })
   const [mappingError, setMappingError] = useState("")
+  const [rememberMapping, setRememberMapping] = useState(false)
+  const [profileName, setProfileName] = useState("")
+  const [appliedProfileId, setAppliedProfileId] = useState<string | null>(null)
+  const [fuzzyCandidates, setFuzzyCandidates] = useState<RankedMappingProfile[]>([])
+  const [fuzzyDismissed, setFuzzyDismissed] = useState(false)
+  const [profiles, profileActions] = useMappingProfiles()
   const [lastImportedBatches, setLastImportedBatches] = useState<
     { id: string; sourceName: string; kind: ImportBatch["kind"] }[]
   >([])
@@ -221,6 +235,11 @@ export function ImportPage() {
     setCategoryOverrides({})
     setMappingFile(null)
     setMappingError("")
+    setRememberMapping(false)
+    setProfileName("")
+    setAppliedProfileId(null)
+    setFuzzyCandidates([])
+    setFuzzyDismissed(false)
     setResultFailures([])
     setStatus("")
     setLastImportedBatches([])
@@ -275,11 +294,26 @@ export function ImportPage() {
               const headers = readCsvHeaders(content)
               const message = error instanceof Error ? error.message : "The file could not be read."
               setMappingFile({ file, content, headers, message })
-              setColumnMapping(toMappingSelectState(suggestCsvMapping(headers)))
+              const resolution = resolveMappingProfileForHeaders(profiles, headers)
+              if (resolution.kind === "exact") {
+                setColumnMapping(applyMappingProfileToHeaders(resolution.profile, headers))
+                setAppliedProfileId(resolution.profile.id)
+                setFuzzyCandidates([])
+                setStatus(
+                  `Applied saved mapping profile “${resolution.profile.name}”. Adjust any column, then preview.`,
+                )
+              } else {
+                setColumnMapping(toMappingSelectState(suggestCsvMapping(headers)))
+                setAppliedProfileId(null)
+                setFuzzyCandidates(resolution.kind === "suggest" ? resolution.suggestions : [])
+                setStatus(
+                  "This CSV uses unfamiliar headers. Map each field to a column, then preview.",
+                )
+              }
+              setFuzzyDismissed(false)
+              setRememberMapping(false)
+              setProfileName(suggestMappingProfileName(file.name))
               setMappingError("")
-              setStatus(
-                "This CSV uses unfamiliar headers. Map each field to a column, then preview.",
-              )
               return
             } catch {
               setImportError(error instanceof Error ? error.message : "The file could not be read.")
@@ -414,27 +448,52 @@ export function ImportPage() {
 
   async function previewWithMapping() {
     if (!mappingFile) return
+    const pending = mappingFile
     const mapping = toCsvColumnMapping(columnMapping)
     const failure = validateCsvMapping(mapping)
     if (failure) {
       setMappingError(failure)
       return
     }
+    if (rememberMapping && !profileName.trim()) {
+      setMappingError("Enter a profile name or uncheck “Remember for files like this”.")
+      return
+    }
     setBusy(true)
     setMappingError("")
     try {
       const next = await importService.preview(
-        mappingFile.content,
-        mappingFile.file.name,
+        pending.content,
+        pending.file.name,
         "skip",
         duplicatePolicy,
         rules,
         mapping,
       )
+      let savedProfileName: string | null = null
+      if (rememberMapping) {
+        const input: MappingProfileInput = {
+          name: profileName,
+          headers: pending.headers,
+          mapping,
+          sourceFileName: pending.file.name,
+        }
+        const saved = profileActions.saveProfile(input)
+        if (saved) {
+          savedProfileName = saved.name
+          setAppliedProfileId(saved.id)
+        }
+      }
       setPreview(next)
       setCategoryOverrides({})
       setMappingFile(null)
-      setStatus("Preview ready. Review the counts before importing.")
+      setRememberMapping(false)
+      setFuzzyCandidates([])
+      setStatus(
+        savedProfileName
+          ? `Preview ready. Review the counts before importing. Saved mapping profile “${savedProfileName}” for files like this.`
+          : "Preview ready. Review the counts before importing.",
+      )
     } catch (error) {
       setMappingError(error instanceof Error ? error.message : "The file could not be read.")
     } finally {
@@ -442,11 +501,33 @@ export function ImportPage() {
     }
   }
 
+  function applyFuzzySuggestion(candidate: RankedMappingProfile) {
+    if (!mappingFile) return
+    setColumnMapping(applyMappingProfileToHeaders(candidate.profile, mappingFile.headers))
+    setAppliedProfileId(candidate.profile.id)
+    setFuzzyCandidates([])
+    setFuzzyDismissed(true)
+    setStatus(
+      `Applied saved mapping profile “${candidate.profile.name}”. Adjust any column, then preview.`,
+    )
+  }
+
+  function clearAppliedProfile() {
+    if (!mappingFile) return
+    setAppliedProfileId(null)
+    setColumnMapping(toMappingSelectState(suggestCsvMapping(mappingFile.headers)))
+  }
+
   function cancelMapping() {
     if (!mappingFile) return
     setImportError(mappingFile.message)
     setMappingFile(null)
     setMappingError("")
+    setRememberMapping(false)
+    setProfileName("")
+    setAppliedProfileId(null)
+    setFuzzyCandidates([])
+    setFuzzyDismissed(false)
     setStatus("")
   }
 
@@ -473,6 +554,12 @@ export function ImportPage() {
       setBusy(false)
     }
   }
+
+  const appliedProfile = mappingFile
+    ? (profiles.find((profile) => profile.id === appliedProfileId) ?? null)
+    : null
+  const showFuzzySuggestions =
+    mappingFile !== null && appliedProfile === null && !fuzzyDismissed && fuzzyCandidates.length > 0
 
   return (
     <div className="space-y-6">
@@ -702,6 +789,69 @@ export function ImportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {appliedProfile ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
+                <p className="text-sm">
+                  Using saved profile “{appliedProfile.name}”. Adjust any column below to change it
+                  for this file only.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy}
+                  aria-label={`Stop using ${appliedProfile.name}`}
+                  onClick={clearAppliedProfile}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : null}
+            {showFuzzySuggestions ? (
+              <div className="space-y-2 rounded-lg border border-dashed p-3">
+                <p className="text-sm">
+                  This file looks like a saved profile, but the headers are not an exact match, so
+                  nothing was applied automatically.
+                </p>
+                <ul className="space-y-2">
+                  {fuzzyCandidates.map((candidate) => (
+                    <li
+                      key={candidate.profile.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        “{candidate.profile.name}” ({candidate.sharedCount} of{" "}
+                        {candidate.profileColumnCount +
+                          candidate.fileColumnCount -
+                          candidate.sharedCount}{" "}
+                        columns match)
+                      </span>
+                      <span className="inline-flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          aria-label={`Apply ${candidate.profile.name}`}
+                          onClick={() => applyFuzzySuggestion(candidate)}
+                        >
+                          Apply profile
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => setFuzzyDismissed(true)}
+                        >
+                          Dismiss
+                        </Button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <p className="text-xs text-muted-foreground">
               Found columns: {mappingFile.headers.join(", ")}
             </p>
@@ -744,6 +894,41 @@ export function ImportPage() {
                 {mappingError}
               </p>
             ) : null}
+            <div className="space-y-2 rounded-lg border p-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  className="mt-0.5"
+                  type="checkbox"
+                  checked={rememberMapping}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const checked = event.currentTarget.checked
+                    setRememberMapping(checked)
+                    if (checked && !profileName.trim() && mappingFile) {
+                      setProfileName(suggestMappingProfileName(mappingFile.file.name))
+                    }
+                  }}
+                />
+                <span>Remember for files like this</span>
+              </label>
+              {rememberMapping ? (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="csv-profile-name">Profile name</Label>
+                  <Input
+                    id="csv-profile-name"
+                    value={profileName}
+                    maxLength={80}
+                    autoComplete="off"
+                    disabled={busy}
+                    placeholder="e.g. Odd bank export"
+                    onChange={(event) => setProfileName(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Future files with exactly these headers will use this mapping automatically.
+                  </p>
+                </div>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-3">
               <Button type="button" disabled={busy} onClick={() => void previewWithMapping()}>
                 Preview with mapping
@@ -755,6 +940,8 @@ export function ImportPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <MappingProfilesSection profiles={profiles} actions={profileActions} />
 
       {preview ? (
         <Card aria-labelledby="import-preview-title">

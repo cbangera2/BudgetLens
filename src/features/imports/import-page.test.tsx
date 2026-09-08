@@ -48,6 +48,54 @@ vi.mock("@/features/imports/import-service", () => ({
 }))
 
 import { ImportPage } from "@/features/imports/import-page"
+import { MAPPING_PROFILES_KEY, upsertMappingProfile } from "@/features/imports/mapping-profiles"
+
+const ODD_HEADERS = [
+  "Transaction Date",
+  "Withdrawal",
+  "Narrative",
+  "Spending Category",
+  "Acct",
+  "Flow",
+  "Reference ID",
+]
+
+const ODD_MAPPING = {
+  date: "Transaction Date",
+  amount: "Withdrawal",
+  description: "Narrative",
+  category: "Spending Category",
+  account: "Acct",
+  type: "Flow",
+}
+
+const ODD_CONTENT = `${ODD_HEADERS.join(",")}\n2026-02-03,-18.25,Example Corner Shop,Groceries,Checking,debit,REF-001\n`
+const RENAMED_CONTENT = `${[...ODD_HEADERS.slice(0, 6), "Reference No."].join(",")}\n2026-02-03,-18.25,Example Corner Shop,Groceries,Checking,debit,REF-001\n`
+
+function oddFile(name: string, content: string): File {
+  const file = new File([content], name, { type: "text/csv" })
+  Object.defineProperty(file, "text", { value: () => Promise.resolve(content) })
+  return file
+}
+
+function seedOddProfile(name = "Odd bank") {
+  const result = upsertMappingProfile(
+    [],
+    { name, headers: ODD_HEADERS, mapping: { ...ODD_MAPPING } },
+    "2026-09-07T00:00:00.000Z",
+  )
+  window.localStorage.setItem(
+    MAPPING_PROFILES_KEY,
+    JSON.stringify({ version: 1, profiles: result.profiles }),
+  )
+  return result.profiles
+}
+
+function unsupportedHeadersError(): Error {
+  return new Error(
+    "Unsupported headers. Expected a transaction, wealth history, net worth breakdown, or wealth accounts CSV.",
+  )
+}
 
 describe("ImportPage", () => {
   beforeEach(() => {
@@ -368,6 +416,90 @@ describe("ImportPage", () => {
       name: "View synthetic-transactions.csv",
     })
     expect(view).toHaveAttribute("href", "/transactions?importBatch=batch-1")
+  })
+
+  it("offers to remember a confirmed column mapping for files like it", async () => {
+    const user = userEvent.setup()
+    mocks.preview.mockRejectedValueOnce(unsupportedHeadersError())
+    render(<ImportPage />)
+
+    await user.upload(screen.getByLabelText("CSV or JSON files"), oddFile("bank.csv", ODD_CONTENT))
+
+    expect(await screen.findByRole("heading", { name: "Map CSV columns" })).toBeInTheDocument()
+    const remember = screen.getByRole("checkbox", { name: "Remember for files like this" })
+    expect(remember).not.toBeChecked()
+    await user.click(remember)
+    expect(screen.getByLabelText("Profile name")).toHaveValue("bank")
+    await user.clear(screen.getByLabelText("Profile name"))
+    await user.type(screen.getByLabelText("Profile name"), "Odd bank")
+
+    await user.click(screen.getByRole("button", { name: "Preview with mapping" }))
+
+    expect(await screen.findByRole("heading", { name: "Import preview" })).toBeInTheDocument()
+    expect(
+      screen.getByText(/Saved mapping profile “Odd bank” for files like this\./),
+    ).toBeInTheDocument()
+    const stored = JSON.parse(window.localStorage.getItem(MAPPING_PROFILES_KEY) ?? "")
+    expect(stored.profiles).toHaveLength(1)
+    expect(stored.profiles[0]).toMatchObject({ name: "Odd bank", sourceFileName: "bank.csv" })
+  })
+
+  it("pre-applies an exact profile match with attribution", async () => {
+    seedOddProfile()
+    const user = userEvent.setup()
+    mocks.preview.mockRejectedValue(unsupportedHeadersError())
+    render(<ImportPage />)
+
+    await user.upload(
+      screen.getByLabelText("CSV or JSON files"),
+      oddFile("bank-odd-headers.csv", ODD_CONTENT),
+    )
+
+    expect(await screen.findByText(/Using saved profile “Odd bank”\./)).toBeInTheDocument()
+    expect(screen.getByLabelText("Date (required)")).toHaveValue("Transaction Date")
+    expect(screen.getByLabelText("Amount (required)")).toHaveValue("Withdrawal")
+    expect(screen.getByLabelText("Description (required)")).toHaveValue("Narrative")
+  })
+
+  it("suggests close header matches without applying them", async () => {
+    seedOddProfile()
+    const user = userEvent.setup()
+    mocks.preview.mockRejectedValue(unsupportedHeadersError())
+    render(<ImportPage />)
+
+    await user.upload(
+      screen.getByLabelText("CSV or JSON files"),
+      oddFile("bank-renamed.csv", RENAMED_CONTENT),
+    )
+
+    expect(await screen.findByText(/looks like a saved profile/)).toBeInTheDocument()
+    expect(screen.queryByText(/Using saved profile/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Apply Odd bank" }))
+
+    expect(await screen.findByText(/Using saved profile “Odd bank”\./)).toBeInTheDocument()
+    expect(screen.getByLabelText("Date (required)")).toHaveValue("Transaction Date")
+  })
+
+  it("manages saved profiles from the imports page", async () => {
+    seedOddProfile()
+    const user = userEvent.setup()
+    render(<ImportPage />)
+
+    expect(
+      await screen.findByRole("heading", { name: "Saved mapping profiles" }),
+    ).toBeInTheDocument()
+    expect(screen.getByText("Odd bank")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Rename Odd bank" }))
+    await user.clear(screen.getByLabelText("Profile name"))
+    await user.type(screen.getByLabelText("Profile name"), "Odd bank renamed")
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(await screen.findByText("Odd bank renamed")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Delete Odd bank renamed" }))
+    expect(screen.queryByText("Odd bank renamed")).not.toBeInTheDocument()
+    expect(screen.getByText(/No saved profiles yet\./)).toBeInTheDocument()
   })
 
   it("omits transaction links for batches without transactions", async () => {
