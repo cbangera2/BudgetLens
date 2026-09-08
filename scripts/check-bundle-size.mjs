@@ -5,12 +5,12 @@
 // 500 kB per-chunk hint, so a per-chunk cap would be red on arrival; a total
 // cap still catches the failure mode we care about: an accidentally huge new
 // dependency or a lost code-split boundary inflating what ships.
-// Cap: 1,720,000 bytes raw -- raised from 1,705,000 for receipt OCR to
-// transaction draft (local re-measure 1,715,999 bytes: 1,707,024 on current
-// main after the safe-to-spend, bill-creep, and CSV-export merges -- already
-// 2,024 over the old cap -- plus 8,975 for the OCR parser/candidates UI; the
-// OCR plugin runtime itself is ~0.5 kB). Still tight enough to bite on a
-// real regression.
+// Cap: 1,750,000 bytes raw -- raised from 1,720,000 for the split-transactions
+// + monthly-close wave (local re-measure 1,715,999 bytes on current main with
+// only 4,001 bytes of headroom left; the two features add ~13 KB and ~17.5 KB
+// respectively). History: 1,705,000 proved too tight once receipt OCR landed
+// (1,707,024 on main, 2,024 over); 1,720,000 covered OCR but not the next
+// wave. Still tight enough to bite on a real regression.
 // Raise it deliberately in a PR (re-measure, update BOTH numbers below) when
 // growth is intentional; never silence it by excluding files.
 //
@@ -23,7 +23,7 @@ import { join, resolve } from "node:path"
 const REPO_ROOT = resolve(import.meta.dirname, "..")
 const DIST_DIR = join(REPO_ROOT, "dist")
 const BASELINE_BYTES = 1_471_039 // measured via `pnpm build` on base 47af951
-const CAP_BYTES = 1_720_000 // raised deliberately; see note above
+const CAP_BYTES = 1_750_000 // raised deliberately; see note above
 
 function collectJsFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true })
