@@ -195,28 +195,6 @@ function isThinkingLevel(value: string): value is ThinkingLevel {
   return THINKING_LEVELS.some((level) => level === value)
 }
 
-/**
- * First-run layout: touch-first devices open fullscreen (a floating card
- * covers the whole phone screen anyway, so it buys nothing). Applies only
- * when nothing is stored — once the user toggles, their choice persists.
- */
-export function defaultAssistantLayout(): AssistantWindowLayout {
-  if (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(COARSE_POINTER_QUERY).matches
-  ) {
-    try {
-      if (window.localStorage.getItem(ASSISTANT_LAYOUT_KEY) === null) {
-        return { ...DEFAULT_ASSISTANT_LAYOUT, fullscreen: true }
-      }
-    } catch {
-      // Private-mode storage failure: fall through to stored/default layout.
-    }
-  }
-  return readAssistantLayout(window.localStorage)
-}
-
 function messageId(): string {
   return globalThis.crypto.randomUUID()
 }
@@ -344,7 +322,9 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [isNative] = useState(() => isNativeCapacitorSync())
   const keychainCapable = isDesktop || isNative
   const [showSettings, setShowSettings] = useState(false)
-  const [layout, setLayout] = useState<AssistantWindowLayout>(() => defaultAssistantLayout())
+  const [layout, setLayout] = useState<AssistantWindowLayout>(() =>
+    readAssistantLayout(window.localStorage),
+  )
   const [messages, setMessages] = useState<PanelMessage[]>([])
   const [harnessSessionId, setHarnessSessionId] = useState<string | undefined>(undefined)
   const [harnessModels, setHarnessModels] = useState<HarnessModelOption[] | null>(null)
