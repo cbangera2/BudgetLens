@@ -315,6 +315,275 @@ function extractContent(payload: unknown): string {
   return extractTurnMessage(payload).content
 }
 
+/** Progressive content callback: invoked with the full content accumulated so far. */
+export type ChatStreamProgress = (contentSoFar: string) => void
+
+function attachPartialContent(error: unknown, partialContent: string): Error {
+  const err =
+    error instanceof Error
+      ? error
+      : new Error(typeof error === "string" && error ? error : "Stream failed")
+  try {
+    ;(err as Error & { partialContent?: string }).partialContent = partialContent
+  } catch {
+    // Read-only error shape: fall through with the bare error.
+  }
+  return err
+}
+
+/**
+ * Partial content accumulated before a mid-stream failure or abort. The panel
+ * uses this as a fallback when its own streaming snapshot is stale, so what
+ * arrived is still surfaced alongside the error.
+ */
+export function getPartialContent(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null
+  const partial: unknown = (error as { partialContent?: unknown }).partialContent
+  return typeof partial === "string" ? partial : null
+}
+
+function errorName(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null
+  const name: unknown = (error as { name?: unknown }).name
+  return typeof name === "string" ? name : null
+}
+
+/**
+ * Realm-safe abort check: fetch/stream aborts can come from another
+ * DOMException realm (undici vs jsdom), where `instanceof DOMException`
+ * fails despite the AbortError contract. The name is the stable signal.
+ */
+function isAbortError(error: unknown): boolean {
+  return errorName(error) === "AbortError"
+}
+
+function normalizedAbortError(partialContent: string): DOMException {
+  const err = new DOMException("Aborted", "AbortError")
+  try {
+    ;(err as DOMException & { partialContent?: string }).partialContent = partialContent
+  } catch {
+    // Read-only error shape: fall through with the bare abort.
+  }
+  return err
+}
+
+/**
+ * A provider rejected `stream: true` (unknown field, unsupported, disabled).
+ * Requires a stream mention plus a 4xx/unsupported signal so ordinary tool
+ * errors keep flowing to the tool fallback instead of the stream fallback.
+ */
+function isStreamNotSupportedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : ""
+  return (
+    /stream/i.test(message) &&
+    /Provider 4\d\d|unsupported|unknown|unrecognized|invalid|not supported/i.test(message)
+  )
+}
+
+interface StreamToolState {
+  id: string
+  name: string
+  arguments: string
+}
+
+interface StreamAccumulator {
+  content: string
+  tools: StreamToolState[]
+}
+
+function streamErrorDetail(errorValue: unknown): string {
+  if (typeof errorValue === "string" && errorValue) return errorValue
+  if (isRecord(errorValue)) {
+    const message: unknown = errorValue.message
+    if (typeof message === "string" && message) return message
+  }
+  return "stream failed"
+}
+
+function ensureToolState(acc: StreamAccumulator, index: number): StreamToolState {
+  while (acc.tools.length <= index) acc.tools.push({ id: "", name: "", arguments: "" })
+  const state = acc.tools[index]
+  if (!state) throw new Error("Stream tool state is missing.")
+  return state
+}
+
+function applyStreamDelta(
+  acc: StreamAccumulator,
+  event: unknown,
+  onContent?: ChatStreamProgress,
+): void {
+  if (!isRecord(event)) return
+  const choices: unknown = event.choices
+  if (!Array.isArray(choices)) return
+  const first: unknown = choices[0]
+  if (!isRecord(first)) return
+  const delta: unknown = first.delta
+  if (!isRecord(delta)) return
+  const content: unknown = delta.content
+  if (typeof content === "string" && content) {
+    acc.content += content
+    onContent?.(acc.content)
+  }
+  const toolCalls: unknown = delta.tool_calls
+  if (!Array.isArray(toolCalls)) return
+  for (const entry of toolCalls) {
+    if (!isRecord(entry)) continue
+    const index = typeof entry.index === "number" && Number.isFinite(entry.index) ? entry.index : 0
+    if (index < 0) continue
+    const state = ensureToolState(acc, index)
+    if (typeof entry.id === "string" && entry.id && !state.id) state.id = entry.id
+    const fn: unknown = entry.function
+    if (!isRecord(fn)) continue
+    if (typeof fn.name === "string" && fn.name) {
+      if (!state.name) state.name = fn.name
+      else if (state.name !== fn.name) state.name += fn.name
+    }
+    if (typeof fn.arguments === "string" && fn.arguments) state.arguments += fn.arguments
+  }
+}
+
+function finalizeStreamAccumulator(acc: StreamAccumulator): ProviderTurnResult {
+  const toolCalls: ProviderToolCall[] = []
+  for (let index = 0; index < acc.tools.length; index += 1) {
+    const state = acc.tools[index]
+    if (!state || !state.name) continue
+    toolCalls.push({
+      id: state.id || `stream-call-${index}`,
+      name: state.name,
+      args: parseToolArgs(state.arguments),
+    })
+  }
+  return { content: acc.content, toolCalls }
+}
+
+function throwIfAborted(signal: AbortSignal, partialContent: string): void {
+  if (!signal.aborted) return
+  const reason: unknown = signal.reason
+  // Timeouts keep their semantics (surfaced, not silently swallowed as Stop).
+  if (errorName(reason) === "TimeoutError") {
+    if (reason instanceof DOMException || reason instanceof Error) {
+      throw attachPartialContent(reason, partialContent)
+    }
+    throw attachPartialContent(
+      new DOMException("Assistant request timed out.", "TimeoutError"),
+      partialContent,
+    )
+  }
+  throw normalizedAbortError(partialContent)
+}
+
+async function readSSEStream(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  onContent?: ChatStreamProgress,
+): Promise<ProviderTurnResult> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  const acc: StreamAccumulator = { content: "", tools: [] }
+  let buffer = ""
+  let rawText = ""
+  let gotEvent = false
+  let done = false
+  try {
+    for (;;) {
+      throwIfAborted(signal, acc.content)
+      // oxlint-disable-next-line no-await-in-loop -- Sequential stream reads.
+      const read = await reader.read()
+      if (read.done) break
+      const chunkText = decoder.decode(read.value, { stream: true })
+      buffer += chunkText
+      rawText += chunkText
+      let newline = buffer.indexOf("\n")
+      while (newline >= 0 && !done) {
+        let line = buffer.slice(0, newline)
+        buffer = buffer.slice(newline + 1)
+        if (line.endsWith("\r")) line = line.slice(0, -1)
+        const trimmed = line.trim()
+        if (trimmed && !trimmed.startsWith(":") && trimmed.startsWith("data:")) {
+          const data = trimmed.slice(5).trim()
+          if (data === "[DONE]") {
+            done = true
+            break
+          }
+          if (data) {
+            let event: unknown = null
+            try {
+              event = JSON.parse(data) as unknown
+            } catch {
+              event = null
+            }
+            if (event !== null) {
+              if (isRecord(event) && "error" in event) {
+                const detail = streamErrorDetail(event.error)
+                throw attachPartialContent(new Error(`Provider stream: ${detail}`), acc.content)
+              }
+              gotEvent = true
+              applyStreamDelta(acc, event, onContent)
+              throwIfAborted(signal, acc.content)
+            }
+          }
+        } else if (trimmed === "" || trimmed.startsWith(":")) {
+          // Event boundary or keep-alive comment: no payload.
+        }
+        newline = buffer.indexOf("\n")
+      }
+      if (done) break
+    }
+    const tail = buffer.trim()
+    if (!done && tail.startsWith("data:")) {
+      const data = tail.slice(5).trim()
+      if (data && data !== "[DONE]") {
+        try {
+          const event = JSON.parse(data) as unknown
+          if (isRecord(event) && "error" in event) {
+            const detail = streamErrorDetail(event.error)
+            throw attachPartialContent(new Error(`Provider stream: ${detail}`), acc.content)
+          }
+          gotEvent = true
+          applyStreamDelta(acc, event, onContent)
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("Provider stream:")) throw error
+          // Trailing garbage without a newline: ignore when we already have events.
+        }
+      }
+    }
+    // Providers that ignore `stream: true` answer with plain JSON despite the
+    // 200: treat buffered JSON as a non-streaming turn instead of an empty one.
+    if (!gotEvent && !acc.content && acc.tools.length === 0 && rawText.trim()) {
+      try {
+        return finalizeStreamAccumulator(accFromNonStreaming(rawText))
+      } catch {
+        // Fall through to the empty result below.
+      }
+    }
+    return finalizeStreamAccumulator(acc)
+  } catch (error) {
+    // Normalize cross-realm aborts so Stop stays recognizable via instanceof.
+    if (isAbortError(error)) throw normalizedAbortError(acc.content)
+    if (error instanceof DOMException || error instanceof Error) {
+      if (getPartialContent(error) === null) throw attachPartialContent(error, acc.content)
+      throw error
+    }
+    throw attachPartialContent(error, acc.content)
+  } finally {
+    try {
+      await reader.cancel()
+    } catch {
+      // Reader already closed or aborted: nothing to clean up.
+    }
+  }
+}
+
+function accFromNonStreaming(rawText: string): StreamAccumulator {
+  const payload = JSON.parse(rawText) as unknown
+  const turn = extractTurnMessage(payload)
+  const acc: StreamAccumulator = { content: turn.content, tools: [] }
+  for (const call of turn.toolCalls) {
+    acc.tools.push({ id: call.id, name: call.name, arguments: JSON.stringify(call.args ?? {}) })
+  }
+  return acc
+}
+
 export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000
 const PROVIDER_MAX_ATTEMPTS = 3
 const PROVIDER_RETRY_BASE_MS = 500
@@ -327,9 +596,11 @@ const PROVIDER_RETRY_CAP_MS = 1_500
  * request timed out).
  */
 function isRetryableTransportError(error: unknown): boolean {
+  const name = errorName(error)
+  if (name === "AbortError" || name === "TimeoutError") return false
   if (error instanceof DOMException && error.name === "AbortError") return false
   if (error instanceof TypeError) return true
-  const message = error instanceof Error ? error.message : String(error)
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : ""
   return /Provider 5\d\d/.test(message)
 }
 
@@ -358,7 +629,8 @@ function retrySleep(ms: number, signal: AbortSignal): Promise<void> {
  * anything but an allowlisted ":free" id. The baked key is extractable from
  * the JS bundle, so this (plus the capped OpenRouter key) is what keeps theft
  * harmless. Single choke point: both requestChatTurn and sendToolResults go
- * through postChatCompletions.
+ * through postChatCompletions/postChatCompletionsStream, which both enforce
+ * this gate.
  */
 function assertDemoModelAllowed(baseURL: string, apiKey: string, model: string): void {
   if (!isDemoRequest(baseURL, apiKey) || isDemoModelAllowed(model)) return
@@ -492,6 +764,158 @@ async function postChatCompletions(options: {
   }
 }
 
+/**
+ * Streaming `/chat/completions` transport (`stream: true` + hand-rolled SSE
+ * over fetch + TextDecoder, no library). Content deltas accumulate into
+ * progressive `onContent` updates; `tool_calls` deltas accumulate by index
+ * (concatenating `arguments` fragments) and only reconstruct complete calls
+ * on `[DONE]` — partial calls are never executed. Mid-stream failures keep
+ * what arrived via `partialContent` on the thrown error; aborts stay
+ * AbortError so Stop halts cleanly. Temperature and tool envelope match the
+ * non-streaming path exactly.
+ */
+async function postChatCompletionsStream(options: {
+  baseURL: string
+  apiKey: string
+  model: string
+  messages: ChatCompletionsMessage[]
+  tools?: ChatFunctionTool[]
+  signal?: AbortSignal
+  timeoutMs?: number
+  onContent?: ChatStreamProgress
+}): Promise<ProviderTurnResult> {
+  assertDemoModelAllowed(options.baseURL, options.apiKey, options.model)
+  // Desktop binary stays non-streaming through the Rust proxy (matching the
+  // Tauri command today); report the final content once for uniform callers.
+  if (isTauriSync()) {
+    const payload = await postChatCompletions({
+      baseURL: options.baseURL,
+      apiKey: options.apiKey,
+      model: options.model,
+      messages: options.messages,
+      ...(options.tools ? { tools: options.tools } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    })
+    const turn = extractTurnMessage(payload)
+    options.onContent?.(turn.content)
+    return turn
+  }
+
+  const signal = withTimeout(options.signal, options.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS)
+  const body = JSON.stringify({
+    model: options.model,
+    messages: options.messages,
+    ...(options.tools && options.tools.length > 0
+      ? { tools: options.tools, tool_choice: "auto" }
+      : {}),
+    temperature: 0.2,
+    stream: true,
+  })
+
+  let attempt = 0
+  for (;;) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      const response = await fetch(joinURL(options.baseURL, "/chat/completions"), {
+        method: "POST",
+        signal,
+        headers: {
+          "content-type": "application/json",
+          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
+        },
+        body,
+      })
+
+      if (!response.ok) {
+        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+        const detail = await response.text().catch(() => "")
+        throw new Error(
+          `Provider ${response.status}: ${detail.slice(0, 300) || response.statusText || "request failed"}`,
+        )
+      }
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Test doubles stub fetch without a full Response body.
+      const streamBody = (response as unknown as { body?: ReadableStream<Uint8Array> | null }).body
+      if (!streamBody) {
+        // Buffered mock or non-streaming proxy: parse the JSON payload as a turn.
+        // oxlint-disable-next-line no-await-in-loop, typescript/no-unsafe-type-assertion -- Sequential retry; test doubles stub fetch without a full Response shape.
+        const payload = await (response as unknown as { json: () => Promise<unknown> }).json()
+        const turn = extractTurnMessage(payload)
+        options.onContent?.(turn.content)
+        return turn
+      }
+      const contentType =
+        response.headers instanceof Headers ? (response.headers.get("content-type") ?? "") : ""
+      if (contentType.includes("application/json")) {
+        // Provider ignored `stream: true` and answered buffered JSON.
+        // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+        const payload = (await response.json()) as unknown
+        const turn = extractTurnMessage(payload)
+        options.onContent?.(turn.content)
+        return turn
+      }
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      return await readSSEStream(streamBody, signal, options.onContent)
+    } catch (error) {
+      // What already streamed must surface, never retry into a duplicate.
+      const partial = getPartialContent(error)
+      if (partial && partial.length > 0) throw error
+      if (
+        error instanceof DOMException ||
+        isAbortError(error) ||
+        errorName(error) === "TimeoutError"
+      ) {
+        throw error
+      }
+      if (attempt + 1 >= PROVIDER_MAX_ATTEMPTS || !isRetryableTransportError(error)) throw error
+      attempt += 1
+      // oxlint-disable-next-line no-await-in-loop -- Sequential retry attempts.
+      await retrySleep(transportRetryDelayMs(attempt - 1) + Math.floor(Math.random() * 250), signal)
+    }
+  }
+}
+
+async function requestChatTurnJson(
+  baseURL: string,
+  apiKey: string,
+  model: string,
+  messages: ChatCompletionsMessage[],
+  tools: ChatFunctionTool[],
+  signal: AbortSignal | undefined,
+  onContent: ChatStreamProgress | undefined,
+): Promise<ProviderTurnResult> {
+  const withTools = tools.length > 0
+  try {
+    const payload = await postChatCompletions({
+      baseURL,
+      apiKey,
+      model,
+      messages,
+      tools,
+      ...(signal ? { signal } : {}),
+    })
+    const turn = extractTurnMessage(payload)
+    onContent?.(turn.content)
+    return turn
+  } catch (error) {
+    // Local proxies often 400 on unknown fields (tools/tool_choice) or on
+    // models without function calling: retry the same turn as plain completion.
+    if (withTools && isRetryableToolError(error)) {
+      const payload = await postChatCompletions({
+        baseURL,
+        apiKey,
+        model,
+        messages,
+        ...(signal ? { signal } : {}),
+      })
+      const turn = extractTurnMessage(payload)
+      onContent?.(turn.content)
+      return turn
+    }
+    throw error
+  }
+}
+
 export async function requestChatTurn(options: {
   baseURL: string
   apiKey: string
@@ -500,6 +924,7 @@ export async function requestChatTurn(options: {
   history: Array<{ role: "user" | "assistant"; content: string }>
   tools: ChatFunctionTool[]
   signal?: AbortSignal
+  onContent?: ChatStreamProgress
 }): Promise<ProviderTurnResult> {
   const messages: ChatCompletionsMessage[] = [
     { role: "system", content: options.system },
@@ -507,28 +932,57 @@ export async function requestChatTurn(options: {
   ]
 
   const withTools = options.tools.length > 0
+  const streamBase = {
+    baseURL: options.baseURL,
+    apiKey: options.apiKey,
+    model: options.model,
+    messages,
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.onContent ? { onContent: options.onContent } : {}),
+  }
   try {
-    const payload = await postChatCompletions({
-      baseURL: options.baseURL,
-      apiKey: options.apiKey,
-      model: options.model,
-      messages,
-      tools: options.tools,
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-    return extractTurnMessage(payload)
+    return await postChatCompletionsStream({ ...streamBase, tools: options.tools })
   } catch (error) {
-    // Local proxies often 400 on unknown fields (tools/tool_choice) or on
-    // models without function calling: retry the same turn as plain completion.
-    if (withTools && isRetryableToolError(error)) {
-      const payload = await postChatCompletions({
-        baseURL: options.baseURL,
-        apiKey: options.apiKey,
-        model: options.model,
+    // Aborts and mid-stream failures (partial content present) surface as-is:
+    // what arrived stays visible via onContent/partialContent, never retried.
+    if (error instanceof DOMException || isAbortError(error)) throw error
+    const partial = getPartialContent(error)
+    if (partial && partial.length > 0) throw error
+    // Provider rejected `stream: true`: retry once without it, keeping the
+    // existing tool-fallback pattern (with tools, then plain on tool errors).
+    if (isStreamNotSupportedError(error)) {
+      return await requestChatTurnJson(
+        options.baseURL,
+        options.apiKey,
+        options.model,
         messages,
-        ...(options.signal ? { signal: options.signal } : {}),
-      })
-      return extractTurnMessage(payload)
+        options.tools,
+        options.signal,
+        options.onContent,
+      )
+    }
+    // Local proxies often 400 on unknown fields (tools/tool_choice): retry the
+    // same turn streaming as a plain completion before giving up.
+    if (withTools && isRetryableToolError(error)) {
+      try {
+        return await postChatCompletionsStream({ ...streamBase })
+      } catch (plainError) {
+        if (plainError instanceof DOMException || isAbortError(plainError)) throw plainError
+        const plainPartial = getPartialContent(plainError)
+        if (plainPartial && plainPartial.length > 0) throw plainError
+        if (isStreamNotSupportedError(plainError)) {
+          return await requestChatTurnJson(
+            options.baseURL,
+            options.apiKey,
+            options.model,
+            messages,
+            [],
+            options.signal,
+            options.onContent,
+          )
+        }
+        throw plainError
+      }
     }
     throw error
   }
@@ -654,6 +1108,7 @@ export async function sendToolResults(options: {
   pendingToolCalls: ProviderToolCall[]
   toolOutputs: Array<{ id: string; name: string; output: unknown }>
   signal?: AbortSignal
+  onContent?: ChatStreamProgress
 }): Promise<string> {
   const messages: ChatCompletionsMessage[] = [
     { role: "system", content: options.system },
@@ -674,14 +1129,35 @@ export async function sendToolResults(options: {
     })),
   ]
 
-  const payload = await postChatCompletions({
-    baseURL: options.baseURL,
-    apiKey: options.apiKey,
-    model: options.model,
-    messages,
-    ...(options.signal ? { signal: options.signal } : {}),
-  })
-  return extractContent(payload) || "Done."
+  try {
+    const turn = await postChatCompletionsStream({
+      baseURL: options.baseURL,
+      apiKey: options.apiKey,
+      model: options.model,
+      messages,
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.onContent ? { onContent: options.onContent } : {}),
+    })
+    return turn.content || "Done."
+  } catch (error) {
+    if (error instanceof DOMException || isAbortError(error)) throw error
+    const partial = getPartialContent(error)
+    if (partial && partial.length > 0) throw error
+    // Provider rejected `stream: true`: retry once without it.
+    if (isStreamNotSupportedError(error)) {
+      const payload = await postChatCompletions({
+        baseURL: options.baseURL,
+        apiKey: options.apiKey,
+        model: options.model,
+        messages,
+        ...(options.signal ? { signal: options.signal } : {}),
+      })
+      const content = extractContent(payload) || "Done."
+      options.onContent?.(content)
+      return content
+    }
+    throw error
+  }
 }
 
 export function formatMinor(amountMinor: number, currency = "USD"): string {
