@@ -239,9 +239,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 {splitParent.description}
               </Link>
             </p>
-            <p className="mt-1 text-muted-foreground">
-              Unsplit the original to restore it.
-            </p>
+            <p className="mt-1 text-muted-foreground">Unsplit the original to restore it.</p>
           </CardContent>
         </Card>
       )}
@@ -551,9 +549,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 <CardTitle id="delete-title">Delete transaction?</CardTitle>
                 <CardDescription id="delete-description">
                   {splitChildren.length > 0 ? (
-                    <>
-                      Split into {splitChildren.length} parts. Unsplit first to delete it.
-                    </>
+                    <>Split into {splitChildren.length} parts. Unsplit first to delete it.</>
                   ) : isChild ? (
                     <>This is a split part. Unsplit the original first.</>
                   ) : (
