@@ -25,6 +25,14 @@ import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
 import { deleteTransactionReceipts } from "@/features/receipts/receipts"
 import { readReceiptSidecar } from "@/features/receipts/sidecar"
+import { SplitDialog } from "@/features/splits/split-dialog"
+import { splitTransaction } from "@/features/splits/split-operations"
+import {
+  collectSplitParentIds,
+  isSplitChild,
+  isSupersededSplitParent,
+  onlyActiveTransactions,
+} from "@/features/splits/splits"
 import { detectTransferPairs, transferPairIds } from "@/features/transfers/detection"
 import { useTransferFlags } from "@/features/transfers/store"
 import { TransferBadge } from "@/features/transfers/transfers-section"
@@ -100,9 +108,16 @@ export function TransactionsPageContent() {
   )
   const transactions = data?.[0]
   const groups = useMemo(() => data?.[1] ?? [], [data])
+  // Superseded split parents are excluded: children count as ordinary rows.
+  const activeTransactions = useMemo(
+    () => onlyActiveTransactions(transactions ?? []),
+    [transactions],
+  )
+  const splitParentIds = useMemo(() => collectSplitParentIds(transactions ?? []), [transactions])
   const [filters, setFilters] = useState(() => parseTransactionFilters(location.search))
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<Transaction | "new" | null>(null)
+  const [splitting, setSplitting] = useState<Transaction | null>(null)
   const [deleting, setDeleting] = useState<Transaction | null>(null)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -164,15 +179,18 @@ export function TransactionsPageContent() {
   }, [bulkDeleting, deleting, editing])
 
   const visible = useMemo(
-    () => filterAndSortTransactions(transactions ?? [], filters),
-    [transactions, filters],
+    () => filterAndSortTransactions(activeTransactions, filters),
+    [activeTransactions, filters],
   )
   const ordered = useMemo(
     () => sortTransactionsByColumn(visible, columnSort),
     [visible, columnSort],
   )
-  const balances = useMemo(() => computeRunningBalances(transactions ?? []), [transactions])
-  const categoryOptions = useMemo(() => unique(transactions ?? [], "category"), [transactions])
+  const balances = useMemo(() => computeRunningBalances(activeTransactions), [activeTransactions])
+  const categoryOptions = useMemo(
+    () => unique(activeTransactions, "category"),
+    [activeTransactions],
+  )
   const pages = Math.max(1, Math.ceil(ordered.length / pageSize))
   const pageRows = ordered.slice((page - 1) * pageSize, page * pageSize)
 
@@ -422,19 +440,90 @@ export function TransactionsPageContent() {
                 </Button>
               </CardHeader>
               <CardContent>
+                {editing !== "new" &&
+                  !isSupersededSplitParent(editing) &&
+                  !isSplitChild(editing) &&
+                  !splitParentIds.has(editing.id) && (
+                    <div className="mb-4 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSplitting(editing)
+                          setEditing(null)
+                        }}
+                      >
+                        Split across categories…
+                      </Button>
+                    </div>
+                  )}
                 <TransactionForm
                   key={editing === "new" ? "new" : editing.id}
                   {...(editing === "new" ? {} : { transaction: editing })}
                   groups={groups}
                   fieldOptions={{
-                    category: unique(transactions, "category"),
-                    transactionType: unique(transactions, "transactionType"),
-                    accountName: unique(transactions, "accountName"),
-                    accountType: unique(transactions, "accountType"),
-                    provider: unique(transactions, "provider"),
+                    category: unique(activeTransactions, "category"),
+                    transactionType: unique(activeTransactions, "transactionType"),
+                    accountName: unique(activeTransactions, "accountName"),
+                    accountType: unique(activeTransactions, "accountType"),
+                    provider: unique(activeTransactions, "provider"),
                   }}
                   onSubmit={save}
                   onCancel={() => setEditing(null)}
+                />
+              </CardContent>
+            </Card>
+          </dialog>
+        </div>
+      )}
+      {splitting && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSplitting(null)
+          }}
+        >
+          <dialog
+            open
+            aria-modal="true"
+            aria-labelledby="split-form-title"
+            className="relative m-0 max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border bg-background p-0 text-foreground shadow-2xl"
+          >
+            <Card className="border-0 shadow-none">
+              <CardHeader className="pr-16">
+                <CardTitle id="split-form-title">Split {splitting.description}</CardTitle>
+                <CardDescription>
+                  One part per category; amounts must total{" "}
+                  {formatMoney(
+                    normalizeTransactionAmountMinor(
+                      splitting.amountMinor,
+                      splitting.transactionType,
+                    ),
+                  )}
+                  .
+                </CardDescription>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-4 right-4"
+                  aria-label="Close split form"
+                  onClick={() => setSplitting(null)}
+                >
+                  <X className="size-4" />
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <SplitDialog
+                  parent={splitting}
+                  existingCategories={categoryOptions}
+                  onClose={() => setSplitting(null)}
+                  onSplit={async (parts) => {
+                    await splitTransaction(repositories, splitting.id, parts)
+                    setSplitting(null)
+                  }}
                 />
               </CardContent>
             </Card>
@@ -458,11 +547,11 @@ export function TransactionsPageContent() {
           <TransactionFilterBar
             filters={filters}
             groups={groups}
-            merchantOptions={unique(transactions, "description")}
-            categoryOptions={unique(transactions, "category")}
-            accountOptions={unique(transactions, "accountName")}
-            providerOptions={unique(transactions, "provider")}
-            transactionTypeOptions={unique(transactions, "transactionType")}
+            merchantOptions={unique(activeTransactions, "description")}
+            categoryOptions={unique(activeTransactions, "category")}
+            accountOptions={unique(activeTransactions, "accountName")}
+            providerOptions={unique(activeTransactions, "provider")}
+            transactionTypeOptions={unique(activeTransactions, "transactionType")}
             onPatch={patchFilter}
             onApply={setFilters}
             onReset={() => setFilters(defaultTransactionFilters)}
@@ -718,9 +807,17 @@ export function TransactionsPageContent() {
                           </Link>
                           {(group ||
                             transaction.shared ||
+                            splitParentIds.has(transaction.id) ||
+                            isSplitChild(transaction) ||
                             flaggedTransferIds.has(transaction.id) ||
                             receiptCounts.has(transaction.id)) && (
                             <span className="mt-1 flex flex-wrap items-center gap-1">
+                              {splitParentIds.has(transaction.id) && (
+                                <Badge variant="secondary">Split</Badge>
+                              )}
+                              {isSplitChild(transaction) && (
+                                <Badge variant="outline">Split part</Badge>
+                              )}
                               {group && (
                                 <Link
                                   to="/groups/$groupId"

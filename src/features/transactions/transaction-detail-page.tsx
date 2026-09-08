@@ -11,6 +11,14 @@ import { effectiveTransactionAmountMinor } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
 import { formatMoney } from "@/features/dashboard/format"
 import { ReceiptSection } from "@/features/receipts/receipt-section"
+import { SplitDialog } from "@/features/splits/split-dialog"
+import { splitTransaction, unsplitTransaction } from "@/features/splits/split-operations"
+import {
+  getSplitChildren,
+  isSplitChild,
+  isSupersededSplitParent,
+  splitChildParentId,
+} from "@/features/splits/splits"
 import { notifyDeletedWithUndo, toastDeleteFailed } from "@/lib/undo-buffer"
 
 import { TransactionForm } from "./transaction-form"
@@ -58,6 +66,8 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
   const editingWasOpenRef = useRef(false)
   const deletingWasOpenRef = useRef(false)
   const deletingTriggerRef = useRef<HTMLElement | null>(null)
+  const splittingTriggerRef = useRef<HTMLElement | null>(null)
+  const splittingWasOpenRef = useRef(false)
   const data = useLiveQuery(
     async () =>
       Promise.all([
@@ -69,8 +79,11 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
   )
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [splitting, setSplitting] = useState(false)
+  const [actionError, setActionError] = useState("")
   useReturnFocusOnClose(editing, editingTriggerRef, editingWasOpenRef)
   useReturnFocusOnClose(deleting, deletingTriggerRef, deletingWasOpenRef)
+  useReturnFocusOnClose(splitting, splittingTriggerRef, splittingWasOpenRef)
 
   const transaction = data?.[0] ?? null
   const allTransactions = useMemo(() => data?.[1] ?? [], [data])
@@ -78,6 +91,19 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
   const group = transaction?.groupId
     ? groups.find((entry) => entry.id === transaction.groupId)
     : undefined
+  const splitChildren = useMemo(
+    () => (transaction ? getSplitChildren(allTransactions, transaction.id) : []),
+    [allTransactions, transaction],
+  )
+  const isSuperseded = transaction ? isSupersededSplitParent(transaction) : false
+  const isChild = transaction ? isSplitChild(transaction) : false
+  const splitParent = useMemo(() => {
+    if (!transaction) return undefined
+    const parentId = splitChildParentId(transaction)
+    return parentId ? allTransactions.find((entry) => entry.id === parentId) : undefined
+  }, [allTransactions, transaction])
+  const canSplit = Boolean(transaction) && !isSuperseded && !isChild && splitChildren.length === 0
+  const canUnsplit = splitChildren.length > 0 || isSuperseded
 
   if (!data) return <output>Loading transaction…</output>
 
@@ -136,7 +162,42 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditing(true)}>
+          {canSplit && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionError("")
+                setSplitting(true)
+              }}
+            >
+              Split
+            </Button>
+          )}
+          {canUnsplit && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setActionError("")
+                void (async () => {
+                  try {
+                    await unsplitTransaction(repositories, transaction.id)
+                  } catch (cause) {
+                    setActionError(
+                      cause instanceof Error ? cause.message : "The split could not be removed.",
+                    )
+                  }
+                })()
+              }}
+            >
+              Unsplit
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            disabled={isSuperseded}
+            title={isSuperseded ? "Unsplit before editing." : undefined}
+            onClick={() => setEditing(true)}
+          >
             <Pencil className="size-4" aria-hidden="true" /> Edit
           </Button>
           <Button variant="destructive" onClick={() => setDeleting(true)}>
@@ -144,6 +205,73 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
           </Button>
         </div>
       </div>
+      {actionError && (
+        <p role="alert" className="text-sm text-destructive">
+          {actionError}
+        </p>
+      )}
+      {isSuperseded && (
+        <Card aria-label="Split status">
+          <CardContent className="pt-6 text-sm">
+            <p className="font-medium">Split across {splitChildren.length} categories</p>
+            <p className="mt-1 text-muted-foreground">
+              This row is kept as the original and excluded from totals. Its parts below sum to{" "}
+              {formatMoney(normalized)}.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      {isChild && splitParent && (
+        <Card aria-label="Split part status">
+          <CardContent className="pt-6 text-sm">
+            <p className="font-medium">
+              Part of{" "}
+              <Link
+                to="/transactions/$transactionId"
+                params={{ transactionId: splitParent.id }}
+                className="text-primary underline underline-offset-4"
+              >
+                {splitParent.description}
+              </Link>
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              Unsplit from the original transaction to restore it.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {splitChildren.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Split parts</CardTitle>
+            <CardDescription>Each part carries its own category.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="divide-y text-sm">
+              {splitChildren.map((child) => (
+                <li key={child.id} className="flex items-center justify-between gap-4 py-2">
+                  <Link
+                    to="/transactions/$transactionId"
+                    params={{ transactionId: child.id }}
+                    className="font-medium text-primary underline underline-offset-4"
+                  >
+                    {child.description}
+                  </Link>
+                  <span className="text-muted-foreground">
+                    {child.category ?? "Uncategorized"} ·{" "}
+                    <span className="font-medium text-foreground tabular-nums">
+                      {formatMoney(
+                        normalizeTransactionAmountMinor(child.amountMinor, child.transactionType),
+                      )}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -350,6 +478,53 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
         </div>
       )}
 
+      {splitting && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSplitting(false)
+          }}
+        >
+          <dialog
+            open
+            aria-modal="true"
+            aria-labelledby="split-form-title"
+            className="relative m-0 max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border bg-background p-0 text-foreground shadow-2xl"
+          >
+            <Card className="border-0 shadow-none">
+              <CardHeader className="pr-16">
+                <CardTitle id="split-form-title">Split {transaction.description}</CardTitle>
+                <CardDescription>
+                  One part per category; amounts must total {formatMoney(normalized)}.
+                </CardDescription>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-4 right-4"
+                  aria-label="Close split form"
+                  onClick={() => setSplitting(false)}
+                >
+                  <X className="size-4" />
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <SplitDialog
+                  parent={transaction}
+                  existingCategories={unique(allTransactions, "category")}
+                  onClose={() => setSplitting(false)}
+                  onSplit={async (parts) => {
+                    await splitTransaction(repositories, transaction.id, parts)
+                    setSplitting(false)
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </dialog>
+        </div>
+      )}
+
       {deleting && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-foreground/35 p-4 backdrop-blur-[2px]"
@@ -370,7 +545,14 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
               <CardHeader>
                 <CardTitle id="delete-title">Delete transaction?</CardTitle>
                 <CardDescription id="delete-description">
-                  This permanently removes {transaction.description} from this browser.
+                  {splitChildren.length > 0 ? (
+                    <>
+                      This transaction is split across {splitChildren.length} parts. Unsplit it
+                      first, then delete the restored row or its parts.
+                    </>
+                  ) : (
+                    <>This permanently removes {transaction.description} from this browser.</>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-end gap-2">
@@ -379,6 +561,7 @@ export function TransactionDetailPageContent({ transactionId }: { transactionId:
                 </Button>
                 <Button
                   variant="destructive"
+                  disabled={splitChildren.length > 0}
                   onClick={() => {
                     const snapshot = transaction
                     void (async () => {
