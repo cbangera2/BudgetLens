@@ -121,7 +121,7 @@ export function BillEditDialog({
         ref={panelRef}
         aria-modal="true"
         aria-labelledby="bill-edit-title"
-        className="w-full max-w-sm rounded-2xl border bg-card p-6 text-card-foreground shadow-2xl"
+        className="relative m-0 w-full max-w-sm rounded-2xl border bg-card p-6 text-card-foreground shadow-2xl"
       >
         <h2 id="bill-edit-title" className="text-lg font-semibold tracking-tight">
           Edit {subscription.displayName} bill
