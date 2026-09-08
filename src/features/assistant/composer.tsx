@@ -88,7 +88,7 @@ export function Composer({
           </Button>
         )}
       </div>
-      <p className="px-4 pt-1 text-[11px] text-muted-foreground">
+      <p className="hidden px-4 pt-1 text-[11px] text-muted-foreground [@media(pointer:fine)]:block">
         Enter to send · Shift+Enter newline
       </p>
     </div>
