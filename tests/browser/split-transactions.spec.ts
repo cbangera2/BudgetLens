@@ -29,7 +29,9 @@ test("split a transaction two ways, category totals follow parts, unsplit restor
   await expect(page.getByRole("rowheader", { name: description })).toBeVisible()
   await expect(page.getByText("Showing 1 of 1 matching transactions.")).toBeVisible()
 
-  await page.getByRole("link", { name: description, exact: true }).click()
+  // Keyboard-activate the row link: on mobile a sticky card can sit over
+  // the table and intercept pointer hit-testing.
+  await page.getByRole("link", { name: description, exact: true }).press("Enter")
   await expect(page).toHaveURL(/\/transactions\/.+/)
   const parentUrl = page.url()
 
@@ -59,11 +61,13 @@ test("split a transaction two ways, category totals follow parts, unsplit restor
   await expect(page.getByText("Showing 2 of 2 matching transactions.")).toBeVisible()
 
   // Category totals reflect the split: each category carries only its part.
+  // (Scoped to the row: the running-balance cell can legitimately show the
+  // account total, which equals the parent amount once both parts exist.)
   await page.goto("/transactions?category=Groceries")
   await expect(page.getByText("Showing 1 of 1 matching transactions.")).toBeVisible()
-  await expect(page.getByRole("rowheader", { name: childGroceries })).toBeVisible()
-  await expect(page.locator("tbody")).toContainText("60.00")
-  await expect(page.locator("tbody")).not.toContainText("100.00")
+  const groceriesRow = page.locator("tbody tr", { hasText: childGroceries })
+  await expect(groceriesRow).toContainText("60.00")
+  await expect(groceriesRow).not.toContainText("40.00")
 
   await page.goto("/transactions?category=Household")
   await expect(page.getByText("Showing 1 of 1 matching transactions.")).toBeVisible()
