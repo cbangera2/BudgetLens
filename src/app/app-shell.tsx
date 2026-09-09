@@ -8,8 +8,6 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   ReceiptText,
   Settings,
   Sun,
@@ -110,7 +108,6 @@ export function AppShell() {
   }, [])
 
   const sidebarToggleLabel = sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
-  const assistantToggleLabel = assistantOpen ? "Close assistant" : "Open assistant"
 
   return (
     <AppLockGate>
@@ -124,20 +121,6 @@ export function AppShell() {
               <span>BudgetLens</span>
             </Link>
             <div className="flex items-center gap-1">
-              <Button
-                variant={assistantOpen ? "secondary" : "ghost"}
-                size="icon"
-                aria-label={assistantToggleLabel}
-                title={assistantToggleLabel}
-                aria-expanded={assistantOpen}
-                onClick={() => setAssistantOpen((open) => !open)}
-              >
-                {assistantOpen ? (
-                  <PanelRightClose className="size-5" aria-hidden="true" />
-                ) : (
-                  <PanelRightOpen className="size-5" aria-hidden="true" />
-                )}
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"

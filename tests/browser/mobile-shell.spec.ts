@@ -65,7 +65,7 @@ test("tab bar navigates tabs and More-sheet destinations", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "More destinations" })).toBeHidden()
 })
 
-test("assistant panel docks as a bottom sheet on small viewports", async ({ page }) => {
+test("assistant panel opens fullscreen on small viewports", async ({ page }) => {
   test.skip(!isMobileLayout(page), "mobile layout only")
   await startBeyondOnboarding(page, "/")
 
@@ -81,11 +81,16 @@ test("assistant panel docks as a bottom sheet on small viewports", async ({ page
   expect(box).not.toBeNull()
   expect(viewport).not.toBeNull()
   if (box && viewport) {
-    // Bottom-anchored, full-bleed sheet rather than a floating card.
-    expect(box.y + box.height).toBeGreaterThanOrEqual(viewport.height - 2)
-    expect(box.x).toBeLessThanOrEqual(2)
-    expect(box.width).toBeGreaterThanOrEqual(viewport.width - 4)
+    // Fullscreen sheet with small insets rather than a floating card, and no
+    // expand toggle (collapsed mode is unusable at phone widths).
+    expect(box.x).toBeLessThanOrEqual(20)
+    expect(box.y).toBeLessThanOrEqual(20)
+    expect(box.width).toBeGreaterThanOrEqual(viewport.width - 40)
+    expect(box.y + box.height).toBeGreaterThanOrEqual(viewport.height - 40)
   }
+  await expect(
+    panel.getByRole("button", { name: "Expand to fullscreen" }),
+  ).toHaveCount(0)
 
   await panel.getByRole("button", { name: "Close assistant" }).click()
   await expect(panel).toBeHidden()
