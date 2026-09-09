@@ -38,26 +38,26 @@ direct API or tool use), `quality` = a real wrong answer.
 
 ## Results (pass desc, avg latency asc)
 
-| model | pass | avg total | avg TTFT | failures |
-|---|---|---|---|---|
-| cohere/north-mini-code:free | 7/7 | 11187ms | 10652ms | — |
-| dots-studio/dots-3-note-preview:free | 7/7 | 15674ms | 14908ms | — |
-| nvidia/nemotron-3-super-120b-a12b:free | 7/7 | 38631ms | 38229ms | — |
-| nex-agi/nex-n2.5-mini:free | 5/7 | 6863ms | 7498ms | 1x rate_limited, 1x quality (chart ignored snapshot) |
-| nvidia/nemotron-3-ultra-550b-a55b:free | 5/7 | 38235ms | 43567ms | 1x rate_limited, 1x quality (fastest-grower blank) |
-| nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | 5/7 | 78045ms | 72176ms | 2x quality (empty budget answer; largest-tx picked -$165,000 expense over $3,150 income) |
-| nex-agi/nex-n2.5-pro:free | 4/7 | 77632ms | 27873ms | 3x timeout (120s) |
-| liquid/lfm-2.5-2.6b:free | 3/7 | 6614ms | 6849ms | 1x rate_limited, 3x quality (no currency; wrong largest-tx; proprietary `<\|tool_call_start\|>` chart syntax instead of fence) |
-| inclusionai/ling-3.0-flash-sante:free | 2/7 | 1829ms | 1508ms | 5x rate_limited (both passing cases were fast: fastest-grower 1725ms, chart 1747ms) |
-| google/gemma-4-26b-a4b-it:free | 0/7 | — | — | 7x rate_limited (upstream provider + per-min) |
-| google/gemma-4-31b-it:free | 0/7 | — | — | 7x rate_limited (upstream provider + per-min) |
-| inclusionai/ling-3.0-flash-fin:free | 0/7 | — | — | 7x rate_limited (untested — quota) |
-| nvidia/nemotron-3.5-content-safety:free | 0/7 | — | — | 6x rate_limited (untested — quota) + 1x unsupported (404: no endpoints support tool use) |
-| nvidia/nemotron-3.5-lightning:free | 0/7 | — | — | 7x rate_limited (untested — quota; current demo default) |
-| poolside/laguna-s-2.1:free | 0/7 | — | — | 7x rate_limited (untested — quota) |
-| poolside/laguna-xs-2.1:free | 0/7 | — | — | 7x rate_limited (untested — quota) |
-| thinkingmachines/inkling-small:free | 0/7 | — | — | 7x unsupported (403: agentic harnesses only) |
-| thinkingmachines/inkling:free | 0/7 | — | — | 7x unsupported (403: agentic harnesses only) |
+| model                                              | pass | avg total | avg TTFT | failures                                                                                                                       |
+| -------------------------------------------------- | ---- | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| cohere/north-mini-code:free                        | 7/7  | 11187ms   | 10652ms  | —                                                                                                                              |
+| dots-studio/dots-3-note-preview:free               | 7/7  | 15674ms   | 14908ms  | —                                                                                                                              |
+| nvidia/nemotron-3-super-120b-a12b:free             | 7/7  | 38631ms   | 38229ms  | —                                                                                                                              |
+| nex-agi/nex-n2.5-mini:free                         | 5/7  | 6863ms    | 7498ms   | 1x rate_limited, 1x quality (chart ignored snapshot)                                                                           |
+| nvidia/nemotron-3-ultra-550b-a55b:free             | 5/7  | 38235ms   | 43567ms  | 1x rate_limited, 1x quality (fastest-grower blank)                                                                             |
+| nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free | 5/7  | 78045ms   | 72176ms  | 2x quality (empty budget answer; largest-tx picked -$165,000 expense over $3,150 income)                                       |
+| nex-agi/nex-n2.5-pro:free                          | 4/7  | 77632ms   | 27873ms  | 3x timeout (120s)                                                                                                              |
+| liquid/lfm-2.5-2.6b:free                           | 3/7  | 6614ms    | 6849ms   | 1x rate_limited, 3x quality (no currency; wrong largest-tx; proprietary `<\|tool_call_start\|>` chart syntax instead of fence) |
+| inclusionai/ling-3.0-flash-sante:free              | 2/7  | 1829ms    | 1508ms   | 5x rate_limited (both passing cases were fast: fastest-grower 1725ms, chart 1747ms)                                            |
+| google/gemma-4-26b-a4b-it:free                     | 0/7  | —         | —        | 7x rate_limited (upstream provider + per-min)                                                                                  |
+| google/gemma-4-31b-it:free                         | 0/7  | —         | —        | 7x rate_limited (upstream provider + per-min)                                                                                  |
+| inclusionai/ling-3.0-flash-fin:free                | 0/7  | —         | —        | 7x rate_limited (untested — quota)                                                                                             |
+| nvidia/nemotron-3.5-content-safety:free            | 0/7  | —         | —        | 6x rate_limited (untested — quota) + 1x unsupported (404: no endpoints support tool use)                                       |
+| nvidia/nemotron-3.5-lightning:free                 | 0/7  | —         | —        | 7x rate_limited (untested — quota; current demo default)                                                                       |
+| poolside/laguna-s-2.1:free                         | 0/7  | —         | —        | 7x rate_limited (untested — quota)                                                                                             |
+| poolside/laguna-xs-2.1:free                        | 0/7  | —         | —        | 7x rate_limited (untested — quota)                                                                                             |
+| thinkingmachines/inkling-small:free                | 0/7  | —         | —        | 7x unsupported (403: agentic harnesses only)                                                                                   |
+| thinkingmachines/inkling:free                      | 0/7  | —         | —        | 7x unsupported (403: agentic harnesses only)                                                                                   |
 
 ## Takeaways
 
@@ -72,9 +72,9 @@ direct API or tool use), `quality` = a real wrong answer.
 - **Demo default (`nemotron-3.5-lightning`) never got tested** — quota died
   before its turn. Do not read its 0/7 as a quality verdict; rerun needed.
 - **Allowlist flags:** both `thinkingmachines/inkling*` models 403 on the
-  direct API ("only available on agentic harnesses") — they are on
-  `DEMO_MODEL_ALLOWLIST` and will fail the same way through the relay.
-  Consider dropping them or verifying via relay before keeping. Same for
+  direct API ("only available on agentic harnesses") — removed from
+  `DEMO_MODEL_ALLOWLIST` in this PR since the relay forwards to the same
+  endpoint and would fail identically. Same for
   `nemotron-3.5-content-safety` (not allowlisted, correctly) which has no
   tool-capable endpoints.
 - **New candidates worth a clean rerun:** `nex-agi/nex-n2.5-mini` (5/6
