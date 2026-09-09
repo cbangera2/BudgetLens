@@ -2,6 +2,9 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 
 import { BudgetLensDatabase } from "@/db/database"
+import { clearDemoManifest, readDemoManifest } from "@/features/demo/demo-manifest"
+import { seedDemoDataIfEmpty } from "@/features/demo/demo-seed"
+import { DEMO_SOURCE_NAME } from "@/features/demo/golden-bundle"
 import { ImportService } from "@/features/imports/import-service"
 
 async function fixture(name: string): Promise<string> {
@@ -377,5 +380,59 @@ describe("ImportService", () => {
         { content: "x".repeat(50 * 1024 * 1024 + 1), sourceName: "large.json" },
       ]),
     ).rejects.toThrow("combined byte limit")
+  })
+})
+
+describe("demo replacement on real import", () => {
+  let db: BudgetLensDatabase
+  let service: ImportService
+
+  beforeEach(() => {
+    db = new BudgetLensDatabase(`budgetlens-restore-test-${crypto.randomUUID()}`)
+    service = new ImportService(db)
+    clearDemoManifest()
+  })
+
+  afterEach(async () => {
+    clearDemoManifest()
+    await db.delete()
+  })
+
+  it("removes demo content when real data lands", async () => {
+    expect(await seedDemoDataIfEmpty(db)).toBe(true)
+    expect(await db.transactions.count()).toBeGreaterThan(0)
+    expect(await db.budgets.count()).toBeGreaterThan(0)
+    expect(readDemoManifest()).not.toBeNull()
+
+    const preview = await service.preview(
+      "Date,Description,Amount,Account Name\n2026-09-01,Real Grocer,-42.10,Real Checking",
+      "real.csv",
+    )
+    await service.commit(preview)
+
+    expect(await db.transactions.count()).toBe(1)
+    expect(await db.wealth.count()).toBe(0)
+    expect(await db.budgets.count()).toBe(0)
+    expect(await db.transactionGroups.count()).toBe(0)
+    expect(await db.imports.count()).toBe(1)
+    expect((await db.imports.toArray())[0]).toMatchObject({ sourceName: "real.csv" })
+    expect(readDemoManifest()).toBeNull()
+  })
+
+  it("keeps demo content when committing demo-shaped data", async () => {
+    expect(await seedDemoDataIfEmpty(db)).toBe(true)
+    const before = await db.transactions.count()
+
+    const preview = await service.preview(
+      "Date,Description,Amount\n2026-09-02,Extra,-5.00",
+      "extra.csv",
+    )
+    await service.commit({ ...preview, sourceName: DEMO_SOURCE_NAME })
+
+    expect(await db.transactions.count()).toBe(before + 1)
+    expect(await db.budgets.count()).toBeGreaterThan(0)
+    expect(readDemoManifest()).not.toBeNull()
+    const sources = (await db.imports.toArray()).map((batch) => batch.sourceName)
+    expect(sources).toContain(DEMO_SOURCE_NAME)
   })
 })
