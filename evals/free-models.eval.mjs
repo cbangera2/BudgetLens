@@ -45,6 +45,13 @@
 //     --retries=N            retries on 429/5xx (default 2)
 //     --out=<path>           JSON results path (default evals/results/free-models-<ts>.json)
 //     --no-stream            use non-streaming requests (total time only)
+//     --base-url=<url>       API base (default OPENROUTER_BASE_URL or OpenRouter).
+//                            Use https://integrate.api.nvidia.com/v1 with
+//                            NVIDIA_API_KEY to benchmark NIM instead.
+//     --api-key=<key>        override key resolution (default: OPENROUTER_KEY /
+//                            OPENROUTER_API_KEY, then NVIDIA_API_KEY / NIM_API_KEY)
+//     --all-models           skip the :free filter (implied for non-OpenRouter
+//                            bases, which have no :free ids or zero pricing)
 //     --help                 this text
 //
 // Examples:
@@ -52,16 +59,27 @@
 //   node evals/free-models.eval.mjs --allowlist-only
 //   node evals/free-models.eval.mjs --limit=5 --concurrency=1
 //   node evals/free-models.eval.mjs --models="nvidia/nemotron-3.5-lightning:free,google/gemma-4-31b-it:free"
+//   NVIDIA_API_KEY=nvapi-... node evals/free-models.eval.mjs --base-url=https://integrate.api.nvidia.com/v1 --match=nemotron --limit=5
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
-const OPENROUTER_BASE = (process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1").replace(
-  /\/+$/,
-  "",
-)
+const DEFAULT_OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+
+function resolveBaseUrl(cliValue) {
+  const raw = cliValue ?? process.env.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE
+  return raw.replace(/\/+$/, "")
+}
+
+function isOpenRouterBase(baseUrl) {
+  try {
+    return new URL(baseUrl).hostname.endsWith("openrouter.ai")
+  } catch {
+    return baseUrl.includes("openrouter.ai")
+  }
+}
 
 // ---------------------------------------------------------------------------
 // args
@@ -81,6 +99,9 @@ function parseArgs(argv) {
     retries: 2,
     outPath: null,
     stream: true,
+    baseUrl: null,
+    apiKey: null,
+    allModels: false,
     help: false,
   }
   for (const raw of argv) {
@@ -111,6 +132,9 @@ function parseArgs(argv) {
     else if (raw.startsWith("--retries="))
       out.retries = Math.max(0, Number.parseInt(raw.slice(10), 10) || 0)
     else if (raw.startsWith("--out=")) out.outPath = raw.slice(6)
+    else if (raw.startsWith("--base-url=")) out.baseUrl = raw.slice(11).trim().replace(/\/+$/, "")
+    else if (raw.startsWith("--api-key=")) out.apiKey = raw.slice(10).trim()
+    else if (raw === "--all-models") out.allModels = true
     else {
       console.error(`Unknown arg: ${raw}`)
       out.help = true
@@ -146,13 +170,31 @@ function parseDotenv(text) {
   return vars
 }
 
-function loadLocalKey() {
-  const fromEnv = process.env.OPENROUTER_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim()
-  const sources = []
-  if (fromEnv) return { key: fromEnv, source: "environment" }
-  const candidates = [".env", ".env.local", ".dev.vars", "workers/assistant-relay/.dev.vars"]
+const KEY_FILES = [".env", ".env.local", ".dev.vars", "workers/assistant-relay/.dev.vars"]
+
+/** Key names in priority order. Non-OpenRouter bases (e.g. NIM) prefer the
+ *  NVIDIA names so a coexisting OPENROUTER_KEY doesn't win by accident. */
+function keyNamesFor(baseUrl) {
+  const openrouter = ["OPENROUTER_KEY", "OPENROUTER_API_KEY"]
+  const nvidia = ["NVIDIA_API_KEY", "NIM_API_KEY"]
+  return isOpenRouterBase(baseUrl) ? [...openrouter, ...nvidia] : [...nvidia, ...openrouter]
+}
+
+function pickKey(vars, baseUrl) {
+  for (const name of keyNamesFor(baseUrl)) {
+    const value = vars[name]?.trim()
+    if (value) return { key: value, name }
+  }
+  return { key: null, name: null }
+}
+
+function loadLocalKey({ cliKey, baseUrl }) {
+  if (cliKey) return { key: cliKey, source: "--api-key" }
+  const fromEnv = pickKey(process.env, baseUrl)
+  if (fromEnv.key) return { key: fromEnv.key, source: `environment (${fromEnv.name})` }
   const merged = {}
-  for (const rel of candidates) {
+  const sources = []
+  for (const rel of KEY_FILES) {
     const abs = resolve(ROOT, rel)
     if (!existsSync(abs)) continue
     try {
@@ -162,9 +204,9 @@ function loadLocalKey() {
       // ignore unreadable files
     }
   }
-  const key = merged.OPENROUTER_KEY?.trim() || merged.OPENROUTER_API_KEY?.trim()
-  if (key) return { key, source: sources.join(", ") || "dotenv" }
-  return { key: null, source: null, checked: candidates }
+  const fromFile = pickKey(merged, baseUrl)
+  if (fromFile.key) return { key: fromFile.key, source: `${sources.join(", ")} (${fromFile.name})` }
+  return { key: null, source: null, checked: KEY_FILES }
 }
 
 // ---------------------------------------------------------------------------
@@ -186,9 +228,9 @@ function isZeroPrice(value) {
   return value === 0 || value === "0" || value === "0.0"
 }
 
-async function discoverFreeModels(apiKey) {
+async function discoverFreeModels({ apiKey, baseUrl, allModels }) {
   const headers = apiKey ? { authorization: `Bearer ${apiKey}` } : {}
-  const res = await fetch(`${OPENROUTER_BASE}/models`, {
+  const res = await fetch(`${baseUrl}/models`, {
     headers,
     signal: AbortSignal.timeout(30_000),
   })
@@ -198,7 +240,10 @@ async function discoverFreeModels(apiKey) {
   const free = []
   for (const entry of list) {
     const id = entry?.id
-    if (typeof id !== "string" || !id.endsWith(":free")) continue
+    if (typeof id !== "string" || !id) continue
+    // Non-OpenRouter bases (e.g. NIM) have no :free ids or zero pricing:
+    // --all-models (implied there) lists the whole catalog instead.
+    if (!allModels && !id.endsWith(":free")) continue
     const pricing = entry?.pricing ?? {}
     // Require zero prompt+completion price; be lenient when pricing is absent.
     const hasPricing = "prompt" in pricing || "completion" in pricing
@@ -544,7 +589,8 @@ async function readSSE({ response, signal, timeoutMs, onFirstToken }) {
   return { content, toolCalls, usage, firstTokenAt }
 }
 
-async function postChat({ apiKey, model, testCase, timeoutMs, retries, useStream }) {
+async function postChat({ apiKey, baseUrl, model, testCase, timeoutMs, retries, useStream }) {
+  const openrouter = isOpenRouterBase(baseUrl)
   const body = {
     model,
     messages: [
@@ -565,14 +611,20 @@ async function postChat({ apiKey, model, testCase, timeoutMs, retries, useStream
     const started = Date.now()
     let ttftMs = null
     try {
-      const response = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         signal: controller.signal,
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://github.com/BudgetLens",
-          "X-Title": "BudgetLens free-model eval",
+          // OpenRouter attribution headers; other bases ignore unknown
+          // headers, but keep the wire format clean for them anyway.
+          ...(openrouter
+            ? {
+                "HTTP-Referer": "https://github.com/BudgetLens",
+                "X-Title": "BudgetLens free-model eval",
+              }
+            : {}),
         },
         body: JSON.stringify(body),
       })
@@ -654,7 +706,16 @@ function tokensPerSec(usage, totalMs) {
   return "—"
 }
 
-async function evalModel({ apiKey, model, cases, timeoutMs, retries, delayMs, useStream }) {
+async function evalModel({
+  apiKey,
+  baseUrl,
+  model,
+  cases,
+  timeoutMs,
+  retries,
+  delayMs,
+  useStream,
+}) {
   const rows = []
   let quotaExhausted = false
   const skipRest = (reason) => {
@@ -680,6 +741,7 @@ async function evalModel({ apiKey, model, cases, timeoutMs, retries, delayMs, us
     try {
       const res = await postChat({
         apiKey,
+        baseUrl,
         model: model.id,
         testCase,
         timeoutMs,
@@ -767,14 +829,16 @@ async function main() {
     process.exit(0)
   }
 
-  const { key: apiKey, source, checked } = loadLocalKey()
+  const baseUrl = resolveBaseUrl(args.baseUrl)
+  const allModels = args.allModels || !isOpenRouterBase(baseUrl)
+  const { key: apiKey, source, checked } = loadLocalKey({ cliKey: args.apiKey, baseUrl })
   const allowlist = readAllowlistFallback()
 
   // --list-only works without a key (public catalog); eval needs auth.
   let catalog = []
   let catalogError = null
   try {
-    catalog = await discoverFreeModels(apiKey)
+    catalog = await discoverFreeModels({ apiKey, baseUrl, allModels })
   } catch (error) {
     catalogError = String(error?.message ?? error)
   }
@@ -796,7 +860,9 @@ async function main() {
   if (Number.isInteger(args.limit) && args.limit > 0) catalog = catalog.slice(0, args.limit)
 
   if (args.listOnly) {
-    console.log(`Free models (${catalog.length})${catalogError ? ` [note: ${catalogError}]` : ""}:`)
+    console.log(
+      `Models at ${baseUrl} (${catalog.length})${catalogError ? ` [note: ${catalogError}]` : ""}:`,
+    )
     for (const m of catalog) {
       console.log(
         `  ${m.id}${m.tools ? "" : "  (no tools param)"}${m.context ? `  ctx=${m.context}` : ""}`,
@@ -806,8 +872,11 @@ async function main() {
   }
 
   if (!apiKey) {
+    const hint = isOpenRouterBase(baseUrl)
+      ? "Set OPENROUTER_KEY in .env (see .env.example)"
+      : "Set NVIDIA_API_KEY (or pass --api-key=...) in .env (see .env.example)"
     console.error(
-      `Missing OpenRouter key. Set OPENROUTER_KEY in .env (see .env.example), .env.local, .dev.vars, or workers/assistant-relay/.dev.vars.\nChecked: ${(checked ?? []).join(", ")}.`,
+      `Missing API key for ${baseUrl}. ${hint}; also checked .env.local, .dev.vars, workers/assistant-relay/.dev.vars.\nChecked: ${(checked ?? []).join(", ")}.`,
     )
     console.error(
       "Note: keys stored via `wrangler secret put` cannot be read back via CLI (Cloudflare hides values) -- paste the same key locally.",
@@ -830,6 +899,7 @@ async function main() {
   }
 
   console.log(`Key source: ${source}`)
+  console.log(`Base URL: ${baseUrl}${allModels ? " (full catalog)" : " (:free filter)"}`)
   if (catalogError) console.log(`Model catalog note: ${catalogError}`)
   console.log(
     `Testing ${catalog.length} model(s) x ${cases.length} case(s), concurrency=${args.concurrency}, delay=${args.delayMs}ms, stream=${args.stream}\n`,
@@ -844,6 +914,7 @@ async function main() {
       process.stdout.write(`… ${model.id}\n`)
       const { rows, quotaExhausted } = await evalModel({
         apiKey,
+        baseUrl,
         model,
         cases,
         timeoutMs: args.timeoutMs,
@@ -911,7 +982,12 @@ async function main() {
   writeFileSync(
     resolve(ROOT, outPath),
     JSON.stringify(
-      { at: new Date().toISOString(), cases: cases.map((c) => c.name), summaries },
+      {
+        at: new Date().toISOString(),
+        baseUrl,
+        cases: cases.map((c) => c.name),
+        summaries,
+      },
       null,
       2,
     ),

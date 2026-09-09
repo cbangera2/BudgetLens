@@ -23,6 +23,7 @@ export type AssistantProviderId =
   | "lmstudio"
   | "openrouter"
   | "openai"
+  | "nvidia-nim"
   | "openrouter-demo"
   | "custom"
 
@@ -83,6 +84,14 @@ export const ASSISTANT_PRESETS: readonly AssistantProviderPreset[] = [
     model: "gpt-5-mini",
     needsKey: true,
     hint: "Data leaves your machine. Prefer local for sensitive finances.",
+  },
+  {
+    id: "nvidia-nim",
+    label: "NVIDIA NIM (hosted)",
+    baseURL: "https://integrate.api.nvidia.com/v1",
+    model: "nvidia/llama-3.1-nemotron-70b-instruct",
+    needsKey: true,
+    hint: "NVIDIA-hosted Nemotron and open models (build.nvidia.com key, free prototyping tier). Data leaves your machine.",
   },
   {
     id: DEMO_PROVIDER_ID,
