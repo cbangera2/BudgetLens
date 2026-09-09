@@ -24,12 +24,13 @@ const MAX_LISTED_MODELS: usize = 500;
 /// else is rejected here (never trust the WebView for the auth boundary).
 /// `opencode-harness` needs no stored key and is intentionally absent.
 const KEYCHAIN_SERVICE: &str = "budgetlens";
-const KEYCHAIN_ACCOUNTS: [&str; 6] = [
+const KEYCHAIN_ACCOUNTS: [&str; 7] = [
     "assistant.opencode-bridge",
     "assistant.ollama",
     "assistant.lmstudio",
     "assistant.openrouter",
     "assistant.openai",
+    "assistant.nvidia-nim",
     "assistant.custom",
 ];
 

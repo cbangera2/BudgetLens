@@ -229,6 +229,7 @@ describe("public demo build", () => {
     expect(visibleAssistantPresets().map((preset) => preset.id)).toEqual([
       "openrouter",
       "openai",
+      "nvidia-nim",
       DEMO_PROVIDER_ID,
     ])
     expect(readAssistantSettings({ getItem: () => null }).provider).toBe(DEMO_PROVIDER_ID)
@@ -256,7 +257,7 @@ describe("public demo build", () => {
     vi.stubEnv("VITE_PUBLIC_DEMO", "")
     vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
     expect(defaultProvider()).toBe("opencode-bridge")
-    expect(visibleAssistantPresets()).toHaveLength(8)
+    expect(visibleAssistantPresets()).toHaveLength(9)
     expect(readAssistantSettings({ getItem: () => null }).provider).toBe("opencode-bridge")
   })
 })
@@ -281,7 +282,7 @@ describe("native iOS shell transport lockdown", () => {
     vi.stubEnv("VITE_PUBLIC_DEMO", "")
     vi.stubEnv("VITE_OPENROUTER_DEMO_KEY", SYNTHETIC_DEMO_KEY)
     const ids = visibleAssistantPresets().map((preset) => preset.id)
-    expect(ids).toEqual(["openrouter", "openai", DEMO_PROVIDER_ID])
+    expect(ids).toEqual(["openrouter", "openai", "nvidia-nim", DEMO_PROVIDER_ID])
   })
 
   it("defaults to demo when available, OpenRouter otherwise, on native", () => {
