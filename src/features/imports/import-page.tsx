@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { repositories } from "@/db/repositories"
 import type { ImportBatch } from "@/domain/models"
+import { useIsDemoData } from "@/features/demo/demo-seed"
+import { isDemoSourceName } from "@/features/demo/demo-templates"
 import type { CsvColumnMapping, CsvMappableField } from "@/features/imports/csv-mapping"
 import {
   CSV_MAPPABLE_FIELDS,
@@ -177,6 +179,7 @@ export async function readFilesIndependently(
 
 export function ImportPage() {
   const inputId = useId()
+  const demoPresent = useIsDemoData()
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [collection, setCollection] = useState<ImportCollectionPreview | null>(null)
   const [history, setHistory] = useState<ImportBatch[]>([])
@@ -678,6 +681,12 @@ export function ImportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {demoPresent &&
+            collection.previews.some((item) => !isDemoSourceName(item.sourceName)) ? (
+              <p className="rounded-lg bg-muted p-3 text-sm">
+                Importing will replace the sample demo data currently shown.
+              </p>
+            ) : null}
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div>
                 <dt className="text-xs text-muted-foreground">Rows</dt>
@@ -955,6 +964,11 @@ export function ImportPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
+            {demoPresent && !isDemoSourceName(preview.sourceName) ? (
+              <p className="rounded-lg bg-muted p-3 text-sm">
+                Importing will replace the sample demo data currently shown.
+              </p>
+            ) : null}
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div>
                 <dt className="text-xs text-muted-foreground">Rows</dt>

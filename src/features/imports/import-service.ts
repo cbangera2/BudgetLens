@@ -14,6 +14,8 @@ import type {
 } from "@/domain/models"
 import { DEFAULT_SHARE_COUNT } from "@/domain/models"
 import { normalizeTransactionAmountMinor } from "@/domain/transaction-amount"
+import { clearDemoManifest, readDemoManifest } from "@/features/demo/demo-manifest"
+import { isDemoSourceName } from "@/features/demo/demo-templates"
 import type { CsvColumnMapping } from "@/features/imports/csv-mapping"
 import {
   parseImportContent,
@@ -470,6 +472,33 @@ export class ImportService {
     return { receipts, failures }
   }
 
+  /**
+   * Remove demo-seeded content when real data lands, fulfilling the banner's
+   * "import to replace it" promise. Runs at the end of a successful commit so
+   * a failed import never destroys the demo. Demo-to-demo commits (seeding,
+   * template switches) skip it via the source-name check.
+   */
+  private async replaceDemoSeed(sourceName: string): Promise<void> {
+    if (isDemoSourceName(sourceName)) return
+    const demoBatchIds = (
+      await this.db.imports.filter((batch) => isDemoSourceName(batch.sourceName)).primaryKeys()
+    ).filter((id): id is string => typeof id === "string")
+    const manifest = readDemoManifest()
+    if (demoBatchIds.length === 0 && !manifest) return
+    if (demoBatchIds.length > 0) {
+      await this.db.transactions.where("importBatchId").anyOf(demoBatchIds).delete()
+      await this.db.wealth.where("importBatchId").anyOf(demoBatchIds).delete()
+      await this.db.wealthBreakdown.where("importBatchId").anyOf(demoBatchIds).delete()
+      await this.db.wealthAccounts.where("importBatchId").anyOf(demoBatchIds).delete()
+      await this.db.imports.bulkDelete(demoBatchIds)
+    }
+    if (manifest) {
+      await this.db.budgets.bulkDelete(manifest.budgetIds)
+      await this.db.transactionGroups.bulkDelete(manifest.groupIds)
+      clearDemoManifest()
+    }
+  }
+
   async commit(preview: ImportPreview): Promise<ImportReceipt> {
     if (preview.duplicateFile && preview.duplicatePolicy === "skip") {
       throw new Error("This exact file was already imported.")
@@ -510,6 +539,8 @@ export class ImportService {
         this.db.wealthBreakdown,
         this.db.wealthAccounts,
         this.db.imports,
+        this.db.budgets,
+        this.db.transactionGroups,
       ],
       async () => {
         if (
@@ -662,6 +693,7 @@ export class ImportService {
           importedAt,
         }
         await this.db.imports.add(batch)
+        await this.replaceDemoSeed(preview.sourceName)
         return batch
       },
     )

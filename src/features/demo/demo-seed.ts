@@ -4,6 +4,7 @@ import { database } from "@/db/database"
 import { ImportService } from "@/features/imports/import-service"
 import { readOnboardingChoice } from "@/features/onboarding/onboarding-storage"
 
+import { writeDemoManifest } from "./demo-manifest"
 import {
   DEFAULT_DEMO_TEMPLATE_ID,
   getDemoTemplate,
@@ -48,14 +49,13 @@ export async function seedDemoDataIfEmpty(
   await importService.commit(preview)
 
   const now = new Date().toISOString()
-  await db.budgets.bulkPut(
-    template.budgets.map((goal) => ({
-      ...goal,
-      id: crypto.randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-    })),
-  )
+  const budgetRows = template.budgets.map((goal) => ({
+    ...goal,
+    id: crypto.randomUUID(),
+    createdAt: now,
+    updatedAt: now,
+  }))
+  await db.budgets.bulkPut(budgetRows)
 
   const groupSeeds = template.groups.map((group) => {
     const id = crypto.randomUUID()
@@ -63,6 +63,11 @@ export async function seedDemoDataIfEmpty(
   })
   await db.transactionGroups.bulkPut(groupSeeds.map((seed) => seed.row))
   const groupIds = new Map(groupSeeds.map((seed) => [seed.name, seed.id]))
+  // Record exactly what was seeded so the first real import can remove it.
+  writeDemoManifest({
+    budgetIds: budgetRows.map((row) => row.id),
+    groupIds: groupSeeds.map((seed) => seed.id),
+  })
 
   // Link the tagged trip expenses to the trip group as a shared two-way split.
   const tripGroupId = groupIds.get(template.tripGroupName)

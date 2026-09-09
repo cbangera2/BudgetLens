@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+import { database } from "@/db/database"
 import type { ImportBatch } from "@/domain/models"
+import { DEMO_SOURCE_NAME } from "@/features/demo/golden-bundle"
 import type {
   ImportCollectionPreview,
   ImportDeletionReceipt,
@@ -535,5 +537,95 @@ describe("ImportPage", () => {
     expect(
       screen.queryByRole("link", { name: "View synthetic-net-worth.csv" }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe("demo replacement notice", () => {
+  afterEach(async () => {
+    await database.imports.clear()
+  })
+
+  it("warns that importing replaces demo data, once per preview", async () => {
+    const user = userEvent.setup()
+    await database.imports.add({
+      id: "demo-batch-1",
+      kind: "bundle",
+      sourceName: DEMO_SOURCE_NAME,
+      sourceHash: "demo-hash",
+      rowCount: 1,
+      importedCount: 1,
+      skippedCount: 0,
+      replacedCount: 0,
+      importedAt: "2026-07-22T12:00:00.000Z",
+    })
+    mocks.preview.mockResolvedValueOnce({
+      kind: "transactions",
+      sourceName: "real.csv",
+      sourceHash: "real-hash",
+      rowCount: 1,
+      transactions: [],
+      wealth: [],
+      wealthBreakdown: [],
+      wealthAccounts: [],
+      issues: [],
+      duplicateFile: false,
+      duplicateCount: 0,
+      replacementCount: 0,
+      importableCount: 1,
+      duplicatePolicy: "skip",
+      wealthPolicy: "skip",
+    })
+    render(<ImportPage />)
+    const file = new File(["Date,Description,Amount"], "real.csv", { type: "text/csv" })
+    Object.defineProperty(file, "text", {
+      value: () => Promise.resolve("Date,Description,Amount"),
+    })
+    await user.upload(screen.getByLabelText("CSV or JSON files"), file)
+    await screen.findByRole("heading", { name: "Import preview" })
+    expect(
+      await screen.findByText("Importing will replace the sample demo data currently shown."),
+    ).toBeInTheDocument()
+    await database.imports.clear()
+  })
+
+  it("stays silent for demo bundles", async () => {
+    const user = userEvent.setup()
+    await database.imports.add({
+      id: "demo-batch-1",
+      kind: "bundle",
+      sourceName: DEMO_SOURCE_NAME,
+      sourceHash: "demo-hash",
+      rowCount: 1,
+      importedCount: 1,
+      skippedCount: 0,
+      replacedCount: 0,
+      importedAt: "2026-07-22T12:00:00.000Z",
+    })
+    mocks.preview.mockResolvedValueOnce({
+      kind: "bundle",
+      sourceName: DEMO_SOURCE_NAME,
+      sourceHash: "demo-hash-2",
+      rowCount: 1,
+      transactions: [],
+      wealth: [],
+      wealthBreakdown: [],
+      wealthAccounts: [],
+      issues: [],
+      duplicateFile: false,
+      duplicateCount: 0,
+      replacementCount: 0,
+      importableCount: 1,
+      duplicatePolicy: "skip",
+      wealthPolicy: "skip",
+    })
+    render(<ImportPage />)
+    const file = new File(["{}"], "demo.json", { type: "application/json" })
+    Object.defineProperty(file, "text", { value: () => Promise.resolve("{}") })
+    await user.upload(screen.getByLabelText("CSV or JSON files"), file)
+    await screen.findByRole("heading", { name: "Import preview" })
+    expect(
+      screen.queryByText("Importing will replace the sample demo data currently shown."),
+    ).not.toBeInTheDocument()
+    await database.imports.clear()
   })
 })
