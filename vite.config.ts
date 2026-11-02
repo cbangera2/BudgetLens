@@ -9,9 +9,8 @@ import { assistantHarnessPlugin } from "./server/assistant-harness"
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
 
-// GitHub Pages serves project sites at https://<user>.github.io/<repo>/.
-// Apply the "/BudgetLens/" base only to production builds in GitHub Actions so
-// dev server and Playwright tests keep serving from "/". Override with VITE_BASE (e.g. "/" for a custom domain).
+// The Pages site uses a custom domain at the origin root. VITE_BASE remains an
+// override for project-page or other deployments that need a subpath.
 export default defineConfig(({ command }) => {
   const buildBase = process.env.VITE_BASE ?? (process.env.GITHUB_ACTIONS ? "/BudgetLens/" : "/")
 

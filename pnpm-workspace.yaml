@@ -1,4 +1,6 @@
 minimumReleaseAge: 1440
+overrides:
+  seroval: ^1.6.8
 minimumReleaseAgeExclude:
   - "@vitejs/plugin-react@6.0.4"
   - react-dom@19.2.8

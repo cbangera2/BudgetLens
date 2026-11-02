@@ -57,7 +57,7 @@
     "recharts": "3.10.0",
     "sonner": "2.0.7",
     "tailwind-merge": "3.6.0",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.1",
