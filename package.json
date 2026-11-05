@@ -22,6 +22,8 @@
     "test:browser": "playwright test",
     "eval:assistant": "node evals/assistant.eval.mjs",
     "eval:assistant:charts": "node evals/assistant-charts.eval.mjs",
+    "eval:free-models": "node evals/free-models.eval.mjs",
+    "eval:free-models:list": "node evals/free-models.eval.mjs --list-only",
     "format": "oxfmt .",
     "format:check": "oxfmt --check ."
   },

@@ -16,7 +16,10 @@
 // Default is Nemotron 3.5 Lightning: speed-branded, 1M context for snapshot +
 // tool-loop headroom, served by NVIDIA capacity. MiniMax M3/M2.7 and GLM 5.2
 // left the free pool (gone from the tools-filtered list 2026-09-07); GLM 5.2
-// additionally choked in live use.
+// additionally choked in live use. thinkingmachines/inkling* were dropped
+// 2026-09-09: both 403 on the direct OpenRouter API ("only available on
+// agentic harnesses"), and the relay forwards to the same endpoint, so they
+// would fail in demo mode too (see evals/free-models-results.md).
 
 export const DEMO_DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning:free"
 
@@ -34,8 +37,6 @@ export const DEMO_MODEL_ALLOWLIST: readonly string[] = [
   "nvidia/nemotron-3.5-lightning:free",
   "poolside/laguna-s-2.1:free",
   "poolside/laguna-xs-2.1:free",
-  "thinkingmachines/inkling-small:free",
-  "thinkingmachines/inkling:free",
 ]
 
 const DEMO_MODEL_SET: ReadonlySet<string> = new Set(DEMO_MODEL_ALLOWLIST)
